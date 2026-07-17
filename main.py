@@ -1,3 +1,4 @@
+
 import logging
 import sqlite3
 from datetime import datetime
@@ -6,10 +7,12 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 
 # ========== تنظیمات ==========
 TOKEN = "8947364142:AAFF55PYXIQrA_PrTH6ABb85bP2JLH4fPuI"
-CHANNEL_ID = "@starzland_shop"
+CHANNEL_ID = -1004296146485  # ← آیدی عددی درست
+CHANNEL_USERNAME = "@starzland_shop"
 ADMIN_IDS = [5571951071, 6691993264]
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ========== قیمت‌ها ==========
 PRICES = {
@@ -47,11 +50,13 @@ conn.commit()
 def fmt(n):
     return f"{n:,}"
 
+# ========== تابع چک عضویت (اصلاح شده) ==========
 async def is_member(user_id, context):
     try:
         member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
         return member.status in ["member", "administrator", "creator"]
-    except:
+    except Exception as e:
+        logger.error(f"Error checking membership: {e}")
         return False
 
 def create_user(user_id, username):
@@ -74,11 +79,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not await is_member(user_id, context):
         keyboard = [
-            [InlineKeyboardButton("📢 جوین کانال", url=f"https://t.me/{CHANNEL_ID[1:]}")],
+            [InlineKeyboardButton("📢 جوین کانال", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")],
             [InlineKeyboardButton("✅ تایید عضویت", callback_data="check_sub")]
         ]
         await update.message.reply_text(
-            "برای استفاده از ربات، ابتدا در کانال عضو شوید:\n" + CHANNEL_ID,
+            "🔒 برای استفاده از ربات، ابتدا در کانال عضو شوید:\n" + CHANNEL_USERNAME,
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
@@ -94,78 +99,80 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await update.message.reply_text(
-        "به فروشگاه استارز و تون خوش آمدی!\n"
-        "تون: 340 تومن\n"
-        "استارز مستقیم: از 165 تومن\n"
-        "استارز رو پست: 4000 تومن هر عدد\n"
-        "گیفت استارزی: از 55 تومن\n\n"
+        "🛒 به فروشگاه استارز و تون خوش آمدی!\n"
+        "💰 تون: 340 تومن\n"
+        "⭐ استارز مستقیم: از 165 تومن\n"
+        "📝 استارز رو پست: 4000 تومن هر عدد\n"
+        "🎁 گیفت استارزی: از 55 تومن\n\n"
         "یکی رو انتخاب کن:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 # ========== تایید عضویت ==========
+
 async def check_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
     if await is_member(user_id, context):
-        await query.edit_message_text("عضویت تایید شد! /start رو بزن.")
+        await query.edit_message_text("✅ عضویت تایید شد! /start رو بزن.")
     else:
-        await query.edit_message_text("هنوز عضو کانال نشدی!")
+        await query.edit_message_text("❌ هنوز عضو کانال نشدی!\nلطفا اول عضو شو.")
+
 # ========== خرید تون ==========
 async def buy_ton(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     keyboard = [
-        [InlineKeyboardButton("1 تون - 340 تومن", callback_data="ton_1")],
-        [InlineKeyboardButton("5 تون - 1,700 تومن", callback_data="ton_5")],
-        [InlineKeyboardButton("10 تون - 3,400 تومن", callback_data="ton_10")],
-        [InlineKeyboardButton("50 تون - 17,000 تومن", callback_data="ton_50")],
-        [InlineKeyboardButton("100 تون - 34,000 تومن", callback_data="ton_100")],
+        [InlineKeyboardButton("💰 ۱ تون - 340 تومن", callback_data="ton_1")],
+        [InlineKeyboardButton("💰 ۵ تون - 1,700 تومن", callback_data="ton_5")],
+        [InlineKeyboardButton("💰 ۱۰ تون - 3,400 تومن", callback_data="ton_10")],
+        [InlineKeyboardButton("💰 ۵۰ تون - 17,000 تومن", callback_data="ton_50")],
+        [InlineKeyboardButton("💰 ۱۰۰ تون - 34,000 تومن", callback_data="ton_100")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_menu")],
     ]
-    await query.edit_message_text("خرید تون:\nهر تون = 340 تومن", reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.edit_message_text("🪙 خرید تون:\nهر تون = 340 تومن", reply_markup=InlineKeyboardMarkup(keyboard))
 
 # ========== خرید استارز مستقیم ==========
 async def buy_stars_direct(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     keyboard = [
-        [InlineKeyboardButton("50 - 165 تومن", callback_data="stars_direct_50")],
-        [InlineKeyboardButton("100 - 339 تومن", callback_data="stars_direct_100")],
-        [InlineKeyboardButton("150 - 500 تومن", callback_data="stars_direct_150")],
-        [InlineKeyboardButton("200 - 660 تومن", callback_data="stars_direct_200")],
-        [InlineKeyboardButton("500 - 1,600 تومن", callback_data="stars_direct_500")],
+        [InlineKeyboardButton("⭐ ۵۰ - 165 تومن", callback_data="stars_direct_50")],
+        [InlineKeyboardButton("⭐ ۱۰۰ - 339 تومن", callback_data="stars_direct_100")],
+        [InlineKeyboardButton("⭐ ۱۵۰ - 500 تومن", callback_data="stars_direct_150")],
+        [InlineKeyboardButton("⭐ ۲۰۰ - 660 تومن", callback_data="stars_direct_200")],
+        [InlineKeyboardButton("⭐ ۵۰۰ - 1,600 تومن", callback_data="stars_direct_500")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_menu")],
     ]
-    await query.edit_message_text("استارز مستقیم:", reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.edit_message_text("⭐ استارز مستقیم:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 # ========== خرید استارز رو پست ==========
 async def buy_stars_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     keyboard = [
-        [InlineKeyboardButton("1 - 4,000 تومن", callback_data="stars_post_1")],
-        [InlineKeyboardButton("5 - 20,000 تومن", callback_data="stars_post_5")],
-        [InlineKeyboardButton("10 - 40,000 تومن", callback_data="stars_post_10")],
-        [InlineKeyboardButton("25 - 100,000 تومن", callback_data="stars_post_25")],
-        [InlineKeyboardButton("50 - 200,000 تومن", callback_data="stars_post_50")],
+        [InlineKeyboardButton("📝 ۱ - 4,000 تومن", callback_data="stars_post_1")],
+        [InlineKeyboardButton("📝 ۵ - 20,000 تومن", callback_data="stars_post_5")],
+        [InlineKeyboardButton("📝 ۱۰ - 40,000 تومن", callback_data="stars_post_10")],
+        [InlineKeyboardButton("📝 ۲۵ - 100,000 تومن", callback_data="stars_post_25")],
+        [InlineKeyboardButton("📝 ۵۰ - 200,000 تومن", callback_data="stars_post_50")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_menu")],
     ]
-    await query.edit_message_text("استارز رو پست:", reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.edit_message_text("📝 استارز رو پست:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 # ========== خرید گیفت استارزی ==========
 async def buy_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     keyboard = [
-        [InlineKeyboardButton("15 - 55 تومن", callback_data="gift_15")],
-        [InlineKeyboardButton("25 - 85 تومن", callback_data="gift_25")],
-        [InlineKeyboardButton("50 - 170 تومن", callback_data="gift_50")],
-        [InlineKeyboardButton("100 - 339 تومن", callback_data="gift_100")],
+        [InlineKeyboardButton("🎁 ۱۵ - 55 تومن", callback_data="gift_15")],
+        [InlineKeyboardButton("🎁 ۲۵ - 85 تومن", callback_data="gift_25")],
+        [InlineKeyboardButton("🎁 ۵۰ - 170 تومن", callback_data="gift_50")],
+        [InlineKeyboardButton("🎁 ۱۰۰ - 339 تومن", callback_data="gift_100")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_menu")],
     ]
-    await query.edit_message_text("گیفت استارزی:", reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.edit_message_text("🎁 گیفت استارزی:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 # ========== پردازش خرید ==========
 async def process_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -176,9 +183,9 @@ async def process_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     item_type = data[0]
     qty = int(data[1])
 
-    # قیمت‌ها
     if item_type == "ton":
         price = qty * PRICES["ton"]
+
         item_name = f"تون ({qty})"
     elif item_type == "stars_direct":
         price = PRICES["stars_direct"][str(qty)]
@@ -193,16 +200,13 @@ async def process_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ خطا!")
         return
 
-    # ذخیره سفارش
     order_id = create_order(user_id, item_type, qty, price)
 
-    # دکمه‌ها
     keyboard = [
         [InlineKeyboardButton("✅ پرداخت انجام شد", callback_data=f"payment_done_{order_id}")],
         [InlineKeyboardButton("❌ لغو سفارش", callback_data=f"cancel_{order_id}")],
     ]
 
-    # پیام تایید سفارش
     await query.edit_message_text(
         f"📋 تایید سفارش:\n\n"
         f"🛒 محصول: {item_name}\n"
@@ -213,7 +217,6 @@ async def process_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-    # اطلاع به ادمین
     for admin_id in ADMIN_IDS:
         try:
             await context.bot.send_message(
@@ -233,7 +236,7 @@ async def payment_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     order_id = int(query.data.split('_')[2])
     cursor.execute('UPDATE orders SET status = "paid" WHERE id = ?', (order_id,))
     conn.commit()
-    await query.edit_message_text(f"سفارش #{order_id} تایید شد! به زودی تحویل داده میشه.")
+    await query.edit_message_text(f"✅ سفارش #{order_id} تایید شد! به زودی تحویل داده میشه.")
 
 # ========== لغو سفارش ==========
 async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -242,7 +245,7 @@ async def cancel_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     order_id = int(query.data.split('_')[2])
     cursor.execute('UPDATE orders SET status = "canceled" WHERE id = ?', (order_id,))
     conn.commit()
-    await query.edit_message_text(f"سفارش #{order_id} لغو شد.")
+    await query.edit_message_text(f"❌ سفارش #{order_id} لغو شد.")
 
 # ========== سفارشات من ==========
 async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -252,9 +255,9 @@ async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor.execute('SELECT id, item_type, quantity, price, status, created_at FROM orders WHERE user_id = ? ORDER BY created_at DESC LIMIT 10', (user_id,))
     orders = cursor.fetchall()
     if not orders:
-        await query.edit_message_text("هیچ سفارشی نداری.")
+        await query.edit_message_text("📋 هیچ سفارشی نداری.")
         return
-    text = "سفارشات شما:\n\n"
+    text = "📋 سفارشات شما:\n\n"
     for o in orders:
         status_emoji = "✅" if o[4] == "paid" else "⏳" if o[4] == "pending" else "❌"
         text += f"#{o[0]} - {o[1]} ({o[2]}) - {fmt(o[3])} تومن {status_emoji}\n"
@@ -267,7 +270,7 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     username = query.from_user.username or query.from_user.first_name
     if not await is_member(user_id, context):
-        await query.edit_message_text("ابتدا در کانال عضو شوید!")
+        await query.edit_message_text("❌ ابتدا در کانال عضو شوید!")
         return
     create_user(user_id, username)
     keyboard = [
@@ -277,7 +280,8 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🎁 گیفت استارزی", callback_data="buy_gift")],
         [InlineKeyboardButton("📊 سفارشات من", callback_data="my_orders")],
     ]
-    await query.edit_message_text("منوی اصلی:", reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.edit_message_text("🛒 منوی اصلی:", reply_markup=InlineKeyboardMarkup(keyboard))
+
 
 # ========== مدیریت ==========
 async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
