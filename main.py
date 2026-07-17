@@ -120,7 +120,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "🌟 *به فروشگاه استارز لند خوش آمدی!* 🌟\n\n"
-        "🪙 *تون:* 340 تومن\n"
+        "🪙 *تون:* 340,000 تومن\n"
         "⭐ *استارز مستقیم:* از 165,000 تومن\n"
         "📝 *استارز رو پست:* 4,000 تومن هر عدد\n"
         "🎁 *گیفت استارزی:* از 55,000 تومن\n\n"
