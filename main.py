@@ -2,27 +2,23 @@ import logging
 import sqlite3
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ConversationHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
 # ========== تنظیمات ==========
 TOKEN = "8947364142:AAFF55PYXIQrA_PrTH6ABb85bP2JLH4fPuI"
 CHANNEL_ID = -1004296146485
 CHANNEL_USERNAME = "@starzland_shop"
 ADMIN_IDS = [5571951071, 6691993264]
-BOT_USERNAME = "starzland_bot"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ========== حالت‌های مکالمه ==========
-SELECT_PRODUCT, WAITING_FOR_AMOUNT, WAITING_FOR_WALLET, WAITING_FOR_RECEIVER, WAITING_FOR_POST_LINK, WAITING_FOR_RECEIPT = range(6)
-
-# ========== قیمت‌ها ==========
+# ========== قیمت‌ها (همون قیمت‌های قبلی) ==========
 PRICES = {
-    "ton": 340,
-    "stars_direct": 3300,
-    "stars_post": 4000,
-    "gift": 3390,
+    "ton": 340,  # هر تون 340000 تومن
+    "stars_direct": 3300,  # هر استارز مستقیم 3300 تومن
+    "stars_post": 4000,  # هر استارز رو پست 4000 تومن
+    "gift": 3390,  # هر گیفت استارزی 3390 تومن
 }
 
 # ========== دیتابیس ==========
@@ -88,7 +84,7 @@ def confirm_order(order_id):
     cursor.execute('UPDATE orders SET status = "confirmed" WHERE id = ?', (order_id,))
     conn.commit()
 
-# ========== منوی اصلی ==========
+# ========== استارت ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
@@ -119,7 +115,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "🌟 *به فروشگاه استارز لند خوش آمدی!* 🌟\n\n"
-        "🪙 *تون:* 340 تومن\n"
+        "🪙 *تون:* 340000 تومن\n"
         "⭐ *استارز مستقیم:* 3,300 تومن هر عدد\n"
         "📝 *استارز رو پست:* 4,000 تومن هر عدد\n"
         "🎁 *گیفت استارزی:* 3,390 تومن هر عدد\n\n"
@@ -127,7 +123,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
-    return SELECT_PRODUCT
 
 # ========== تایید عضویت ==========
 async def check_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -139,62 +134,61 @@ async def check_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await query.edit_message_text("❌ هنوز عضو کانال نشدی!\nلطفا اول عضو شو.")
 
-# ========== دکمه‌های خرید ==========
+# ========== خرید تون ==========
 async def buy_ton(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data['product_type'] = 'ton'
     await query.edit_message_text(
         "🪙 *خرید تون (Toncoin)*\n\n"
-        "💰 هر تون = 340 تومن\n\n"
+        "💰 هر تون = 340000 هزار تومن\n\n"
         "🔢 لطفاً تعداد تون مورد نظر خود را وارد کن:\n"
         "(عدد را به فارسی یا انگلیسی وارد کن)\n\n"
         "مثال: 5 یا ۵",
         parse_mode="Markdown"
     )
-    return WAITING_FOR_AMOUNT
 
+# ========== خرید استارز مستقیم ==========
 async def buy_stars_direct(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data['product_type'] = 'stars_direct'
     await query.edit_message_text(
         "⭐ *استارز مستقیم*\n\n"
-        "💰 هر استارز = 3,300 تومن\n\n"
+        "💰 هر استارز = از 165000 هزار تومن\n\n"
         "🔢 لطفاً تعداد استارز مورد نظر خود را وارد کن:\n"
         "(عدد را به فارسی یا انگلیسی وارد کن)\n\n"
         "مثال: 50 یا ۵۰",
         parse_mode="Markdown"
     )
-    return WAITING_FOR_AMOUNT
 
+# ========== خرید استارز رو پست ==========
 async def buy_stars_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data['product_type'] = 'stars_post'
     await query.edit_message_text(
         "📝 *استارز رو پست*\n\n"
-        "💰 هر استارز رو پست = 4,000 تومن\n\n"
+        "💰 هر استارز رو پست = هر عدد 4000 هزار تومن\n\n"
         "🔢 لطفاً تعداد استارز رو پست مورد نظر خود را وارد کن:\n"
         "(عدد را به فارسی یا انگلیسی وارد کن)\n\n"
         "مثال: 1 یا ۱",
         parse_mode="Markdown"
     )
-    return WAITING_FOR_AMOUNT
 
+# ========== خرید گیفت استارزی ==========
 async def buy_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data['product_type'] = 'gift'
     await query.edit_message_text(
         "🎁 *گیفت استارزی*\n\n"
-        "💰 هر گیفت استارز = 3,390 تومن\n\n"
+        "💰 هر گیفت استارز = از 55000 هزار تومن\n\n"
         "🔢 لطفاً تعداد گیفت استارز مورد نظر خود را وارد کن:\n"
         "(عدد را به فارسی یا انگلیسی وارد کن)\n\n"
         "مثال: 15 یا ۱۵",
         parse_mode="Markdown"
     )
-    return WAITING_FOR_AMOUNT
 
 # ========== دریافت مقدار ==========
 async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -214,10 +208,10 @@ async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         qty = int(text)
         if qty <= 0:
             await update.message.reply_text("❌ لطفاً یک عدد بزرگتر از 0 وارد کن!")
-            return WAITING_FOR_AMOUNT
+            return
     except ValueError:
         await update.message.reply_text("❌ لطفاً فقط عدد وارد کن!")
-        return WAITING_FOR_AMOUNT
+        return
     
     item_type = context.user_data.get('product_type', 'ton')
     
@@ -226,17 +220,17 @@ async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         price = qty * PRICES["ton"]
         item_name = f"تون ({qty})"
         extra_prompt = "🪙 لطفاً آدرس ولت (Wallet) خود را برای دریافت تون وارد کن:"
-        next_state = WAITING_FOR_WALLET
+        next_step = "wallet"
     elif item_type == "stars_direct":
         price = qty * PRICES["stars_direct"]
         item_name = f"استارز مستقیم ({qty})"
         extra_prompt = "⭐ لطفاً آیدی تلگرام (یوزرنیم) فردی که استارز رو دریافت میکنه رو وارد کن:"
-        next_state = WAITING_FOR_RECEIVER
+        next_step = "receiver"
     elif item_type == "stars_post":
         price = qty * PRICES["stars_post"]
         item_name = f"استارز رو پست ({qty})"
         extra_prompt = "📝 لطفاً لینک پست مورد نظر رو بفرست:"
-        next_state = WAITING_FOR_POST_LINK
+        next_step = "post_link"
     elif item_type == "gift":
         price = qty * PRICES["gift"]
         item_name = f"گیفت استارزی ({qty})"
@@ -256,7 +250,8 @@ async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⚠️ بعد از واریز، عکس رسید رو بفرست.",
             parse_mode="Markdown"
         )
-        return WAITING_FOR_RECEIPT
+        context.user_data['waiting_for'] = 'receipt'
+        return
 
     order_id = create_order(user_id, username, item_type, qty, price)
     context.user_data['order_id'] = order_id
@@ -270,7 +265,7 @@ async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚠️ این اطلاعات برای انجام سفارش ضروری است.",
         parse_mode="Markdown"
     )
-    return next_state
+    context.user_data['waiting_for'] = next_step
 
 # ========== دریافت اطلاعات اضافی ==========
 async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -280,12 +275,21 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     order_id = context.user_data.get('order_id')
     item_name = context.user_data.get('item_name')
     price = context.user_data.get('price')
+    waiting_for = context.user_data.get('waiting_for')
     
     if not order_id:
         await update.message.reply_text("❌ خطا! لطفا دوباره /start رو بزن.")
-        return ConversationHandler.END
+        return
     
-    update_order_extra(order_id, text)
+    if waiting_for == "wallet":
+        update_order_extra(order_id, f"آدرس ولت: {text}")
+    elif waiting_for == "receiver":
+        update_order_extra(order_id, f"گیرنده: {text}")
+    elif waiting_for == "post_link":
+        update_order_extra(order_id, f"لینک پست: {text}")
+    else:
+        await update.message.reply_text("❌ خطا! لطفا دوباره /start رو بزن.")
+        return
     
     await update.message.reply_text(
         f"📋 *تایید سفارش*\n\n"
@@ -317,7 +321,7 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
     
-    return WAITING_FOR_RECEIPT
+    context.user_data['waiting_for'] = 'receipt'
 
 # ========== دریافت عکس رسید ==========
 async def get_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -328,7 +332,7 @@ async def get_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not order_id:
         await update.message.reply_text("❌ خطا! لطفا دوباره /start رو بزن.")
-        return ConversationHandler.END
+        return
     
     if update.message.photo:
         file_id = update.message.photo[-1].file_id
@@ -366,13 +370,12 @@ async def get_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"Error sending receipt to admin: {e}")
         
-        return ConversationHandler.END
+        context.user_data['waiting_for'] = ''
     else:
         await update.message.reply_text(
             "❌ لطفاً یک عکس از رسید واریز خود بفرستید.\n"
             "⚠️ فقط عکس (تصویر) مورد قبول است."
         )
-        return WAITING_FOR_RECEIPT
 
 # ========== تایید توسط ادمین ==========
 async def confirm_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -541,45 +544,34 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+# ========== مدیریت پیام‌ها ==========
+async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    waiting_for = context.user_data.get('waiting_for', '')
+    
+    if waiting_for in ['wallet', 'receiver', 'post_link']:
+        await get_extra_info(update, context)
+    elif waiting_for == 'receipt':
+        await get_receipt(update, context)
+    else:
+        # اگر کاربر عددی وارد کرد که هیچ جایی منتظرش نبودیم
+        await get_amount(update, context)
+
 # ========== اجرا ==========
 def main():
     app = Application.builder().token(TOKEN).build()
     
-    conv_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler("start", start),
-            CallbackQueryHandler(buy_ton, pattern="^buy_ton$"),
-            CallbackQueryHandler(buy_stars_direct, pattern="^buy_stars_direct$"),
-            CallbackQueryHandler(buy_stars_post, pattern="^buy_stars_post$"),
-            CallbackQueryHandler(buy_gift, pattern="^buy_gift$"),
-            CallbackQueryHandler(check_sub, pattern="^check_sub$"),
-            CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"),
-            CallbackQueryHandler(my_orders, pattern="^my_orders$"),
-            CallbackQueryHandler(confirm_receipt, pattern="^confirm_"),
-            CallbackQueryHandler(reject_receipt, pattern="^reject_"),
-        ],
-        states={
-            WAITING_FOR_AMOUNT: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_amount)
-            ],
-            WAITING_FOR_WALLET: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_extra_info)
-            ],
-            WAITING_FOR_RECEIVER: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_extra_info)
-            ],
-            WAITING_FOR_POST_LINK: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_extra_info)
-            ],
-            WAITING_FOR_RECEIPT: [
-                MessageHandler(filters.PHOTO, get_receipt),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_receipt)
-            ],
-        },
-        fallbacks=[CommandHandler("start", start)],
-    )
-    
-    app.add_handler(conv_handler)
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(check_sub, pattern="^check_sub$"))
+    app.add_handler(CallbackQueryHandler(buy_ton, pattern="^buy_ton$"))
+    app.add_handler(CallbackQueryHandler(buy_stars_direct, pattern="^buy_stars_direct$"))
+    app.add_handler(CallbackQueryHandler(buy_stars_post, pattern="^buy_stars_post$"))
+    app.add_handler(CallbackQueryHandler(buy_gift, pattern="^buy_gift$"))
+    app.add_handler(CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"))
+    app.add_handler(CallbackQueryHandler(my_orders, pattern="^my_orders$"))
+    app.add_handler(CallbackQueryHandler(confirm_receipt, pattern="^confirm_"))
+    app.add_handler(CallbackQueryHandler(reject_receipt, pattern="^reject_"))
+    app.add_handler(MessageHandler(filters.PHOTO, get_receipt))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_messages))
     
     print("🌟 ربات فروش استارز لند روشن شد...")
     app.run_polling()
