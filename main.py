@@ -3,20 +3,20 @@ import sqlite3
 import asyncio
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ConversationHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # ========== تنظیمات ==========
-TOKEN = "8896536456:AAGA8c2DxVjJxZpW8U85aDHVxRCweWf83TE"
-CHANNEL_ID = "@starzland_shop"  # آیدی کانال (با @)
-ADMIN_IDS = [5571951071, 6691993264]  # آیدی عددی ادمین‌ها
-BOT_USERNAME = "ghorghoryanbot"  # یوزرنیم ربات (بدون @)
+TOKEN = "8947364142:AAFF55PYXIQrA_PrTH6ABb85bP2JLH4fPuI"
+CHANNEL_ID = "@starzland_shop"
+ADMIN_IDS = [5571951071, 6691993264]
+BOT_USERNAME = "starzland_bot"
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(name)
+logger = logging.getLogger(__name__)
 
 # ========== قیمت‌ها ==========
 PRICES = {
-    "ton": 340,  # هر تون ۳۴۰ تومن
+    "ton": 340,
     "stars_direct": {
         "50": 165,
         "100": 339,
@@ -25,7 +25,7 @@ PRICES = {
         "500": 1600,
     },
     "stars_post": {
-        "1": 4000,  # هر استارز رو پست ۴۰۰۰ تومن
+        "1": 4000,
         "5": 20000,
         "10": 40000,
         "25": 100000,
@@ -102,7 +102,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
     
-    # بررسی عضویت در کانال
     if not await is_member(user_id, context):
         keyboard = [
             [InlineKeyboardButton("📢 جوین کانال", url=f"https://t.me/{CHANNEL_ID[1:]}")],
@@ -121,7 +120,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🪙 خرید تون (Toncoin)", callback_data="buy_ton")],
         [InlineKeyboardButton("⭐ خرید استارز مستقیم", callback_data="buy_stars_direct")],
-
         [InlineKeyboardButton("📝 خرید استارز رو پست", callback_data="buy_stars_post")],
         [InlineKeyboardButton("🎁 خرید گیفت استارزی", callback_data="buy_gift")],
         [InlineKeyboardButton("📊 وضعیت سفارشات", callback_data="my_orders")],
@@ -154,7 +152,6 @@ async def check_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def buy_ton(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user_id = query.from_user.id
     
     keyboard = [
         [InlineKeyboardButton("💰 ۱ تون - ۳۴۰ تومن", callback_data="ton_1")],
@@ -260,12 +257,10 @@ async def process_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     data = query.data
     
-    # تشخیص نوع خرید
     parts = data.split('_')
     item_type = parts[0]
     quantity = int(parts[1])
     
-    # قیمت‌ها
     if item_type == "ton":
         price = quantity * PRICES["ton"]
         item_name = f"تون ({quantity})"
@@ -282,10 +277,8 @@ async def process_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ خطا! لطفا دوباره تلاش کن.")
         return
     
-    # ذخیره سفارش
     order_id = create_order(user_id, item_type, quantity, price)
     
-    # نمایش اطلاعات پرداخت
     keyboard = [
         [InlineKeyboardButton("✅ پرداخت انجام شد", callback_data=f"payment_done_{order_id}")],
         [InlineKeyboardButton("❌ لغو سفارش", callback_data=f"cancel_order_{order_id}")],
@@ -306,7 +299,6 @@ async def process_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
     
-    # ارسال به ادمین
     for admin_id in ADMIN_IDS:
         try:
             await context.bot.send_message(
@@ -322,6 +314,8 @@ async def process_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except:
             pass
+
+
 # ========== پرداخت انجام شد ==========
 async def payment_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -329,11 +323,9 @@ async def payment_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     order_id = int(query.data.split('_')[2])
     
-    # به‌روزرسانی وضعیت سفارش
     cursor.execute('UPDATE orders SET status = "paid" WHERE id = ?', (order_id,))
     conn.commit()
     
-    # دریافت اطلاعات سفارش
     cursor.execute('SELECT item_type, quantity, price FROM orders WHERE id = ?', (order_id,))
     order = cursor.fetchone()
     
@@ -348,7 +340,6 @@ async def payment_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"به زودی محصول تحویل داده میشه. ⏳"
         )
         
-        # ارسال به ادمین
         user = get_user(user_id)
         username = user[1] if user else "کاربر"
         for admin_id in ADMIN_IDS:
