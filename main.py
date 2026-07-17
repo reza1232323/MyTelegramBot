@@ -15,11 +15,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ========== حالت‌های مکالمه ==========
-WAITING_FOR_WALLET, WAITING_FOR_RECEIVER, WAITING_FOR_POST_LINK, WAITING_FOR_RECEIPT_PHOTO, WAITING_FOR_CUSTOM_AMOUNT = range(5)
+SELECT_PRODUCT, WAITING_FOR_CUSTOM_AMOUNT, WAITING_FOR_WALLET, WAITING_FOR_RECEIVER, WAITING_FOR_POST_LINK, WAITING_FOR_RECEIPT_PHOTO = range(6)
 
 # ========== قیمت‌ها ==========
 PRICES = {
-    "ton": 340,
+    "ton": 340000,
     "stars_direct": {"50": 165000, "100": 339000, "150": 500000, "200": 660000, "500": 1600000},
     "stars_post": {"1": 4000, "5": 20000, "10": 40000, "25": 100000, "50": 200000},
     "gift": {"15": 55000, "25": 85000, "50": 170000, "100": 339000},
@@ -128,6 +128,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
+    return SELECT_PRODUCT
 
 # ========== تایید عضویت ==========
 async def check_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -139,10 +140,11 @@ async def check_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await query.edit_message_text("❌ هنوز عضو کانال نشدی!\nلطفا اول عضو شو.")
 
-# ========== خرید تون با مقدار دلخواه ==========
+# ========== خرید تون ==========
 async def buy_ton(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    context.user_data['product_type'] = 'ton'
     await query.edit_message_text(
         "🪙 *خرید تون (Toncoin)*\n\n"
         "💰 هر تون = 340 تومن\n\n"
@@ -153,10 +155,11 @@ async def buy_ton(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return WAITING_FOR_CUSTOM_AMOUNT
 
-# ========== خرید استارز مستقیم با مقدار دلخواه ==========
+# ========== خرید استارز مستقیم ==========
 async def buy_stars_direct(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    context.user_data['product_type'] = 'stars_direct'
     await query.edit_message_text(
         "⭐ *استارز مستقیم*\n\n"
         "💰 هر استارز = 3,300 تومن\n\n"
@@ -171,6 +174,7 @@ async def buy_stars_direct(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def buy_stars_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    context.user_data['product_type'] = 'stars_post'
     await query.edit_message_text(
         "📝 *استارز رو پست*\n\n"
         "💰 هر استارز رو پست = 4,000 تومن\n\n"
@@ -185,6 +189,7 @@ async def buy_stars_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def buy_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    context.user_data['product_type'] = 'gift'
     await query.edit_message_text(
         "🎁 *گیفت استارزی*\n\n"
         "💰 هر گیفت استارز = 3,390 تومن\n\n"
@@ -213,14 +218,13 @@ async def get_custom_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         qty = int(text)
         if qty <= 0:
             await update.message.reply_text("❌ لطفاً یک عدد بزرگتر از 0 وارد کن!")
-            return
+            return WAITING_FOR_CUSTOM_AMOUNT
     except ValueError:
         await update.message.reply_text("❌ لطفاً فقط عدد وارد کن!")
-        return
+        return WAITING_FOR_CUSTOM_AMOUNT
     
-    # تشخیص نوع محصول از context
-    data = context.user_data.get('last_callback', 'ton')
-    item_type = data.split('_')[0]
+    # تشخیص نوع محصول
+    item_type = context.user_data.get('product_type', 'ton')
     
     # محاسبه قیمت
     if item_type == "ton":
@@ -337,7 +341,6 @@ async def get_receipt_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
     
     if update.message.photo:
-        photo_file = await update.message.photo[-1].get_file()
         file_id = update.message.photo[-1].file_id
         
         update_order_receipt(order_id, file_id)
@@ -559,16 +562,12 @@ async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "back_to_menu":
         await back_to_menu(update, context)
     elif data == "buy_ton":
-        context.user_data['last_callback'] = "ton"
         await buy_ton(update, context)
     elif data == "buy_stars_direct":
-        context.user_data['last_callback'] = "stars_direct"
         await buy_stars_direct(update, context)
     elif data == "buy_stars_post":
-        context.user_data['last_callback'] = "stars_post"
         await buy_stars_post(update, context)
     elif data == "buy_gift":
-        context.user_data['last_callback'] = "gift"
         await buy_gift(update, context)
     elif data.startswith("confirm_order_"):
         await confirm_order(update, context)
@@ -583,6 +582,7 @@ def main():
     
     conv_handler = ConversationHandler(
         entry_points=[
+            CommandHandler("start", start),
             CallbackQueryHandler(handler)
         ],
         states={
@@ -606,7 +606,6 @@ def main():
         fallbacks=[CommandHandler("start", start)],
     )
     
-    app.add_handler(CommandHandler("start", start))
     app.add_handler(conv_handler)
     
     print("🌟 ربات فروش استارز لند روشن شد...")
