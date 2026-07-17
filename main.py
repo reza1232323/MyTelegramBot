@@ -15,14 +15,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ========== حالت‌های مکالمه ==========
-SELECT_PRODUCT, WAITING_FOR_CUSTOM_AMOUNT, WAITING_FOR_WALLET, WAITING_FOR_RECEIVER, WAITING_FOR_POST_LINK, WAITING_FOR_RECEIPT_PHOTO = range(6)
+SELECT_PRODUCT, WAITING_FOR_AMOUNT, WAITING_FOR_WALLET, WAITING_FOR_RECEIVER, WAITING_FOR_POST_LINK, WAITING_FOR_RECEIPT = range(6)
 
 # ========== قیمت‌ها ==========
 PRICES = {
-    "ton": 340000,
-    "stars_direct": {"50": 165000, "100": 339000, "150": 500000, "200": 660000, "500": 1600000},
-    "stars_post": {"1": 4000, "5": 20000, "10": 40000, "25": 100000, "50": 200000},
-    "gift": {"15": 55000, "25": 85000, "50": 170000, "100": 339000},
+    "ton": 340,
+    "stars_direct": 3300,
+    "stars_post": 4000,
+    "gift": 3390,
 }
 
 # ========== دیتابیس ==========
@@ -60,8 +60,7 @@ async def is_member(user_id, context):
     try:
         member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
         return member.status in ["member", "administrator", "creator"]
-    except Exception as e:
-        logger.error(f"Error checking membership: {e}")
+    except:
         return False
 
 def create_user(user_id, username):
@@ -89,7 +88,7 @@ def confirm_order(order_id):
     cursor.execute('UPDATE orders SET status = "confirmed" WHERE id = ?', (order_id,))
     conn.commit()
 
-# ========== استارت ==========
+# ========== منوی اصلی ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
@@ -120,10 +119,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "🌟 *به فروشگاه استارز لند خوش آمدی!* 🌟\n\n"
-        "🪙 *تون:* 340,000 تومن\n"
-        "⭐ *استارز مستقیم:* از 165,000 تومن\n"
+        "🪙 *تون:* 340 تومن\n"
+        "⭐ *استارز مستقیم:* 3,300 تومن هر عدد\n"
         "📝 *استارز رو پست:* 4,000 تومن هر عدد\n"
-        "🎁 *گیفت استارزی:* از 55,000 تومن\n\n"
+        "🎁 *گیفت استارزی:* 3,390 تومن هر عدد\n\n"
         "👇 یکی از گزینه‌ها رو انتخاب کن:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
@@ -140,7 +139,7 @@ async def check_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await query.edit_message_text("❌ هنوز عضو کانال نشدی!\nلطفا اول عضو شو.")
 
-# ========== خرید تون ==========
+# ========== دکمه‌های خرید ==========
 async def buy_ton(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -153,9 +152,8 @@ async def buy_ton(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "مثال: 5 یا ۵",
         parse_mode="Markdown"
     )
-    return WAITING_FOR_CUSTOM_AMOUNT
+    return WAITING_FOR_AMOUNT
 
-# ========== خرید استارز مستقیم ==========
 async def buy_stars_direct(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -168,9 +166,8 @@ async def buy_stars_direct(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "مثال: 50 یا ۵۰",
         parse_mode="Markdown"
     )
-    return WAITING_FOR_CUSTOM_AMOUNT
+    return WAITING_FOR_AMOUNT
 
-# ========== خرید استارز رو پست ==========
 async def buy_stars_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -183,9 +180,8 @@ async def buy_stars_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "مثال: 1 یا ۱",
         parse_mode="Markdown"
     )
-    return WAITING_FOR_CUSTOM_AMOUNT
+    return WAITING_FOR_AMOUNT
 
-# ========== خرید گیفت استارزی ==========
 async def buy_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -198,10 +194,10 @@ async def buy_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "مثال: 15 یا ۱۵",
         parse_mode="Markdown"
     )
-    return WAITING_FOR_CUSTOM_AMOUNT
+    return WAITING_FOR_AMOUNT
 
-# ========== دریافت مقدار دلخواه ==========
-async def get_custom_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ========== دریافت مقدار ==========
+async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
     text = update.message.text.strip()
@@ -218,12 +214,11 @@ async def get_custom_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         qty = int(text)
         if qty <= 0:
             await update.message.reply_text("❌ لطفاً یک عدد بزرگتر از 0 وارد کن!")
-            return WAITING_FOR_CUSTOM_AMOUNT
+            return WAITING_FOR_AMOUNT
     except ValueError:
         await update.message.reply_text("❌ لطفاً فقط عدد وارد کن!")
-        return WAITING_FOR_CUSTOM_AMOUNT
+        return WAITING_FOR_AMOUNT
     
-    # تشخیص نوع محصول
     item_type = context.user_data.get('product_type', 'ton')
     
     # محاسبه قیمت
@@ -233,17 +228,17 @@ async def get_custom_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         extra_prompt = "🪙 لطفاً آدرس ولت (Wallet) خود را برای دریافت تون وارد کن:"
         next_state = WAITING_FOR_WALLET
     elif item_type == "stars_direct":
-        price = qty * 3300
+        price = qty * PRICES["stars_direct"]
         item_name = f"استارز مستقیم ({qty})"
         extra_prompt = "⭐ لطفاً آیدی تلگرام (یوزرنیم) فردی که استارز رو دریافت میکنه رو وارد کن:"
         next_state = WAITING_FOR_RECEIVER
     elif item_type == "stars_post":
-        price = qty * 4000
+        price = qty * PRICES["stars_post"]
         item_name = f"استارز رو پست ({qty})"
         extra_prompt = "📝 لطفاً لینک پست مورد نظر رو بفرست:"
         next_state = WAITING_FOR_POST_LINK
     elif item_type == "gift":
-        price = qty * 3390
+        price = qty * PRICES["gift"]
         item_name = f"گیفت استارزی ({qty})"
         order_id = create_order(user_id, username, item_type, qty, price)
         context.user_data['order_id'] = order_id
@@ -261,16 +256,13 @@ async def get_custom_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⚠️ بعد از واریز، عکس رسید رو بفرست.",
             parse_mode="Markdown"
         )
-        return WAITING_FOR_RECEIPT_PHOTO
+        return WAITING_FOR_RECEIPT
 
-    # ذخیره سفارش
     order_id = create_order(user_id, username, item_type, qty, price)
     context.user_data['order_id'] = order_id
     context.user_data['item_name'] = item_name
     context.user_data['price'] = price
-    context.user_data['next_state'] = next_state
 
-    # درخواست اطلاعات اضافی
     await update.message.reply_text(
         f"📋 *{item_name}*\n\n"
         f"💰 مبلغ: {fmt(price)} تومن\n\n"
@@ -293,7 +285,6 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ خطا! لطفا دوباره /start رو بزن.")
         return ConversationHandler.END
     
-    # ذخیره اطلاعات اضافی
     update_order_extra(order_id, text)
     
     await update.message.reply_text(
@@ -310,7 +301,6 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
     
-    # اطلاع به ادمین
     for admin_id in ADMIN_IDS:
         try:
             await context.bot.send_message(
@@ -327,10 +317,10 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
     
-    return WAITING_FOR_RECEIPT_PHOTO
+    return WAITING_FOR_RECEIPT
 
 # ========== دریافت عکس رسید ==========
-async def get_receipt_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     order_id = context.user_data.get('order_id')
     item_name = context.user_data.get('item_name')
@@ -342,7 +332,6 @@ async def get_receipt_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if update.message.photo:
         file_id = update.message.photo[-1].file_id
-        
         update_order_receipt(order_id, file_id)
         
         await update.message.reply_text(
@@ -369,8 +358,8 @@ async def get_receipt_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             f"🆔 شماره سفارش: {order_id}\n\n"
                             f"⬅️ برای تایید، روی دکمه زیر کلیک کن:",
                     reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("✅ تایید واریز", callback_data=f"confirm_order_{order_id}")],
-                        [InlineKeyboardButton("❌ رد واریز", callback_data=f"reject_order_{order_id}")]
+                        [InlineKeyboardButton("✅ تایید واریز", callback_data=f"confirm_{order_id}")],
+                        [InlineKeyboardButton("❌ رد واریز", callback_data=f"reject_{order_id}")]
                     ]),
                     parse_mode="Markdown"
                 )
@@ -383,10 +372,10 @@ async def get_receipt_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ لطفاً یک عکس از رسید واریز خود بفرستید.\n"
             "⚠️ فقط عکس (تصویر) مورد قبول است."
         )
-        return WAITING_FOR_RECEIPT_PHOTO
+        return WAITING_FOR_RECEIPT
 
-# ========== تایید سفارش توسط ادمین ==========
-async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ========== تایید توسط ادمین ==========
+async def confirm_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     admin_id = query.from_user.id
@@ -395,7 +384,7 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ شما دسترسی به این بخش ندارید!")
         return
     
-    order_id = int(query.data.split('_')[2])
+    order_id = int(query.data.split('_')[1])
     confirm_order(order_id)
     
     cursor.execute('SELECT user_id, username, item_type, quantity, price, extra_info FROM orders WHERE id = ?', (order_id,))
@@ -434,8 +423,8 @@ async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📅 زمان: {datetime.now().strftime('%Y/%m/%d %H:%M')}"
     )
 
-# ========== رد سفارش توسط ادمین ==========
-async def reject_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ========== رد توسط ادمین ==========
+async def reject_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     admin_id = query.from_user.id
@@ -444,7 +433,7 @@ async def reject_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ شما دسترسی به این بخش ندارید!")
         return
     
-    order_id = int(query.data.split('_')[2])
+    order_id = int(query.data.split('_')[1])
     
     cursor.execute('SELECT user_id, username, item_type, quantity, price FROM orders WHERE id = ?', (order_id,))
     order = cursor.fetchone()
@@ -502,7 +491,7 @@ async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     text = "📋 *سفارشات اخیر شما*\n\n"
     for o in orders:
-        id, item_type, qty, price, status, extra_info, created_at = o
+        order_id, item_type, qty, price, status, extra_info, created_at = o
         if status == "confirmed":
             status_emoji = "✅"
         elif status == "waiting_confirm":
@@ -512,7 +501,7 @@ async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             status_emoji = "❌"
         date = datetime.fromtimestamp(created_at).strftime("%Y/%m/%d %H:%M")
-        text += f"🆔 #{id} - {item_type} ({qty}) - {fmt(price)} تومن {status_emoji}\n"
+        text += f"🆔 #{order_id} - {item_type} ({qty}) - {fmt(price)} تومن {status_emoji}\n"
         if extra_info:
             text += f"   📝 {extra_info}\n"
         text += f"   📅 {date}\n\n"
@@ -544,37 +533,13 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(
         "🛒 *منوی اصلی*\n\n"
         "💰 تون: 340 تومن\n"
-        "⭐ استارز مستقیم: از 165,000 تومن\n"
+        "⭐ استارز مستقیم: 3,300 تومن هر عدد\n"
         "📝 استارز رو پست: 4,000 تومن هر عدد\n"
-        "🎁 گیفت استارزی: از 55,000 تومن\n\n"
+        "🎁 گیفت استارزی: 3,390 تومن هر عدد\n\n"
         "👇 یکی رو انتخاب کن:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
-
-# ========== مدیریت ==========
-async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    data = query.data
-    
-    if data == "check_sub":
-        await check_sub(update, context)
-    elif data == "back_to_menu":
-        await back_to_menu(update, context)
-    elif data == "buy_ton":
-        await buy_ton(update, context)
-    elif data == "buy_stars_direct":
-        await buy_stars_direct(update, context)
-    elif data == "buy_stars_post":
-        await buy_stars_post(update, context)
-    elif data == "buy_gift":
-        await buy_gift(update, context)
-    elif data.startswith("confirm_order_"):
-        await confirm_order(update, context)
-    elif data.startswith("reject_order_"):
-        await reject_order(update, context)
-    elif data == "my_orders":
-        await my_orders(update, context)
 
 # ========== اجرا ==========
 def main():
@@ -583,11 +548,19 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
-            CallbackQueryHandler(handler)
+            CallbackQueryHandler(buy_ton, pattern="^buy_ton$"),
+            CallbackQueryHandler(buy_stars_direct, pattern="^buy_stars_direct$"),
+            CallbackQueryHandler(buy_stars_post, pattern="^buy_stars_post$"),
+            CallbackQueryHandler(buy_gift, pattern="^buy_gift$"),
+            CallbackQueryHandler(check_sub, pattern="^check_sub$"),
+            CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"),
+            CallbackQueryHandler(my_orders, pattern="^my_orders$"),
+            CallbackQueryHandler(confirm_receipt, pattern="^confirm_"),
+            CallbackQueryHandler(reject_receipt, pattern="^reject_"),
         ],
         states={
-            WAITING_FOR_CUSTOM_AMOUNT: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_custom_amount)
+            WAITING_FOR_AMOUNT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_amount)
             ],
             WAITING_FOR_WALLET: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, get_extra_info)
@@ -598,9 +571,9 @@ def main():
             WAITING_FOR_POST_LINK: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, get_extra_info)
             ],
-            WAITING_FOR_RECEIPT_PHOTO: [
-                MessageHandler(filters.PHOTO, get_receipt_photo),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_receipt_photo)
+            WAITING_FOR_RECEIPT: [
+                MessageHandler(filters.PHOTO, get_receipt),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_receipt)
             ],
         },
         fallbacks=[CommandHandler("start", start)],
