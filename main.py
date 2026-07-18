@@ -17,7 +17,15 @@ logger = logging.getLogger(__name__)
 # ========== قیمت‌ها ==========
 PRICES = {
     "ton": 340000,
+    "stars_direct_50": 165000,
+    "stars_direct_100": 330000,
+    "stars_direct_200": 660000,
+    "stars_direct_500": 1650000,
     "stars_post": 4000,
+    "gift_15": 55000,
+    "gift_25": 85000,
+    "gift_50": 170000,
+    "gift_100": 339000,
 }
 
 # ========== دیتابیس ==========
@@ -106,14 +114,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = [
         [InlineKeyboardButton("🪙 خرید تون", callback_data="buy_ton")],
-        [InlineKeyboardButton("⭐ خرید استارز", callback_data="buy_stars")],
+        [InlineKeyboardButton("⭐ استارز", callback_data="buy_stars")],
+        [InlineKeyboardButton("🎁 گیفت استارزی", callback_data="buy_gift")],
         [InlineKeyboardButton("📊 سفارشات من", callback_data="my_orders")],
     ]
 
     await update.message.reply_text(
         "🌟 *به فروشگاه استارز لند خوش آمدی!* 🌟\n\n"
         "🪙 *تون:* 340,000 تومن\n"
-        "⭐ *استارز رو پست:* 4,000 تومن هر عدد\n\n"
+        "⭐ *استارز:* از 165,000 تومن\n"
+        "🎁 *گیفت استارزی:* از 55,000 تومن\n\n"
         "👇 یکی از گزینه‌ها رو انتخاب کن:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
@@ -147,17 +157,74 @@ async def buy_ton(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def buy_stars(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    
+    keyboard = [
+        [InlineKeyboardButton("⭐ استارز مستقیم", callback_data="buy_stars_direct")],
+        [InlineKeyboardButton("📝 استارز رو پست", callback_data="buy_stars_post")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_menu")],
+    ]
+    
+    await query.edit_message_text(
+        "⭐ *خرید استارز*\n\n"
+        "🌟 لطفاً نوع استارز مورد نظر خود را انتخاب کن:\n\n"
+        "• ⭐ استارز مستقیم: برای ارسال به کاربران\n"
+        "• 📝 استارز رو پست: برای استارز دادن به پست‌ها\n\n"
+        "👇 یکی رو انتخاب کن:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+
+# ========== خرید استارز مستقیم ==========
+async def buy_stars_direct(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data['product_type'] = 'stars_direct'
+    await query.edit_message_text(
+        "⭐ *استارز مستقیم*\n\n"
+        "💰 قیمت‌ها:\n"
+        "• ۵۰ استارز = 165,000 تومن\n"
+        "• ۱۰۰ استارز = 330,000 تومن\n"
+        "• ۲۰۰ استارز = 660,000 تومن\n"
+        "• ۵۰۰ استارز = 1,650,000 تومن\n\n"
+        "🔢 لطفاً تعداد استارز مورد نظر خود را وارد کن:\n"
+        "(عدد را به فارسی یا انگلیسی وارد کن)\n\n"
+        "مثال: 50 یا ۵۰",
+        parse_mode="Markdown"
+    )
+
+# ========== خرید استارز رو پست ==========
+async def buy_stars_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
     context.user_data['product_type'] = 'stars_post'
     await query.edit_message_text(
-        "⭐ *خرید استارز رو پست*\n\n"
-        "💰 هر استارز = 4,000 تومن\n\n"
-        "🔢 لطفاً تعداد استارز مورد نظر خود را وارد کن:\n"
+        "📝 *استارز رو پست*\n\n"
+        "💰 هر استارز رو پست = 4,000 تومن\n\n"
+        "🔢 لطفاً تعداد استارز رو پست مورد نظر خود را وارد کن:\n"
         "(عدد را به فارسی یا انگلیسی وارد کن)\n\n"
         "مثال: 1 یا ۱",
         parse_mode="Markdown"
     )
 
-# ========== دریافت مقدار و محاسبه قیمت ==========
+# ========== خرید گیفت استارزی ==========
+async def buy_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data['product_type'] = 'gift'
+    await query.edit_message_text(
+        "🎁 *گیفت استارزی*\n\n"
+        "💰 قیمت‌ها:\n"
+        "• ۱۵ استارز = 55,000 تومن\n"
+        "• ۲۵ استارز = 85,000 تومن\n"
+        "• ۵۰ استارز = 170,000 تومن\n"
+        "• ۱۰۰ استارز = 339,000 تومن\n\n"
+        "🔢 لطفاً تعداد گیفت استارز مورد نظر خود را وارد کن:\n"
+        "(عدد را به فارسی یا انگلیسی وارد کن)\n\n"
+        "مثال: 15 یا ۱۵",
+        parse_mode="Markdown"
+    )
+
+# ========== دریافت مقدار ==========
 async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
@@ -186,11 +253,47 @@ async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         item_name = f"تون ({qty})"
         extra_prompt = "🪙 لطفاً آدرس ولت (Wallet) خود را برای دریافت تون وارد کن:"
         next_step = "wallet"
+    elif item_type == "stars_direct":
+        if qty <= 50:
+            price = PRICES["stars_direct_50"]
+            qty = 50
+        elif qty <= 100:
+            price = PRICES["stars_direct_100"]
+            qty = 100
+        elif qty <= 200:
+            price = PRICES["stars_direct_200"]
+            qty = 200
+        elif qty <= 500:
+            price = PRICES["stars_direct_500"]
+            qty = 500
+        else:
+            price = int(qty * 3300)
+        item_name = f"استارز مستقیم ({qty}★)"
+        extra_prompt = "⭐ لطفاً آیدی تلگرام (یوزرنیم) فردی که استارز رو دریافت میکنه رو وارد کن:"
+        next_step = "receiver"
     elif item_type == "stars_post":
         price = int(qty * PRICES["stars_post"])
         item_name = f"استارز رو پست ({qty})"
         extra_prompt = "📝 لطفاً لینک پست مورد نظر رو بفرست:"
         next_step = "post_link"
+    elif item_type == "gift":
+        if qty <= 15:
+            price = PRICES["gift_15"]
+            qty = 15
+        elif qty <= 25:
+            price = PRICES["gift_25"]
+            qty = 25
+        elif qty <= 50:
+            price = PRICES["gift_50"]
+            qty = 50
+        elif qty <= 100:
+            price = PRICES["gift_100"]
+            qty = 100
+        else:
+            price = int(qty * 3390)
+        item_name = f"گیفت استارزی ({qty}★)"
+        extra_prompt = "🎁 لطفاً آیدی تلگرام (یوزرنیم) فردی که گیفت رو دریافت میکنه رو وارد کن:"
+        next_step = "receiver"
     else:
         await update.message.reply_text("❌ خطا! لطفا دوباره /start رو بزن.")
         return
@@ -199,7 +302,6 @@ async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['order_id'] = order_id
     context.user_data['item_name'] = item_name
     context.user_data['price'] = price
-    context.user_data['waiting_for'] = next_step
 
     await update.message.reply_text(
         f"📋 *{item_name}*\n\n"
@@ -208,6 +310,7 @@ async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚠️ این اطلاعات برای انجام سفارش ضروری است.",
         parse_mode="Markdown"
     )
+    context.user_data['waiting_for'] = next_step
 
 # ========== دریافت اطلاعات اضافی ==========
 async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -223,16 +326,16 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ خطا! لطفا دوباره /start رو بزن.")
         return
     
-    # ذخیره آدرس ولت یا لینک پست
     if waiting_for == "wallet":
         update_order_extra(order_id, f"آدرس ولت: {text}")
+    elif waiting_for == "receiver":
+        update_order_extra(order_id, f"گیرنده: {text}")
     elif waiting_for == "post_link":
         update_order_extra(order_id, f"لینک پست: {text}")
     else:
         await update.message.reply_text("❌ خطا! لطفا دوباره تلاش کن.")
         return
     
-    # نمایش فاکتور با شماره کارت
     keyboard = [
         [InlineKeyboardButton("📋 کپی شماره کارت", callback_data="copy_card")],
         [InlineKeyboardButton("📸 ارسال رسید", callback_data=f"send_receipt_{order_id}")],
@@ -240,36 +343,31 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     
     await update.message.reply_text(
-        f"📋 *فاکتور شما*\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📋 *فاکتور شما آماده است*\n\n"
         f"👤 کاربر: @{update.effective_user.username or update.effective_user.first_name}\n"
         f"🛒 محصول: {item_name}\n"
         f"💰 مبلغ: {fmt(price)} تومن\n"
         f"🆔 شماره سفارش: {order_id}\n"
-        f"📝 {text}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📝 اطلاعات: `{text}`\n\n"
         f"💳 *شماره کارت:*\n"
         f"`6037-9970-1234-5678`\n"
         f"🏦 بانک ملی\n\n"
-        f"⚠️ بعد از واریز، روی 'ارسال رسید' کلیک کن.",
+        f"⚠️ بعد از واریز، روی دکمه 'ارسال رسید' کلیک کن.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
     
-    # ارسال به ادمین با اطلاعات کامل
     for admin_id in ADMIN_IDS:
         try:
             await context.bot.send_message(
                 admin_id,
                 f"🆕 *سفارش جدید*\n\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"👤 کاربر: @{update.effective_user.username or update.effective_user.first_name}\n"
                 f"🆔 آیدی: {user_id}\n"
                 f"🛒 محصول: {item_name}\n"
                 f"💰 مبلغ: {fmt(price)} تومن\n"
                 f"🆔 شماره سفارش: {order_id}\n"
-                f"📝 {text}\n"
-                f"━━━━━━━━━━━━━━━━━━━━",
+                f"📝 اطلاعات: {text}",
                 parse_mode="Markdown"
             )
         except:
@@ -285,7 +383,7 @@ async def copy_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📋 *شماره کارت:*\n"
         "`6037-9970-1234-5678`\n\n"
         "🏦 بانک ملی\n\n"
-        "✅ کپی شد!",
+        "✅ شماره کارت کپی شد!",
         parse_mode="Markdown"
     )
 
@@ -297,8 +395,9 @@ async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['order_id'] = order_id
     context.user_data['waiting_for'] = 'receipt'
     await query.edit_message_text(
-        "📸 *ارسال رسید*\n\n"
-        "💰 لطفاً عکس رسید واریزی خود را بفرستید.",
+        "📸 *ارسال رسید واریزی*\n\n"
+        "💰 لطفاً عکس رسید واریزی خود را بفرستید.\n\n"
+        "⚠️ فقط عکس (تصویر) مورد قبول است.",
         parse_mode="Markdown"
     )
 
@@ -319,18 +418,19 @@ async def get_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update_order_receipt(order_id, file_id)
         
         await update.message.reply_text(
-            f"✅ *رسید شما دریافت شد!*\n\n"
-            f"🌟 سفارش شما در چند دقیقه انجام خواهد شد.\n\n"
+            f"✅ *عکس رسید شما دریافت شد!*\n\n"
+            f"🌟 *خدمات استارز لند آنی هست!*\n"
+            f"⚡️ سفارش شما در چند دقیقه انجام خواهد شد.\n\n"
             f"🆔 شماره سفارش: {order_id}\n"
             f"👤 کاربر: @{username}\n"
             f"🛒 محصول: {item_name}\n"
             f"💰 مبلغ: {fmt(price)} تومن\n\n"
-            f"⏳ لطفاً صبر کنید...\n"
-            f"🔜 به زودی تحویل داده میشه!",
+            f"⏳ لطفاً چند دقیقه صبر کنید...\n"
+            f"🔜 به زودی تحویل داده میشه!\n\n"
+            f"🙏 از اعتماد شما سپاسگزاریم! 🌟",
             parse_mode="Markdown"
         )
         
-        # ارسال به ادمین با اطلاعات کامل + دکمه انجام سفارش
         for admin_id in ADMIN_IDS:
             try:
                 cursor.execute('SELECT extra_info FROM orders WHERE id = ?', (order_id,))
@@ -340,20 +440,18 @@ async def get_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_photo(
                     admin_id,
                     photo=file_id,
-                    caption=f"📸 *رسید جدید*\n\n"
-                            f"━━━━━━━━━━━━━━━━━━━━\n"
+                    caption=f"📸 *رسید جدید برای تایید*\n\n"
                             f"👤 کاربر: @{username}\n"
                             f"🆔 آیدی: {user_id}\n"
                             f"🛒 محصول: {item_name}\n"
                             f"💰 مبلغ: {fmt(price)} تومن\n"
                             f"🆔 شماره سفارش: {order_id}\n"
-                            f"📝 {extra_info if extra_info else 'ندارد'}\n"
-                            f"📅 زمان: {datetime.now().strftime('%Y/%m/%d %H:%M')}\n"
-                            f"━━━━━━━━━━━━━━━━━━━━\n\n"
-                            f"⬅️ بعد از انجام سفارش کلیک کن:",
+                            f"📝 اطلاعات: {extra_info if extra_info else 'ندارد'}\n"
+                            f"📅 زمان: {datetime.now().strftime('%Y/%m/%d %H:%M')}\n\n"
+                            f"برای تایید کلیک کن:",
                     reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("✅ انجام سفارش", callback_data=f"confirm_{order_id}")],
-                        [InlineKeyboardButton("❌ رد سفارش", callback_data=f"reject_{order_id}")]
+                        [InlineKeyboardButton("✅ تایید واریز", callback_data=f"confirm_{order_id}")],
+                        [InlineKeyboardButton("❌ رد واریز", callback_data=f"reject_{order_id}")]
                     ]),
                     parse_mode="Markdown"
                 )
@@ -363,17 +461,18 @@ async def get_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['waiting_for'] = ''
     else:
         await update.message.reply_text(
-            "❌ لطفاً یک عکس از رسید خود بفرستید."
+            "❌ لطفاً یک عکس از رسید واریز خود بفرستید.\n"
+            "⚠️ فقط عکس (تصویر) مورد قبول است."
         )
 
-# ========== انجام سفارش توسط ادمین ==========
+# ========== تایید توسط ادمین ==========
 async def confirm_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     admin_id = query.from_user.id
     
     if admin_id not in ADMIN_IDS:
-        await query.edit_message_text("❌ شما دسترسی ندارید!")
+        await query.edit_message_text("❌ شما دسترسی به این بخش ندارید!")
         return
     
     order_id = int(query.data.split('_')[1])
@@ -388,18 +487,19 @@ async def confirm_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     user_id, username, item_type, qty, price, extra_info = order
     
-    # پیام به کاربر
     try:
+        extra_text = f"\n📝 اطلاعات: {extra_info}" if extra_info else ""
         await context.bot.send_message(
             user_id,
-            f"✅ *سفارش شما انجام شد!*\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🌟 سفارش شما با موفقیت انجام شد.\n\n"
+            f"✅ *سفارش شما تایید شد!*\n\n"
+            f"🌟 *خدمات استارز لند آنی هست!*\n"
+            f"⚡️ سفارش شما در چند دقیقه انجام خواهد شد.\n\n"
             f"🆔 شماره سفارش: {order_id}\n"
             f"🛒 محصول: {item_type} ({qty})\n"
             f"💰 مبلغ: {fmt(price)} تومن\n"
-            f"📝 {extra_info if extra_info else ''}\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"{extra_text}\n\n"
+            f"⏳ لطفاً چند دقیقه صبر کنید...\n"
+            f"🔜 به زودی تحویل داده میشه!\n\n"
             f"🙏 از اعتماد شما سپاسگزاریم! 🌟",
             parse_mode="Markdown"
         )
@@ -407,20 +507,21 @@ async def confirm_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pass
     
     await query.edit_message_text(
-        f"✅ *سفارش {order_id} انجام شد!*\n\n"
+        f"✅ *سفارش {order_id} تایید شد!*\n\n"
         f"👤 کاربر: @{username}\n"
         f"🛒 محصول: {item_type} ({qty})\n"
-        f"💰 مبلغ: {fmt(price)} تومن"
+        f"💰 مبلغ: {fmt(price)} تومن\n"
+        f"📅 زمان: {datetime.now().strftime('%Y/%m/%d %H:%M')}"
     )
 
-# ========== رد سفارش توسط ادمین ==========
+# ========== رد توسط ادمین ==========
 async def reject_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     admin_id = query.from_user.id
     
     if admin_id not in ADMIN_IDS:
-        await query.edit_message_text("❌ شما دسترسی ندارید!")
+        await query.edit_message_text("❌ شما دسترسی به این بخش ندارید!")
         return
     
     order_id = int(query.data.split('_')[1])
@@ -442,14 +543,18 @@ async def reject_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🛒 محصول: {item_type} ({qty})\n"
             f"💰 مبلغ: {fmt(price)} تومن\n\n"
             f"⚠️ رسید ارسالی مورد تایید قرار نگرفت.\n"
-            f"📸 لطفاً دوباره تلاش کنید.",
+            f"📸 لطفاً دوباره عکس رسید رو بفرستید.\n\n"
+            f"🙏 از صبر شما سپاسگزاریم.",
             parse_mode="Markdown"
         )
     except:
         pass
     
     await query.edit_message_text(
-        f"❌ *سفارش {order_id} رد شد!*"
+        f"❌ *سفارش {order_id} رد شد!*\n\n"
+        f"👤 کاربر: @{username}\n"
+        f"🛒 محصول: {item_type} ({qty})\n"
+        f"💰 مبلغ: {fmt(price)} تومن"
     )
 
 # ========== سفارشات من ==========
@@ -468,10 +573,14 @@ async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     orders = cursor.fetchall()
     
     if not orders:
-        await query.edit_message_text("📋 هیچ سفارشی نداری!")
+        await query.edit_message_text(
+            "📋 *سفارشات شما*\n\n"
+            "❌ هیچ سفارشی ثبت نکردی!",
+            parse_mode="Markdown"
+        )
         return
     
-    text = "📋 *سفارشات شما*\n\n"
+    text = "📋 *سفارشات اخیر شما*\n\n"
     for o in orders:
         order_id, item_type, qty, price, status, extra_info, created_at = o
         if status == "confirmed":
@@ -506,14 +615,16 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [
         [InlineKeyboardButton("🪙 خرید تون", callback_data="buy_ton")],
-        [InlineKeyboardButton("⭐ خرید استارز", callback_data="buy_stars")],
+        [InlineKeyboardButton("⭐ استارز", callback_data="buy_stars")],
+        [InlineKeyboardButton("🎁 گیفت استارزی", callback_data="buy_gift")],
         [InlineKeyboardButton("📊 سفارشات من", callback_data="my_orders")],
     ]
     
     await query.edit_message_text(
         "🛒 *منوی اصلی*\n\n"
-        "🪙 تون: 340,000 تومن\n"
-        "⭐ استارز: 4,000 تومن هر عدد\n\n"
+        "💰 تون: 340,000 تومن\n"
+        "⭐ استارز: از 165,000 تومن\n"
+        "🎁 گیفت استارزی: از 55,000 تومن\n\n"
         "👇 یکی رو انتخاب کن:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
@@ -524,7 +635,7 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     waiting_for = context.user_data.get('waiting_for', '')
     product_type = context.user_data.get('product_type', '')
     
-    if waiting_for in ['wallet', 'post_link']:
+    if waiting_for in ['wallet', 'receiver', 'post_link']:
         await get_extra_info(update, context)
     elif waiting_for == 'receipt':
         await get_receipt(update, context)
@@ -539,6 +650,9 @@ def main():
     app.add_handler(CallbackQueryHandler(check_sub, pattern="^check_sub$"))
     app.add_handler(CallbackQueryHandler(buy_ton, pattern="^buy_ton$"))
     app.add_handler(CallbackQueryHandler(buy_stars, pattern="^buy_stars$"))
+    app.add_handler(CallbackQueryHandler(buy_stars_direct, pattern="^buy_stars_direct$"))
+    app.add_handler(CallbackQueryHandler(buy_stars_post, pattern="^buy_stars_post$"))
+    app.add_handler(CallbackQueryHandler(buy_gift, pattern="^buy_gift$"))
     app.add_handler(CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"))
     app.add_handler(CallbackQueryHandler(my_orders, pattern="^my_orders$"))
     app.add_handler(CallbackQueryHandler(copy_card, pattern="^copy_card$"))
