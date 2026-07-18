@@ -219,14 +219,25 @@ async def check_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     user_id = query.from_user.id
     logger.info(f"چک عضویت برای کاربر {user_id}")
-    try:
-        if await is_member(user_id, context):
-            await query.edit_message_text("✅ عضویت تایید شد! /start رو بزن.")
-        else:
-            await query.edit_message_text("❌ هنوز عضو کانال نشدی!\nلطفا اول عضو شو.")
-    except Exception as e:
-        logger.error(f"خطا در check_sub برای کاربر {user_id}: {e}", exc_info=True)
 
+    try:
+        member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
+        if member.status in ["member", "administrator", "creator"]:
+            await query.edit_message_text("✅ عضویت تایید شد! حالا /start رو بزن.")
+        else:
+            await query.edit_message_text(
+                "❌ هنوز عضو کانال نشدی!\n\n"
+                f"📢 اول در {CHANNEL_USERNAME} عضو شو، سپس دکمه تایید رو بزن."
+            )
+    except TelegramError as e:
+        logger.error(f"خطا در check_sub: {e}")
+        await query.edit_message_text(
+            "❌ خطا در بررسی عضویت!\n"
+            "لطفاً مطمئن شوید ربات در کانال ادمین است."
+        )
+    except Exception as e:
+        logger.error(f"خطای غیرمنتظره در check_sub: {e}", exc_info=True)
+        await query.edit_message_text("⚠️ خطایی رخ داد. لطفاً دوباره /start رو بزن.")
 
 # ========== خرید تون ==========
 async def buy_ton(update: Update, context: ContextTypes.DEFAULT_TYPE):
