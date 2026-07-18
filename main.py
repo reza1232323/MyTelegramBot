@@ -158,16 +158,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"/start از کاربر {user_id} (@{username})")
 
     try:
-        # بررسی عضویت با try/except جداگانه
+        # ===== بررسی عضویت =====
         try:
-            is_member_flag = await is_member(user_id, context)
+            member = await context.bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
+            is_member_flag = member.status in ["member", "administrator", "creator"]
+            logger.info(f"کاربر {user_id} عضو است: {is_member_flag}")
         except Exception as e:
-            logger.error(f"خطا در بررسی عضویت کاربر {user_id}: {e}", exc_info=True)
+            logger.error(f"خطا در get_chat_member برای کاربر {user_id}: {type(e).__name__} - {e}", exc_info=True)
             await update.message.reply_text(
-                "❌ ربات به کانال دسترسی ندارد! لطفاً به ادمین اطلاع دهید."
+                "❌ ربات به کانال دسترسی ندارد!\n"
+                "لطفاً به ادمین اطلاع دهید تا ربات را به کانال اضافه کند.",
+                parse_mode="Markdown"
             )
             return
 
+        # ===== اگر عضو نیست =====
         if not is_member_flag:
             keyboard = [
                 [InlineKeyboardButton("📢 جوین کانال", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")],
@@ -182,16 +187,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # ثبت کاربر در دیتابیس با مدیریت خطا
+        # ===== ثبت کاربر در دیتابیس =====
         try:
             create_user(user_id, username)
+            logger.info(f"کاربر {user_id} در دیتابیس ثبت شد")
         except Exception as e:
-            logger.error(f"خطا در ثبت کاربر {user_id} در دیتابیس: {e}", exc_info=True)
-            await update.message.reply_text(
-                "❌ خطا در ثبت اطلاعات شما. لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید."
-            )
-            return
+            logger.error(f"خطا در ثبت کاربر در دیتابیس: {e}", exc_info=True)
+            # ادامه بده چون ثبت کاربر حیاتی نیست
 
+        # ===== منوی اصلی =====
         keyboard = [
             [InlineKeyboardButton("🪙 خرید تون", callback_data="buy_ton")],
             [InlineKeyboardButton("⭐ خرید استارز", callback_data="buy_stars")],
@@ -206,12 +210,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown"
         )
+        logger.info(f"منوی اصلی برای کاربر {user_id} نمایش داده شد")
 
     except Exception as e:
-        logger.error(f"خطای غیرمنتظره در start برای کاربر {user_id}: {e}", exc_info=True)
-        # ارسال پیام خطای اختصاصی‌تر
+        # ===== اینجا خطای اصلی لاگ می‌شه =====
+        logger.error(f"خطای غیرمنتظره در start برای کاربر {user_id}: {type(e).__name__} - {e}", exc_info=True)
         await update.message.reply_text(
-            "❌ خطای داخلی رخ داد. لطفاً بعداً تلاش کنید یا با پشتیبانی تماس بگیرید."
+            f"❌ خطا: {type(e).__name__}\n"
+            f"لطفاً به ادمین اطلاع دهید و دوباره /start رو بزن."
         )
 # ========== تایید عضویت ==========
 async def check_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
