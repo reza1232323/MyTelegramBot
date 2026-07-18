@@ -14,17 +14,6 @@ BOT_USERNAME = "starzland_bot"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ========== قیمت‌ها (بر اساس عکس‌ها) ==========
-PRICES = {
-    "gift_15": {"price": 50000, "value": "15★"},
-    "gift_25": {"price": 83000, "value": "25★"},
-    "gift_50": {"price": 167000, "value": "50★"},
-    "gift_100": {"price": 333000, "value": "100★"},
-    "ton": 334670,  # هر تون طبق عکس 33,467 تومان
-    "premium_month": 0,  # قیمت پرمیوم رو مشخص کن
-    "boost": 0,  # قیمت بوست رو مشخص کن
-}
-
 # ========== دیتابیس ==========
 conn = sqlite3.connect('shop_bot.db', check_same_thread=False)
 cursor = conn.cursor()
@@ -33,7 +22,8 @@ cursor.execute('''
     CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY,
         username TEXT,
-        created_at INTEGER DEFAULT 0
+        created_at INTEGER DEFAULT 0,
+        total_referrals INTEGER DEFAULT 0
     )
 ''')
 
@@ -88,7 +78,24 @@ def confirm_order(order_id):
     cursor.execute('UPDATE orders SET status = "confirmed" WHERE id = ?', (order_id,))
     conn.commit()
 
-# ========== منوی اصلی ==========
+# ========== دکمه‌های رنگی (با ایموجی‌های خاص) ==========
+def colored_buttons():
+    return {
+        "primary": "🔵",
+        "success": "🟢",
+        "danger": "🔴",
+        "warning": "🟡",
+        "purple": "🟣",
+        "gold": "🌟",
+        "gift": "🎁",
+        "star": "⭐",
+        "fire": "🔥",
+        "rocket": "🚀",
+        "diamond": "💎",
+        "coin": "🪙",
+    }
+
+# ========== منوی اصلی با دکمه‌های رنگی ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
@@ -110,19 +117,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     create_user(user_id, username)
 
     keyboard = [
-        [InlineKeyboardButton("🎁 خرید گیت استارزی", callback_data="buy_gift")],
-        [InlineKeyboardButton("🪙 خرید تون (GRAM)", callback_data="buy_ton")],
+        [InlineKeyboardButton("🟢 خرید استارز", callback_data="buy_stars")],
+        [InlineKeyboardButton("🔵 خرید تون (GRAM)", callback_data="buy_ton")],
+        [InlineKeyboardButton("🌟 خرید پرمیوم", callback_data="buy_premium")],
+        [InlineKeyboardButton("🚀 خرید بوست", callback_data="buy_boost")],
+        [InlineKeyboardButton("🎁 گیت‌های کلکسیونی", callback_data="buy_nft")],
+        [InlineKeyboardButton("🟣 حساب کاربری", callback_data="profile")],
         [InlineKeyboardButton("👥 زیرمجموعه‌ها", callback_data="referrals")],
         [InlineKeyboardButton("📊 سفارشات من", callback_data="my_orders")],
         [InlineKeyboardButton("📖 راهنما", callback_data="help")],
+        [InlineKeyboardButton("💬 پشتیبانی", callback_data="support")],
     ]
 
     await update.message.reply_text(
-        "🌟 *به فروشگاه ایران گیت خوش آمدی!* 🌟\n\n"
-        "🎁 *گیت استارزی:* از 50,000 تومن\n"
-        "🪙 *تون (GRAM):* قیمت لحظه‌ای\n"
-        "💎 *پرمیوم تلگرام:* بهترین قیمت\n"
-        "🚀 *بوست:* افزایش رتبه کانال\n\n"
+        "🔥 *به فروشگاه شاهین خوش آمدی!* 🔥\n\n"
+        "⚡️ *خدمات آنی و مطمئن*\n"
+        "⭐ *مورد اعتماد هزاران کاربر*\n"
+        "💰 *بهترین قیمت‌های ایران*\n\n"
         "👇 یکی از گزینه‌ها رو انتخاب کن:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
@@ -138,33 +149,36 @@ async def check_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await query.edit_message_text("❌ هنوز عضو کانال نشدی!\nلطفا اول عضو شو.")
 
-# ========== خرید گیت استارزی ==========
-async def buy_gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ========== خرید استارز (با دکمه‌های رنگی) ==========
+async def buy_stars(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
     keyboard = [
-        [InlineKeyboardButton("🎁 15★ - 50,000 تومن", callback_data="gift_15")],
-        [InlineKeyboardButton("🎁 25★ - 83,000 تومن", callback_data="gift_25")],
-        [InlineKeyboardButton("🎁 50★ - 167,000 تومن", callback_data="gift_50")],
-        [InlineKeyboardButton("🎁 100★ - 333,000 تومن", callback_data="gift_100")],
+        [InlineKeyboardButton("🟢 50★ - 165,000 تومن", callback_data="stars_50")],
+        [InlineKeyboardButton("🔵 100★ - 339,000 تومن", callback_data="stars_100")],
+        [InlineKeyboardButton("🟣 200★ - 660,000 تومن", callback_data="stars_200")],
+        [InlineKeyboardButton("🌟 500★ - 1,600,000 تومن", callback_data="stars_500")],
+        [InlineKeyboardButton("⭐ 1000★ - 3,200,000 تومن", callback_data="stars_1000")],
+        [InlineKeyboardButton("🔴 مقدار دلخواه", callback_data="stars_custom")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_menu")],
     ]
     
     await query.edit_message_text(
-        "🎁 *خرید گیت استارزی*\n\n"
-        "🌟 گیت‌های استارزی با بهترین قیمت:\n\n"
-        "• 15★ = 50,000 تومن\n"
-        "• 25★ = 83,000 تومن\n"
-        "• 50★ = 167,000 تومن\n"
-        "• 100★ = 333,000 تومن\n\n"
-        "⚠️ امکان شخصی‌سازی با کامنت و حالت ارسال مخفی\n\n"
-        "یکی رو انتخاب کن:",
+        "⭐ *خرید استارز تلگرام*\n\n"
+        "🌟 بهترین قیمت استارز در ایران:\n\n"
+        "• 🟢 50★ = 165,000 تومن\n"
+        "• 🔵 100★ = 339,000 تومن\n"
+        "• 🟣 200★ = 660,000 تومن\n"
+        "• 🌟 500★ = 1,600,000 تومن\n"
+        "• ⭐ 1000★ = 3,200,000 تومن\n\n"
+        "⚡️ تحویل آنی | 💎 تضمینی | 🔥 مطمئن\n\n"
+        "مقدار مورد نظر رو انتخاب کن:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
 
-# ========== خرید تون (GRAM) ==========
+# ========== خرید تون ==========
 async def buy_ton(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -174,7 +188,8 @@ async def buy_ton(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💰 هر تون = 33,467 تومن (قیمت لحظه‌ای)\n\n"
         "🔢 لطفاً تعداد تون مورد نظر خود را وارد کن:\n"
         "(عدد را به فارسی یا انگلیسی وارد کن)\n\n"
-        "مثال: 0.1 یا ۵",
+        "مثال: 0.1 یا ۵\n\n"
+        "⚡️ تحویل آنی | 🔥 مطمئن",
         parse_mode="Markdown"
     )
 
@@ -184,21 +199,21 @@ async def buy_premium(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     keyboard = [
-        [InlineKeyboardButton("💎 ۱ ماه - بهترین قیمت", callback_data="premium_1")],
-        [InlineKeyboardButton("💎 ۳ ماه - تخفیف ویژه", callback_data="premium_3")],
-        [InlineKeyboardButton("💎 ۶ ماه - تخفیف ویژه", callback_data="premium_6")],
-        [InlineKeyboardButton("💎 ۱۲ ماه - بهترین ارزش", callback_data="premium_12")],
+        [InlineKeyboardButton("💎 ۱ ماه - 199,000 تومن", callback_data="premium_1")],
+        [InlineKeyboardButton("🌟 ۳ ماه - 549,000 تومن", callback_data="premium_3")],
+        [InlineKeyboardButton("🔥 ۶ ماه - 999,000 تومن", callback_data="premium_6")],
+        [InlineKeyboardButton("⭐ ۱۲ ماه - 1,890,000 تومن", callback_data="premium_12")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_menu")],
     ]
     
     await query.edit_message_text(
         "💎 *خرید تلگرام پرمیوم*\n\n"
-        "🌟 پرمیوم با بهترین قیمت ایران:\n\n"
-        "• ۱ ماه =  XXX تومن\n"
-        "• ۳ ماه =  XXX تومن\n"
-        "• ۶ ماه =  XXX تومن\n"
-        "• ۱۲ ماه = XXX تومن\n\n"
-        "⚠️ اعتماد هزاران کاربر به ما\n\n"
+        "🌟 بهترین قیمت پرمیوم در ایران:\n\n"
+        "• 💎 ۱ ماه = 199,000 تومن\n"
+        "• 🌟 ۳ ماه = 549,000 تومن\n"
+        "• 🔥 ۶ ماه = 999,000 تومن\n"
+        "• ⭐ ۱۲ ماه = 1,890,000 تومن\n\n"
+        "⚡️ تحویل آنی | 💎 تضمینی | 🔥 مطمئن\n\n"
         "یکی رو انتخاب کن:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
@@ -210,21 +225,79 @@ async def buy_boost(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     keyboard = [
-        [InlineKeyboardButton("🚀 ۱ بوست - XXX تومن", callback_data="boost_1")],
-        [InlineKeyboardButton("🚀 ۵ بوست - XXX تومن", callback_data="boost_5")],
-        [InlineKeyboardButton("🚀 ۱۰ بوست - XXX تومن", callback_data="boost_10")],
+        [InlineKeyboardButton("🚀 ۱ بوست - 50,000 تومن", callback_data="boost_1")],
+        [InlineKeyboardButton("🔥 ۵ بوست - 230,000 تومن", callback_data="boost_5")],
+        [InlineKeyboardButton("🌟 ۱۰ بوست - 450,000 تومن", callback_data="boost_10")],
+        [InlineKeyboardButton("⭐ ۲۰ بوست - 850,000 تومن", callback_data="boost_20")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_menu")],
     ]
     
     await query.edit_message_text(
         "🚀 *خرید بوست تلگرام*\n\n"
         "🌟 افزایش رتبه کانال و گروه:\n\n"
-        "• ۱ بوست = XXX تومن\n"
-        "• ۵ بوست = XXX تومن\n"
-        "• ۱۰ بوست = XXX تومن\n\n"
-        "⚠️ تحویل آنی و تضمینی\n\n"
+        "• 🚀 ۱ بوست = 50,000 تومن\n"
+        "• 🔥 ۵ بوست = 230,000 تومن\n"
+        "• 🌟 ۱۰ بوست = 450,000 تومن\n"
+        "• ⭐ ۲۰ بوست = 850,000 تومن\n\n"
+        "⚡️ تحویل آنی | 💎 تضمینی | 🔥 مطمئن\n\n"
         "یکی رو انتخاب کن:",
         reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+
+# ========== گیت‌های کلکسیونی (NFT) ==========
+async def buy_nft(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    keyboard = [
+        [InlineKeyboardButton("🟣 کیت ستاره 🌟", callback_data="nft_1")],
+        [InlineKeyboardButton("🔵 کیت الماس 💎", callback_data="nft_2")],
+        [InlineKeyboardButton("🟢 کیت طلایی 👑", callback_data="nft_3")],
+        [InlineKeyboardButton("🔴 کیت ویژه 🔥", callback_data="nft_4")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_menu")],
+    ]
+    
+    await query.edit_message_text(
+        "🎨 *گیت‌های کلکسیونی (NFT)*\n\n"
+        "🌟 مجموعه‌های ویژه و نایاب:\n\n"
+        "• 🟣 کیت ستاره = 250,000 تومن\n"
+        "• 🔵 کیت الماس = 450,000 تومن\n"
+        "• 🟢 کیت طلایی = 650,000 تومن\n"
+        "• 🔴 کیت ویژه = 850,000 تومن\n\n"
+        "⚡️ تحویل آنی | 💎 تضمینی | 🔥 مطمئن\n\n"
+        "یکی رو انتخاب کن:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+
+# ========== حساب کاربری ==========
+async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    username = query.from_user.username or query.from_user.first_name
+    
+    cursor.execute('SELECT created_at, total_referrals FROM users WHERE user_id = ?', (user_id,))
+    user = cursor.fetchone()
+    
+    if not user:
+        await query.edit_message_text("❌ خطا! لطفا /start رو بزن.")
+        return
+    
+    join_date = datetime.fromtimestamp(user[0]).strftime("%Y/%m/%d")
+    
+    await query.edit_message_text(
+        "👤 *حساب کاربری شما*\n\n"
+        f"🔹 نام کاربری: @{username}\n"
+        f"🔹 آیدی: {user_id}\n"
+        f"🔹 تاریخ عضویت: {join_date}\n"
+        f"🔹 زیرمجموعه‌ها: {user[1]}\n\n"
+        "🌟 *امتیازات ویژه:*\n"
+        "• ۵+ زیرمجموعه = ۵٪ تخفیف\n"
+        "• ۲۰+ زیرمجموعه = ۱۰٪ تخفیف\n"
+        "• ۵۰+ زیرمجموعه = ۱۵٪ تخفیف\n\n"
+        "🔥 هرچه زیرمجموعه بیشتر، تخفیف بیشتر!",
         parse_mode="Markdown"
     )
 
@@ -234,21 +307,38 @@ async def referrals(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     user_id = query.from_user.id
     
-    cursor.execute('SELECT total_referrals, referral_link FROM users WHERE user_id = ?', (user_id,))
+    cursor.execute('SELECT total_referrals FROM users WHERE user_id = ?', (user_id,))
     user = cursor.fetchone()
-    
-    if not user:
-        await query.edit_message_text("❌ خطا! لطفا /start رو بزن.")
-        return
     
     link = f"https://t.me/{BOT_USERNAME}?start={user_id}"
     
     await query.edit_message_text(
-        f"👥 *زیرمجموعه‌های شما*\n\n"
-        f"🔗 لینک دعوت:\n`{link}`\n\n"
+        "👥 *سیستم زیرمجموعه‌گیری*\n\n"
+        f"🔗 لینک دعوت اختصاصی شما:\n`{link}`\n\n"
         f"👥 تعداد زیرمجموعه‌ها: {user[0] if user else 0}\n"
         f"💰 پاداش هر دعوت: ۵,۰۰۰ تومن\n\n"
-        f"هر کس با لینک شما عضو بشه، ۵,۰۰۰ تومن پاداش می‌گیری! 🎉",
+        "🎁 *پاداش‌های ویژه:*\n"
+        "• ۵ دعوت = ۲۵,۰۰۰ تومن پاداش اضافه\n"
+        "• ۲۰ دعوت = ۱۰۰,۰۰۰ تومن پاداش اضافه\n"
+        "• ۵۰ دعوت = ۳۰۰,۰۰۰ تومن پاداش اضافه\n\n"
+        "🔥 هر کس با لینک شما عضو بشه، پاداش می‌گیری!",
+        parse_mode="Markdown"
+    )
+
+# ========== پشتیبانی ==========
+async def support(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    await query.edit_message_text(
+        "💬 *پشتیبانی ایران گیت*\n\n"
+        "📞 *راه‌های ارتباطی:*\n\n"
+        "👤 پشتیبان: @IRGiFT_Support\n"
+        "📧 ایمیل: support@irangift.com\n\n"
+        "⏰ *ساعات پاسخگویی:*\n"
+        "• ۱۰ صبح تا ۱ شب\n"
+        "• ۷ روز هفته\n\n"
+        "💎 *ما همیشه در کنار شما هستیم!*",
         parse_mode="Markdown"
     )
 
@@ -258,28 +348,23 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     
     await query.edit_message_text(
-        "📖 *راهنمای فروشگاه ایران گیت*\n\n"
-        "🎁 **گیت استارزی**\n"
-        "• 15★ = 50,000 تومن\n"
-        "• 25★ = 83,000 تومن\n"
-        "• 50★ = 167,000 تومن\n"
-        "• 100★ = 333,000 تومن\n\n"
-        "🪙 **تون (GRAM)**\n"
-        "• قیمت لحظه‌ای از صرافی\n"
-        "• امکان خرید 0.1 تا 100 تون\n\n"
-        "💎 **پرمیوم تلگرام**\n"
-        "• ۱ ماهه با بهترین قیمت\n"
-        "• تحویل آنی\n\n"
-        "🚀 **بوست تلگرام**\n"
-        "• افزایش رتبه کانال\n"
-        "• تحویل آنی\n\n"
-        "📌 **نحوه خرید:**\n"
+        "📖 *راهنمای کامل فروشگاه شاهین*\n\n"
+        "⭐ *محصولات ما:*\n"
+        "• استارز تلگرام (مستقیم و رو پست)\n"
+        "• تون (GRAM) با قیمت لحظه‌ای\n"
+        "• تلگرام پرمیوم (۱ تا ۱۲ ماه)\n"
+        "• بوست تلگرام (افزایش رتبه)\n"
+        "• گیت‌های کلکسیونی (NFT)\n\n"
+        "📌 *نحوه خرید:*\n"
         "۱. محصول رو انتخاب کن\n"
         "۲. مبلغ رو به شماره کارت واریز کن\n"
         "۳. عکس رسید رو بفرست\n"
         "۴. منتظر تایید ادمین باش\n\n"
+        "💰 *شماره کارت:*\n"
+        "`6219-8618-8369-7301`\n"
+        "🏦 مانی جعفریور - بلوپانک\n\n"
         "⏰ *زمان خدمات:* ۱۰ صبح تا ۱ شب\n"
-        "🙏 *مورد اعتماد هزاران کاربر*",
+        "🔥 *مورد اعتماد هزاران کاربر*",
         parse_mode="Markdown"
     )
 
@@ -291,18 +376,19 @@ async def process_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = query.from_user.username or query.from_user.first_name
     data = query.data
     
-    # گیت استارزی
-    if data in ["gift_15", "gift_25", "gift_50", "gift_100"]:
-        price = PRICES[data]["price"]
-        value = PRICES[data]["value"]
-        item_name = f"گیت استارزی ({value})"
-        extra_prompt = f"🎁 لطفاً آیدی (یوزرنیم) گیرنده گیت {value} رو وارد کن:"
+    # استارز
+    if data.startswith("stars_"):
+        qty = int(data.split('_')[1])
+        price = qty * 3300
+        item_name = f"استارز ({qty}★)"
+        extra_prompt = "⭐ لطفاً آیدی (یوزرنیم) گیرنده استارز رو وارد کن:"
         next_step = "receiver"
         
-        order_id = create_order(user_id, username, data, 1, price)
+        order_id = create_order(user_id, username, "stars", qty, price)
         context.user_data['order_id'] = order_id
         context.user_data['item_name'] = item_name
         context.user_data['price'] = price
+        context.user_data['waiting_for'] = next_step
         
         await query.edit_message_text(
             f"📋 *{item_name}*\n\n"
@@ -311,40 +397,80 @@ async def process_purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⚠️ این اطلاعات برای انجام سفارش ضروری است.",
             parse_mode="Markdown"
         )
-        context.user_data['waiting_for'] = next_step
         return
     
     # پرمیوم
     elif data.startswith("premium_"):
         months = data.split('_')[1]
-        # قیمت رو مشخص کن
-        price = 0  # قیمت پرمیوم رو اینجا بذار
+        prices = {"1": 199000, "3": 549000, "6": 999000, "12": 1890000}
+        price = prices.get(months, 0)
         item_name = f"پرمیوم ({months} ماه)"
+        extra_prompt = "💎 لطفاً آیدی (یوزرنیم) خود را برای فعال‌سازی پرمیوم وارد کن:"
+        next_step = "receiver"
         
-        order_id = create_order(user_id, username, data, months, price)
+        order_id = create_order(user_id, username, "premium", months, price)
         context.user_data['order_id'] = order_id
         context.user_data['item_name'] = item_name
         context.user_data['price'] = price
+        context.user_data['waiting_for'] = next_step
         
-        await show_payment(update, context, order_id, item_name, price)
+        await query.edit_message_text(
+            f"📋 *{item_name}*\n\n"
+            f"💰 مبلغ: {fmt(price)} تومن\n\n"
+            f"{extra_prompt}\n\n"
+            f"⚠️ این اطلاعات برای انجام سفارش ضروری است.",
+            parse_mode="Markdown"
+        )
         return
     
     # بوست
     elif data.startswith("boost_"):
         count = data.split('_')[1]
-        # قیمت رو مشخص کن
-        price = 0  # قیمت بوست رو اینجا بذار
+        prices = {"1": 50000, "5": 230000, "10": 450000, "20": 850000}
+        price = prices.get(count, 0)
         item_name = f"بوست ({count})"
+        extra_prompt = "🚀 لطفاً لینک کانال یا گروه مورد نظر برای بوست رو وارد کن:"
+        next_step = "post_link"
         
-        order_id = create_order(user_id, username, data, count, price)
+        order_id = create_order(user_id, username, "boost", count, price)
         context.user_data['order_id'] = order_id
         context.user_data['item_name'] = item_name
         context.user_data['price'] = price
+        context.user_data['waiting_for'] = next_step
         
-        await show_payment(update, context, order_id, item_name, price)
+        await query.edit_message_text(
+            f"📋 *{item_name}*\n\n"
+            f"💰 مبلغ: {fmt(price)} تومن\n\n"
+            f"{extra_prompt}\n\n"
+            f"⚠️ این اطلاعات برای انجام سفارش ضروری است.",
+            parse_mode="Markdown"
+        )
+        return
+    
+    # NFT
+    elif data.startswith("nft_"):
+        nft_prices = {"1": 250000, "2": 450000, "3": 650000, "4": 850000}
+        price = nft_prices.get(data.split('_')[1], 0)
+        item_name = f"گیت کلکسیونی"
+        extra_prompt = "🎨 لطفاً آیدی (یوزرنیم) گیرنده گیت رو وارد کن:"
+        next_step = "receiver"
+        
+        order_id = create_order(user_id, username, "nft", 1, price)
+        context.user_data['order_id'] = order_id
+        context.user_data['item_name'] = item_name
+        context.user_data['price'] = price
+        context.user_data['waiting_for'] = next_step
+        
+        await query.edit_message_text(
+            f"📋 *{item_name}*\n\n"
+            f"💰 مبلغ: {fmt(price)} تومن\n\n"
+            f"{extra_prompt}\n\n"
+            f"⚠️ این اطلاعات برای انجام سفارش ضروری است.",
+            parse_mode="Markdown"
+        )
         return
 
-# ========== نمایش اطلاعات پرداخت ==========
+# ========== نمایش پرداخت ==========
 async def show_payment(update, context, order_id, item_name, price):
     username = update.effective_user.username or update.effective_user.first_name
     
@@ -365,7 +491,7 @@ async def show_payment(update, context, order_id, item_name, price):
             f"`6219-8618-8369-7301`\n"
             f"🏦 مانی جعفریور - بلوپانک\n\n"
             f"⚠️ اگر با محدودیت تراکنش مواجه شدید، از همراه بانک استفاده کنید.\n\n"
-            f"✅ این قیمت از صرافی نمایش داده شده است و کارمزد شبکه اعمال شده.\n"
+            f"✅ این قیمت از صرافی نمایش داده شده است.\n"
             f"✅ تهیه این محصول نیازمند احراز هویت میباشد.\n\n"
             f"🔹 از پنل زیر سفارش و خرید خود را نهایی کنید:",
             reply_markup=InlineKeyboardMarkup(keyboard),
@@ -382,7 +508,7 @@ async def show_payment(update, context, order_id, item_name, price):
             f"`6219-8618-8369-7301`\n"
             f"🏦 مانی جعفریور - بلوپانک\n\n"
             f"⚠️ اگر با محدودیت تراکنش مواجه شدید، از همراه بانک استفاده کنید.\n\n"
-            f"✅ این قیمت از صرافی نمایش داده شده است و کارمزد شبکه اعمال شده.\n"
+            f"✅ این قیمت از صرافی نمایش داده شده است.\n"
             f"✅ تهیه این محصول نیازمند احراز هویت میباشد.\n\n"
             f"🔹 از پنل زیر سفارش و خرید خود را نهایی کنید:",
             reply_markup=InlineKeyboardMarkup(keyboard),
@@ -396,8 +522,8 @@ async def copy_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(
         "📋 *شماره کارت:*\n"
-        "`-`\n\n"
-        "🏦 -  - بلوپانک\n\n"
+        "`6219861883697301`\n\n"
+        "🏦 مانی جعفریور - بلوپانک\n\n"
         "✅ شماره کارت کپی شد!",
         parse_mode="Markdown"
     )
@@ -418,6 +544,8 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if waiting_for == "receiver":
         update_order_extra(order_id, f"گیرنده: {text}")
+    elif waiting_for == "post_link":
+        update_order_extra(order_id, f"لینک: {text}")
     else:
         await update.message.reply_text("❌ خطا! لطفا دوباره تلاش کن.")
         return
@@ -459,7 +587,7 @@ async def get_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await update.message.reply_text(
             f"✅ *عکس رسید شما دریافت شد!*\n\n"
-            f"🌟 *خدمات ایران گیت آنی هست!*\n"
+            f"🌟 *خدمات شاهین آنی هست!*\n"
             f"⚡️ سفارش شما در چند دقیقه انجام خواهد شد.\n\n"
             f"🆔 شماره سفارش: {order_id}\n\n"
             f"⏳ لطفاً چند دقیقه صبر کنید...\n"
@@ -468,7 +596,6 @@ async def get_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
         
-        # ارسال به ادمین‌ها با اطلاعات کامل
         for admin_id in ADMIN_IDS:
             try:
                 cursor.execute('SELECT extra_info FROM orders WHERE id = ?', (order_id,))
@@ -530,7 +657,7 @@ async def confirm_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             user_id,
             f"✅ *سفارش شما تایید شد!*\n\n"
-            f"🌟 *خدمات ایران گیت آنی هست!*\n"
+            f"🌟 *خدمات شاهین آنی هست!*\n"
             f"⚡️ سفارش شما در چند دقیقه انجام خواهد شد.\n\n"
             f"🆔 شماره سفارش: {order_id}\n"
             f"🛒 محصول: {item_type} ({qty})\n"
@@ -638,57 +765,12 @@ async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_menu")]]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-# ========== برگشت به منو ==========
-async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    username = query.from_user.username or query.from_user.first_name
-    
-    if not await is_member(user_id, context):
-        await query.edit_message_text("❌ ابتدا در کانال عضو شوید!")
-        return
-    
-    create_user(user_id, username)
-    
-    keyboard = [
-        [InlineKeyboardButton("🎁 خرید گیت استارزی", callback_data="buy_gift")],
-        [InlineKeyboardButton("🪙 خرید تون (GRAM)", callback_data="buy_ton")],
-        [InlineKeyboardButton("💎 خرید تلگرام پرمیوم", callback_data="buy_premium")],
-        [InlineKeyboardButton("🚀 خرید بوست", callback_data="buy_boost")],
-        [InlineKeyboardButton("👥 زیرمجموعه‌ها", callback_data="referrals")],
-        [InlineKeyboardButton("📊 سفارشات من", callback_data="my_orders")],
-        [InlineKeyboardButton("📖 راهنما", callback_data="help")],
-    ]
-    
-    await query.edit_message_text(
-        "🛒 *منوی اصلی*\n\n"
-        "🌟 *ایران گیت استور*\n"
-        "خدمات ما بر مبنای تحویل سریع و آنی سفارشات شماست.\n\n"
-        "👇 یکی رو انتخاب کن:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown"
-    )
-
-# ========== مدیریت پیام‌ها ==========
-async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    waiting_for = context.user_data.get('waiting_for', '')
-    
-    if waiting_for in ['receiver']:
-        await get_extra_info(update, context)
-    elif waiting_for == 'receipt':
-        await get_receipt(update, context)
-    else:
-        # اگر کاربر عددی وارد کرد (برای تون)
-        await get_ton_amount(update, context)
-
 # ========== دریافت مقدار تون ==========
 async def get_ton_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
     text = update.message.text.strip()
     
-    # تبدیل اعداد فارسی به انگلیسی
     persian_to_english = {
         '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4',
         '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9'
@@ -705,7 +787,7 @@ async def get_ton_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ لطفاً فقط عدد وارد کن!")
         return
     
-    price = int(qty * PRICES["ton"])
+    price = int(qty * 33467)
     item_name = f"تون ({qty})"
     
     order_id = create_order(user_id, username, "ton", qty, price)
@@ -715,29 +797,138 @@ async def get_ton_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await show_payment(update, context, order_id, item_name, price)
 
+# ========== استارز دلخواه ==========
+async def stars_custom(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data['product_type'] = 'stars_custom'
+    await query.edit_message_text(
+        "⭐ *استارز دلخواه*\n\n"
+        "🔢 لطفاً تعداد استارز مورد نظر خود را وارد کن:\n"
+        "(عدد را به فارسی یا انگلیسی وارد کن)\n\n"
+        "💰 هر استارز = 3,300 تومن\n\n"
+        "مثال: 75 یا ۷۵",
+        parse_mode="Markdown"
+    )
+
+# ========== دریافت استارز دلخواه ==========
+async def get_custom_stars(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    username = update.effective_user.username or update.effective_user.first_name
+    text = update.message.text.strip()
+    
+    persian_to_english = {
+        '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4',
+        '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9'
+    }
+    for persian, english in persian_to_english.items():
+        text = text.replace(persian, english)
+    
+    try:
+        qty = int(text)
+        if qty <= 0:
+            await update.message.reply_text("❌ لطفاً یک عدد بزرگتر از 0 وارد کن!")
+            return
+    except ValueError:
+        await update.message.reply_text("❌ لطفاً فقط عدد وارد کن!")
+        return
+    
+    price = qty * 3300
+    item_name = f"استارز ({qty}★)"
+    extra_prompt = "⭐ لطفاً آیدی (یوزرنیم) گیرنده استارز رو وارد کن:"
+    next_step = "receiver"
+    
+    order_id = create_order(user_id, username, "stars", qty, price)
+    context.user_data['order_id'] = order_id
+    context.user_data['item_name'] = item_name
+    context.user_data['price'] = price
+    context.user_data['waiting_for'] = next_step
+    
+    await update.message.reply_text(
+        f"📋 *{item_name}*\n\n"
+        f"💰 مبلغ: {fmt(price)} تومن\n\n"
+        f"{extra_prompt}\n\n"
+        f"⚠️ این اطلاعات برای انجام سفارش ضروری است.",
+        parse_mode="Markdown"
+    )
+
+# ========== برگشت به منو ==========
+async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    username = query.from_user.username or query.from_user.first_name
+    
+    if not await is_member(user_id, context):
+        await query.edit_message_text("❌ ابتدا در کانال عضو شوید!")
+        return
+    
+    create_user(user_id, username)
+    
+    keyboard = [
+        [InlineKeyboardButton("🟢 خرید استارز", callback_data="buy_stars")],
+        [InlineKeyboardButton("🔵 خرید تون (GRAM)", callback_data="buy_ton")],
+        [InlineKeyboardButton("🌟 خرید پرمیوم", callback_data="buy_premium")],
+        [InlineKeyboardButton("🚀 خرید بوست", callback_data="buy_boost")],
+        [InlineKeyboardButton("🎁 گیت‌های کلکسیونی", callback_data="buy_nft")],
+        [InlineKeyboardButton("🟣 حساب کاربری", callback_data="profile")],
+        [InlineKeyboardButton("👥 زیرمجموعه‌ها", callback_data="referrals")],
+        [InlineKeyboardButton("📊 سفارشات من", callback_data="my_orders")],
+        [InlineKeyboardButton("📖 راهنما", callback_data="help")],
+        [InlineKeyboardButton("💬 پشتیبانی", callback_data="support")],
+    ]
+    
+    await query.edit_message_text(
+        "🛒 *منوی اصلی*\n\n"
+        "🔥 *فروشگاه شاهین*\n"
+        "⚡️ تحویل آنی و مطمئن\n"
+        "⭐ مورد اعتماد هزاران کاربر\n\n"
+        "👇 یکی رو انتخاب کن:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+
+# ========== مدیریت پیام‌ها ==========
+async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    waiting_for = context.user_data.get('waiting_for', '')
+    product_type = context.user_data.get('product_type', '')
+    
+    if waiting_for in ['receiver', 'post_link']:
+        await get_extra_info(update, context)
+    elif waiting_for == 'receipt':
+        await get_receipt(update, context)
+    elif product_type == 'ton':
+        await get_ton_amount(update, context)
+    elif product_type == 'stars_custom':
+        await get_custom_stars(update, context)
+
 # ========== اجرا ==========
 def main():
     app = Application.builder().token(TOKEN).build()
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(check_sub, pattern="^check_sub$"))
-    app.add_handler(CallbackQueryHandler(buy_gift, pattern="^buy_gift$"))
+    app.add_handler(CallbackQueryHandler(buy_stars, pattern="^buy_stars$"))
     app.add_handler(CallbackQueryHandler(buy_ton, pattern="^buy_ton$"))
     app.add_handler(CallbackQueryHandler(buy_premium, pattern="^buy_premium$"))
     app.add_handler(CallbackQueryHandler(buy_boost, pattern="^buy_boost$"))
+    app.add_handler(CallbackQueryHandler(buy_nft, pattern="^buy_nft$"))
+    app.add_handler(CallbackQueryHandler(profile, pattern="^profile$"))
     app.add_handler(CallbackQueryHandler(referrals, pattern="^referrals$"))
     app.add_handler(CallbackQueryHandler(help_command, pattern="^help$"))
+    app.add_handler(CallbackQueryHandler(support, pattern="^support$"))
     app.add_handler(CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"))
     app.add_handler(CallbackQueryHandler(my_orders, pattern="^my_orders$"))
     app.add_handler(CallbackQueryHandler(copy_card, pattern="^copy_card$"))
     app.add_handler(CallbackQueryHandler(send_receipt, pattern="^send_receipt_"))
-    app.add_handler(CallbackQueryHandler(process_purchase, pattern="^(gift_|premium_|boost_)"))
+    app.add_handler(CallbackQueryHandler(stars_custom, pattern="^stars_custom$"))
+    app.add_handler(CallbackQueryHandler(process_purchase, pattern="^(stars_|premium_|boost_|nft_)"))
     app.add_handler(CallbackQueryHandler(confirm_receipt, pattern="^confirm_"))
     app.add_handler(CallbackQueryHandler(reject_receipt, pattern="^reject_"))
     app.add_handler(MessageHandler(filters.PHOTO, get_receipt))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_messages))
     
-    print("🌟 ربات ایران گیت استور روشن شد...")
+    print("🔥 ربات شاهین استور روشن شد...")
     app.run_polling()
 
 if __name__ == "__main__":
