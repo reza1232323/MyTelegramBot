@@ -112,8 +112,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🎁 خرید گیت استارزی", callback_data="buy_gift")],
         [InlineKeyboardButton("🪙 خرید تون (GRAM)", callback_data="buy_ton")],
-        [InlineKeyboardButton("💎 خرید تلگرام پرمیوم", callback_data="buy_premium")],
-        [InlineKeyboardButton("🚀 خرید بوست", callback_data="buy_boost")],
         [InlineKeyboardButton("👥 زیرمجموعه‌ها", callback_data="referrals")],
         [InlineKeyboardButton("📊 سفارشات من", callback_data="my_orders")],
         [InlineKeyboardButton("📖 راهنما", callback_data="help")],
