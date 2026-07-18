@@ -14,18 +14,18 @@ BOT_USERNAME = "starzland_bot"
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ========== قیمت‌ها (با سه صفر اضافه) ==========
+# ========== قیمت‌ها ==========
 PRICES = {
-    "ton": 340000,  # هر تون 340,000 تومان
-    "stars_direct_50": 165000,  # 50 استارز مستقیم = 165,000 تومان
-    "stars_direct_100": 330000,  # 100 استارز مستقیم = 330,000 تومان
-    "stars_direct_200": 660000,  # 200 استارز مستقیم = 660,000 تومان
-    "stars_direct_500": 1650000,  # 500 استارز مستقیم = 1,650,000 تومان
-    "stars_post": 4000,  # هر استارز رو پست = 4,000 تومان
-    "gift_15": 55000,  # 15 استارز = 55,000 تومان
-    "gift_25": 85000,  # 25 استارز = 85,000 تومان
-    "gift_50": 170000,  # 50 استارز = 170,000 تومان
-    "gift_100": 339000,  # 100 استارز = 339,000 تومان
+    "ton": 340000,
+    "stars_direct_50": 165000,
+    "stars_direct_100": 330000,
+    "stars_direct_200": 660000,
+    "stars_direct_500": 1650000,
+    "stars_post": 4000,
+    "gift_15": 55000,
+    "gift_25": 85000,
+    "gift_50": 170000,
+    "gift_100": 339000,
 }
 
 # ========== دیتابیس ==========
@@ -230,7 +230,6 @@ async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.effective_user.username or update.effective_user.first_name
     text = update.message.text.strip()
     
-    # تبدیل اعداد فارسی به انگلیسی
     persian_to_english = {
         '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4',
         '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9'
@@ -249,7 +248,6 @@ async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     item_type = context.user_data.get('product_type', 'ton')
     
-    # محاسبه قیمت بر اساس نوع محصول
     if item_type == "ton":
         price = int(qty * PRICES["ton"])
         item_name = f"تون ({qty})"
@@ -328,6 +326,7 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ خطا! لطفا دوباره /start رو بزن.")
         return
     
+    # ذخیره اطلاعات اضافی
     if waiting_for == "wallet":
         update_order_extra(order_id, f"آدرس ولت: {text}")
     elif waiting_for == "receiver":
@@ -338,8 +337,15 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ خطا! لطفا دوباره تلاش کن.")
         return
     
+    # نمایش اطلاعات پرداخت
+    keyboard = [
+        [InlineKeyboardButton("📋 کپی شماره کارت", callback_data="copy_card")],
+        [InlineKeyboardButton("✅ نهایی کردن خرید | ارسال رسید", callback_data=f"send_receipt_{order_id}")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_menu")],
+    ]
+    
     await update.message.reply_text(
-        f"📋 *تایید سفارش*\n\n"
+        f"📋 *فاکتور شما آماده است*\n\n"
         f"👤 کاربر: @{update.effective_user.username or update.effective_user.first_name}\n"
         f"🛒 محصول: {item_name}\n"
         f"💰 مبلغ: {fmt(price)} تومن\n"
@@ -348,10 +354,12 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💳 *شماره کارت:*\n"
         f"`6037-9970-1234-5678`\n"
         f"🏦 بانک ملی\n\n"
-        f"⚠️ بعد از واریز، عکس رسید رو بفرست.",
+        f"⚠️ بعد از واریز، روی دکمه 'ارسال رسید' کلیک کن.",
+        reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
     
+    # ارسال به ادمین با اطلاعات کامل
     for admin_id in ADMIN_IDS:
         try:
             await context.bot.send_message(
@@ -369,6 +377,36 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
     
     context.user_data['waiting_for'] = 'receipt'
+
+# ========== کپی شماره کارت ==========
+async def copy_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    await query.edit_message_text(
+        "📋 *شماره کارت:*\n"
+        "`6037-9970-1234-5678`\n\n"
+        "🏦 بانک ملی\n\n"
+        "✅ شماره کارت کپی شد!",
+        parse_mode="Markdown"
+    )
+
+# ========== ارسال رسید ==========
+async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    order_id = int(query.data.split('_')[2])
+    
+    context.user_data['order_id'] = order_id
+    context.user_data['waiting_for'] = 'receipt'
+    
+    await query.edit_message_text(
+        "📸 *ارسال رسید واریزی*\n\n"
+        "💰 لطفاً عکس رسید واریزی خود را بفرستید.\n\n"
+        "⚠️ فقط عکس (تصویر) مورد قبول است.\n"
+        "📱 از همراه بانک خود استفاده کنید.",
+        parse_mode="Markdown"
+    )
 
 # ========== دریافت عکس رسید ==========
 async def get_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -624,6 +662,8 @@ def main():
     app.add_handler(CallbackQueryHandler(buy_gift, pattern="^buy_gift$"))
     app.add_handler(CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"))
     app.add_handler(CallbackQueryHandler(my_orders, pattern="^my_orders$"))
+    app.add_handler(CallbackQueryHandler(copy_card, pattern="^copy_card$"))
+    app.add_handler(CallbackQueryHandler(send_receipt, pattern="^send_receipt_"))
     app.add_handler(CallbackQueryHandler(confirm_receipt, pattern="^confirm_"))
     app.add_handler(CallbackQueryHandler(reject_receipt, pattern="^reject_"))
     app.add_handler(MessageHandler(filters.PHOTO, get_receipt))
