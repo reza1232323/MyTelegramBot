@@ -83,7 +83,7 @@ def confirm_order(order_id):
     cursor.execute('UPDATE orders SET status = "confirmed" WHERE id = ?', (order_id,))
     conn.commit()
 
-# ========== استارت ==========
+# ========== منوی اصلی ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
@@ -108,6 +108,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🪙 خرید تون", callback_data="buy_ton")],
         [InlineKeyboardButton("⭐ خرید استارز", callback_data="buy_stars")],
         [InlineKeyboardButton("📊 سفارشات من", callback_data="my_orders")],
+        [InlineKeyboardButton("📖 راهنما", callback_data="help")],
     ]
 
     await update.message.reply_text(
@@ -142,8 +143,9 @@ async def buy_ton(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "مثال: 5 یا ۵",
         parse_mode="Markdown"
     )
+    return
 
-# ========== خرید استارز رو پست ==========
+# ========== خرید استارز ==========
 async def buy_stars(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -156,6 +158,34 @@ async def buy_stars(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "مثال: 1 یا ۱",
         parse_mode="Markdown"
     )
+    return
+
+# ========== راهنما ==========
+async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(
+        "📖 *راهنمای فروشگاه*\n\n"
+        "🪙 *تون:*\n"
+        "• قیمت هر تون: 340,000 تومن\n"
+        "• بعد از ثبت سفارش، آدرس ولت خود را وارد کنید\n\n"
+        "⭐ *استارز رو پست:*\n"
+        "• قیمت هر استارز: 4,000 تومن\n"
+        "• بعد از ثبت سفارش، لینک پست را وارد کنید\n\n"
+        "📌 *نحوه خرید:*\n"
+        "۱. محصول مورد نظر را انتخاب کنید\n"
+        "۲. تعداد را وارد کنید\n"
+        "۳. اطلاعات مورد نیاز را وارد کنید\n"
+        "۴. مبلغ را به شماره کارت واریز کنید\n"
+        "۵. عکس رسید را ارسال کنید\n"
+        "۶. منتظر تایید ادمین باشید\n\n"
+        "💳 *شماره کارت:*\n"
+        "`6037-9970-1234-5678`\n"
+        "🏦 بانک ملی\n\n"
+        "⏰ *ساعات پاسخگویی:* ۱۰ صبح تا ۱ شب",
+        parse_mode="Markdown"
+    )
+    return
 
 # ========== دریافت مقدار و محاسبه قیمت ==========
 async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -235,7 +265,7 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ خطا! لطفا دوباره تلاش کن.")
         return
     
-    # ارسال فاکتور نهایی با شماره کارت
+    # نمایش فاکتور نهایی با شماره کارت و دکمه ارسال رسید
     keyboard = [
         [InlineKeyboardButton("📋 کپی شماره کارت", callback_data="copy_card")],
         [InlineKeyboardButton("📸 ارسال رسید", callback_data=f"send_receipt_{order_id}")],
@@ -285,7 +315,6 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def copy_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
     await query.edit_message_text(
         "📋 *شماره کارت:*\n"
         "`6037-9970-1234-5678`\n\n"
@@ -299,10 +328,8 @@ async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     order_id = int(query.data.split('_')[2])
-    
     context.user_data['order_id'] = order_id
     context.user_data['waiting_for'] = 'receipt'
-    
     await query.edit_message_text(
         "📸 *ارسال رسید واریزی*\n\n"
         "💰 لطفاً عکس رسید واریزی خود را بفرستید.\n\n"
@@ -327,7 +354,6 @@ async def get_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_id = update.message.photo[-1].file_id
         update_order_receipt(order_id, file_id)
         
-        # پیام به کاربر
         await update.message.reply_text(
             f"✅ *عکس رسید شما دریافت شد!*\n\n"
             f"🌟 *خدمات استارز لند آنی هست!*\n"
@@ -342,7 +368,6 @@ async def get_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
         
-        # ارسال به ادمین‌ها با اطلاعات کامل
         for admin_id in ADMIN_IDS:
             try:
                 cursor.execute('SELECT extra_info FROM orders WHERE id = ?', (order_id,))
@@ -539,6 +564,7 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🪙 خرید تون", callback_data="buy_ton")],
         [InlineKeyboardButton("⭐ خرید استارز", callback_data="buy_stars")],
         [InlineKeyboardButton("📊 سفارشات من", callback_data="my_orders")],
+        [InlineKeyboardButton("📖 راهنما", callback_data="help")],
     ]
     
     await query.edit_message_text(
@@ -553,14 +579,16 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ========== مدیریت پیام‌ها ==========
 async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     waiting_for = context.user_data.get('waiting_for', '')
-    product_type = context.user_data.get('product_type', '')
     
-    if waiting_for in ['wallet', 'post_link']:
+    if waiting_for == 'wallet' or waiting_for == 'post_link':
         await get_extra_info(update, context)
     elif waiting_for == 'receipt':
         await get_receipt(update, context)
-    elif product_type:
-        await get_amount(update, context)
+    else:
+        # اگر کاربر عددی وارد کرد (برای مقدار محصول)
+        product_type = context.user_data.get('product_type', '')
+        if product_type:
+            await get_amount(update, context)
 
 # ========== اجرا ==========
 def main():
@@ -570,6 +598,7 @@ def main():
     app.add_handler(CallbackQueryHandler(check_sub, pattern="^check_sub$"))
     app.add_handler(CallbackQueryHandler(buy_ton, pattern="^buy_ton$"))
     app.add_handler(CallbackQueryHandler(buy_stars, pattern="^buy_stars$"))
+    app.add_handler(CallbackQueryHandler(help, pattern="^help$"))
     app.add_handler(CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"))
     app.add_handler(CallbackQueryHandler(my_orders, pattern="^my_orders$"))
     app.add_handler(CallbackQueryHandler(copy_card, pattern="^copy_card$"))
