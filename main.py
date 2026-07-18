@@ -223,16 +223,16 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ خطا! لطفا دوباره /start رو بزن.")
         return
     
-    # ذخیره اطلاعات اضافی
+    # ذخیره آدرس ولت یا لینک پست
     if waiting_for == "wallet":
-        update_order_extra(order_id, text)
+        update_order_extra(order_id, f"آدرس ولت: {text}")
     elif waiting_for == "post_link":
-        update_order_extra(order_id, text)
+        update_order_extra(order_id, f"لینک پست: {text}")
     else:
         await update.message.reply_text("❌ خطا! لطفا دوباره تلاش کن.")
         return
     
-    # نمایش فاکتور نهایی با شماره کارت و دکمه ارسال رسید
+    # نمایش فاکتور با شماره کارت
     keyboard = [
         [InlineKeyboardButton("📋 کپی شماره کارت", callback_data="copy_card")],
         [InlineKeyboardButton("📸 ارسال رسید", callback_data=f"send_receipt_{order_id}")],
@@ -246,13 +246,12 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🛒 محصول: {item_name}\n"
         f"💰 مبلغ: {fmt(price)} تومن\n"
         f"🆔 شماره سفارش: {order_id}\n"
-        f"📝 اطلاعات: {text}\n"
+        f"📝 {text}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
         f"💳 *شماره کارت:*\n"
         f"`6037-9970-1234-5678`\n"
         f"🏦 بانک ملی\n\n"
-        f"⚠️ بعد از واریز، روی 'ارسال رسید' کلیک کن.\n"
-        f"📸 عکس رسید خود را بفرست.",
+        f"⚠️ بعد از واریز، روی 'ارسال رسید' کلیک کن.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
@@ -269,7 +268,7 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🛒 محصول: {item_name}\n"
                 f"💰 مبلغ: {fmt(price)} تومن\n"
                 f"🆔 شماره سفارش: {order_id}\n"
-                f"📝 اطلاعات: {text}\n"
+                f"📝 {text}\n"
                 f"━━━━━━━━━━━━━━━━━━━━",
                 parse_mode="Markdown"
             )
@@ -286,7 +285,7 @@ async def copy_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📋 *شماره کارت:*\n"
         "`6037-9970-1234-5678`\n\n"
         "🏦 بانک ملی\n\n"
-        "✅ شماره کارت کپی شد!",
+        "✅ کپی شد!",
         parse_mode="Markdown"
     )
 
@@ -298,14 +297,12 @@ async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['order_id'] = order_id
     context.user_data['waiting_for'] = 'receipt'
     await query.edit_message_text(
-        "📸 *ارسال رسید واریزی*\n\n"
-        "💰 لطفاً عکس رسید واریزی خود را بفرستید.\n\n"
-        "⚠️ فقط عکس (تصویر) مورد قبول است.\n"
-        "📱 از همراه بانک خود استفاده کنید.",
+        "📸 *ارسال رسید*\n\n"
+        "💰 لطفاً عکس رسید واریزی خود را بفرستید.",
         parse_mode="Markdown"
     )
 
-# ========== دریافت عکس رسید (بخش اصلاح شده) ==========
+# ========== دریافت عکس رسید ==========
 async def get_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
@@ -318,53 +315,45 @@ async def get_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if update.message.photo:
-        # دریافت عکس
-        photo_file = update.message.photo[-1]
-        file_id = photo_file.file_id
-        
-        # ذخیره در دیتابیس
+        file_id = update.message.photo[-1].file_id
         update_order_receipt(order_id, file_id)
         
-        # پیام به کاربر
         await update.message.reply_text(
             f"✅ *رسید شما دریافت شد!*\n\n"
-            f"🌟 *خدمات استارز لند آنی هست!*\n"
-            f"⚡️ سفارش شما در چند دقیقه انجام خواهد شد.\n\n"
+            f"🌟 سفارش شما در چند دقیقه انجام خواهد شد.\n\n"
             f"🆔 شماره سفارش: {order_id}\n"
             f"👤 کاربر: @{username}\n"
             f"🛒 محصول: {item_name}\n"
             f"💰 مبلغ: {fmt(price)} تومن\n\n"
-            f"⏳ لطفاً چند دقیقه صبر کنید...\n"
-            f"🔜 به زودی تحویل داده میشه!\n\n"
-            f"🙏 از اعتماد شما سپاسگزاریم! 🌟",
+            f"⏳ لطفاً صبر کنید...\n"
+            f"🔜 به زودی تحویل داده میشه!",
             parse_mode="Markdown"
         )
         
-        # دریافت اطلاعات اضافی
-        cursor.execute('SELECT extra_info FROM orders WHERE id = ?', (order_id,))
-        extra = cursor.fetchone()
-        extra_info = extra[0] if extra else ""
-        
-        # ارسال به ادمین‌ها با عکس
+        # ارسال به ادمین با اطلاعات کامل + دکمه انجام سفارش
         for admin_id in ADMIN_IDS:
             try:
+                cursor.execute('SELECT extra_info FROM orders WHERE id = ?', (order_id,))
+                extra = cursor.fetchone()
+                extra_info = extra[0] if extra else ""
+                
                 await context.bot.send_photo(
                     admin_id,
                     photo=file_id,
-                    caption=f"📸 *رسید جدید برای تایید*\n\n"
+                    caption=f"📸 *رسید جدید*\n\n"
                             f"━━━━━━━━━━━━━━━━━━━━\n"
                             f"👤 کاربر: @{username}\n"
                             f"🆔 آیدی: {user_id}\n"
                             f"🛒 محصول: {item_name}\n"
                             f"💰 مبلغ: {fmt(price)} تومن\n"
                             f"🆔 شماره سفارش: {order_id}\n"
-                            f"📝 اطلاعات: {extra_info if extra_info else 'ندارد'}\n"
+                            f"📝 {extra_info if extra_info else 'ندارد'}\n"
                             f"📅 زمان: {datetime.now().strftime('%Y/%m/%d %H:%M')}\n"
                             f"━━━━━━━━━━━━━━━━━━━━\n\n"
-                            f"⬅️ برای تایید، روی دکمه زیر کلیک کن:",
+                            f"⬅️ بعد از انجام سفارش کلیک کن:",
                     reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("✅ تایید واریز", callback_data=f"confirm_{order_id}")],
-                        [InlineKeyboardButton("❌ رد واریز", callback_data=f"reject_{order_id}")]
+                        [InlineKeyboardButton("✅ انجام سفارش", callback_data=f"confirm_{order_id}")],
+                        [InlineKeyboardButton("❌ رد سفارش", callback_data=f"reject_{order_id}")]
                     ]),
                     parse_mode="Markdown"
                 )
@@ -374,18 +363,17 @@ async def get_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['waiting_for'] = ''
     else:
         await update.message.reply_text(
-            "❌ لطفاً یک عکس از رسید واریز خود بفرستید.\n"
-            "⚠️ فقط عکس (تصویر) مورد قبول است."
+            "❌ لطفاً یک عکس از رسید خود بفرستید."
         )
 
-# ========== تایید توسط ادمین ==========
+# ========== انجام سفارش توسط ادمین ==========
 async def confirm_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     admin_id = query.from_user.id
     
     if admin_id not in ADMIN_IDS:
-        await query.edit_message_text("❌ شما دسترسی به این بخش ندارید!")
+        await query.edit_message_text("❌ شما دسترسی ندارید!")
         return
     
     order_id = int(query.data.split('_')[1])
@@ -400,21 +388,18 @@ async def confirm_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     user_id, username, item_type, qty, price, extra_info = order
     
+    # پیام به کاربر
     try:
-        extra_text = f"\n📝 اطلاعات: {extra_info}" if extra_info else ""
         await context.bot.send_message(
             user_id,
-            f"✅ *سفارش شما تایید شد!*\n\n"
+            f"✅ *سفارش شما انجام شد!*\n\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🌟 *خدمات استارز لند آنی هست!*\n"
-            f"⚡️ سفارش شما در چند دقیقه انجام خواهد شد.\n\n"
+            f"🌟 سفارش شما با موفقیت انجام شد.\n\n"
             f"🆔 شماره سفارش: {order_id}\n"
             f"🛒 محصول: {item_type} ({qty})\n"
             f"💰 مبلغ: {fmt(price)} تومن\n"
-            f"{extra_text}\n"
+            f"📝 {extra_info if extra_info else ''}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"⏳ لطفاً چند دقیقه صبر کنید...\n"
-            f"🔜 به زودی تحویل داده میشه!\n\n"
             f"🙏 از اعتماد شما سپاسگزاریم! 🌟",
             parse_mode="Markdown"
         )
@@ -422,23 +407,20 @@ async def confirm_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pass
     
     await query.edit_message_text(
-        f"✅ *سفارش {order_id} تایید شد!*\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"✅ *سفارش {order_id} انجام شد!*\n\n"
         f"👤 کاربر: @{username}\n"
         f"🛒 محصول: {item_type} ({qty})\n"
-        f"💰 مبلغ: {fmt(price)} تومن\n"
-        f"📅 زمان: {datetime.now().strftime('%Y/%m/%d %H:%M')}\n"
-        f"━━━━━━━━━━━━━━━━━━━━"
+        f"💰 مبلغ: {fmt(price)} تومن"
     )
 
-# ========== رد توسط ادمین ==========
+# ========== رد سفارش توسط ادمین ==========
 async def reject_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     admin_id = query.from_user.id
     
     if admin_id not in ADMIN_IDS:
-        await query.edit_message_text("❌ شما دسترسی به این بخش ندارید!")
+        await query.edit_message_text("❌ شما دسترسی ندارید!")
         return
     
     order_id = int(query.data.split('_')[1])
@@ -456,26 +438,18 @@ async def reject_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             user_id,
             f"❌ *سفارش شما رد شد!*\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
             f"🆔 شماره سفارش: {order_id}\n"
             f"🛒 محصول: {item_type} ({qty})\n"
             f"💰 مبلغ: {fmt(price)} تومن\n\n"
             f"⚠️ رسید ارسالی مورد تایید قرار نگرفت.\n"
-            f"📸 لطفاً دوباره عکس رسید رو بفرستید.\n\n"
-            f"🙏 از صبر شما سپاسگزاریم.\n"
-            f"━━━━━━━━━━━━━━━━━━━━",
+            f"📸 لطفاً دوباره تلاش کنید.",
             parse_mode="Markdown"
         )
     except:
         pass
     
     await query.edit_message_text(
-        f"❌ *سفارش {order_id} رد شد!*\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"👤 کاربر: @{username}\n"
-        f"🛒 محصول: {item_type} ({qty})\n"
-        f"💰 مبلغ: {fmt(price)} تومن\n"
-        f"━━━━━━━━━━━━━━━━━━━━"
+        f"❌ *سفارش {order_id} رد شد!*"
     )
 
 # ========== سفارشات من ==========
@@ -494,14 +468,10 @@ async def my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     orders = cursor.fetchall()
     
     if not orders:
-        await query.edit_message_text(
-            "📋 *سفارشات شما*\n\n"
-            "❌ هیچ سفارشی ثبت نکردی!",
-            parse_mode="Markdown"
-        )
+        await query.edit_message_text("📋 هیچ سفارشی نداری!")
         return
     
-    text = "📋 *سفارشات اخیر شما*\n\n"
+    text = "📋 *سفارشات شما*\n\n"
     for o in orders:
         order_id, item_type, qty, price, status, extra_info, created_at = o
         if status == "confirmed":
@@ -542,7 +512,7 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(
         "🛒 *منوی اصلی*\n\n"
-        "💰 تون: 340,000 تومن\n"
+        "🪙 تون: 340,000 تومن\n"
         "⭐ استارز: 4,000 تومن هر عدد\n\n"
         "👇 یکی رو انتخاب کن:",
         reply_markup=InlineKeyboardMarkup(keyboard),
