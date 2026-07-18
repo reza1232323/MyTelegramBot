@@ -604,7 +604,7 @@ async def reject_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 user_id,
-                f"❌ *سفارش شما رد شد!*\n\n"
+                f"❌ * سفارش شما رد شد با پشتیبانی تماس بگیرید و در کامنت های کانال پیگیری کنید!*\n\n"
                 f"🆔 شماره سفارش: {order_id}\n"
                 f"🛒 محصول: {esc_md(item_type)} ({qty})\n"
                 f"💰 مبلغ: {fmt(price)} تومن\n\n"
