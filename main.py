@@ -158,7 +158,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"/start از کاربر {user_id} (@{username})")
 
     try:
-        if not await is_member(user_id, context):
+        # بررسی عضویت با try/except جداگانه
+        try:
+            is_member_flag = await is_member(user_id, context)
+        except Exception as e:
+            logger.error(f"خطا در بررسی عضویت کاربر {user_id}: {e}", exc_info=True)
+            await update.message.reply_text(
+                "❌ ربات به کانال دسترسی ندارد! لطفاً به ادمین اطلاع دهید."
+            )
+            return
+
+        if not is_member_flag:
             keyboard = [
                 [InlineKeyboardButton("📢 جوین کانال", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")],
                 [InlineKeyboardButton("✅ تایید عضویت", callback_data="check_sub")]
@@ -172,7 +182,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        create_user(user_id, username)
+        # ثبت کاربر در دیتابیس با مدیریت خطا
+        try:
+            create_user(user_id, username)
+        except Exception as e:
+            logger.error(f"خطا در ثبت کاربر {user_id} در دیتابیس: {e}", exc_info=True)
+            await update.message.reply_text(
+                "❌ خطا در ثبت اطلاعات شما. لطفاً دوباره تلاش کنید یا با پشتیبانی تماس بگیرید."
+            )
+            return
 
         keyboard = [
             [InlineKeyboardButton("🪙 خرید تون", callback_data="buy_ton")],
@@ -188,11 +206,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="Markdown"
         )
+
     except Exception as e:
-        logger.error(f"خطا در start برای کاربر {user_id}: {e}", exc_info=True)
-        await notify_user_error(update)
-
-
+        logger.error(f"خطای غیرمنتظره در start برای کاربر {user_id}: {e}", exc_info=True)
+        # ارسال پیام خطای اختصاصی‌تر
+        await update.message.reply_text(
+            "❌ خطای داخلی رخ داد. لطفاً بعداً تلاش کنید یا با پشتیبانی تماس بگیرید."
+        )
 # ========== تایید عضویت ==========
 async def check_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
