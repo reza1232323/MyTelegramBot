@@ -495,14 +495,17 @@ async def confirm_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         if admin_id not in ADMIN_IDS:
-            await query.edit_message_text("❌ شما دسترسی ندارید!")
+            await query.edit_message_text("❌ شما دسترسی ندارید!", reply_markup=None)
             return
 
         try:
             order_id = int(query.data.split('_')[1])
         except (IndexError, ValueError):
-            await query.edit_message_text("❌ داده نامعتبر!")
+            await query.edit_message_text("❌ داده نامعتبر!", reply_markup=None)
             return
+
+        # حذف دکمه‌ها قبل از ادامه
+        await query.edit_message_reply_markup(reply_markup=None)
 
         confirm_order(order_id)
 
@@ -534,11 +537,13 @@ async def confirm_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"اطلاع‌رسانی تایید سفارش به کاربر {user_id} ناموفق بود: {e}", exc_info=True)
 
+        # ویرایش پیام اصلی با کیبورد خالی (دکمه‌ها حذف می‌شن)
         await query.edit_message_text(
             f"✅ سفارش {order_id} انجام شد!\n\n"
             f"👤 کاربر: @{username}\n"
             f"🛒 محصول: {item_type} ({qty})\n"
-            f"💰 مبلغ: {fmt(price)} تومن"
+            f"💰 مبلغ: {fmt(price)} تومن",
+            reply_markup=None  # <--- مهم: حذف دکمه‌ها
         )
     except Exception as e:
         logger.error(f"خطا در confirm_receipt: {e}", exc_info=True)
@@ -553,14 +558,17 @@ async def reject_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         if admin_id not in ADMIN_IDS:
-            await query.edit_message_text("❌ شما دسترسی ندارید!")
+            await query.edit_message_text("❌ شما دسترسی ندارید!", reply_markup=None)
             return
 
         try:
             order_id = int(query.data.split('_')[1])
         except (IndexError, ValueError):
-            await query.edit_message_text("❌ داده نامعتبر!")
+            await query.edit_message_text("❌ داده نامعتبر!", reply_markup=None)
             return
+
+        # حذف دکمه‌ها
+        await query.edit_message_reply_markup(reply_markup=None)
 
         order = db_execute(
             'SELECT user_id, username, item_type, quantity, price FROM orders WHERE id = ?',
@@ -587,7 +595,10 @@ async def reject_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"اطلاع‌رسانی رد سفارش به کاربر {user_id} ناموفق بود: {e}", exc_info=True)
 
-        await query.edit_message_text(f"❌ سفارش {order_id} رد شد!")
+        await query.edit_message_text(
+            f"❌ سفارش {order_id} رد شد!",
+            reply_markup=None  # <--- مهم: حذف دکمه‌ها
+        )
     except Exception as e:
         logger.error(f"خطا در reject_receipt: {e}", exc_info=True)
 
