@@ -398,8 +398,8 @@ async def copy_card(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(
         "📋 *شماره کارت:*\n"
-        "`6219861883697301`\n\n"
-        "🏦 مانی جعفریور - بلوپانک\n\n"
+        "`-`\n\n"
+        "🏦 -  - بلوپانک\n\n"
         "✅ شماره کارت کپی شد!",
         parse_mode="Markdown"
     )
