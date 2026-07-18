@@ -157,7 +157,7 @@ async def buy_stars(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# ========== دریافت مقدار و محاسبه قیمت ==========
+# ========== دریافت مقدار ==========
 async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
@@ -223,7 +223,7 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ خطا! لطفا دوباره /start رو بزن.")
         return
     
-    # ذخیره آدرس ولت یا لینک پست
+    # ذخیره اطلاعات (آدرس ولت یا لینک پست)
     if waiting_for == "wallet":
         update_order_extra(order_id, f"آدرس ولت: {text}")
     elif waiting_for == "post_link":
@@ -232,7 +232,7 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ خطا! لطفا دوباره تلاش کن.")
         return
     
-    # نمایش فاکتور با شماره کارت
+    # نمایش فاکتور با شماره کارت و دکمه ارسال رسید
     keyboard = [
         [InlineKeyboardButton("📋 کپی شماره کارت", callback_data="copy_card")],
         [InlineKeyboardButton("📸 ارسال رسید", callback_data=f"send_receipt_{order_id}")],
@@ -251,29 +251,10 @@ async def get_extra_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💳 *شماره کارت:*\n"
         f"`6037-9970-1234-5678`\n"
         f"🏦 بانک ملی\n\n"
-        f"⚠️ بعد از واریز، روی 'ارسال رسید' کلیک کن.",
+        f"⚠️ بعد از واریز، روی 'ارسال رسید' کلیک کن و عکس رسید رو بفرست.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
-    
-    # ارسال به ادمین با اطلاعات کامل
-    for admin_id in ADMIN_IDS:
-        try:
-            await context.bot.send_message(
-                admin_id,
-                f"🆕 *سفارش جدید*\n\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"👤 کاربر: @{update.effective_user.username or update.effective_user.first_name}\n"
-                f"🆔 آیدی: {user_id}\n"
-                f"🛒 محصول: {item_name}\n"
-                f"💰 مبلغ: {fmt(price)} تومن\n"
-                f"🆔 شماره سفارش: {order_id}\n"
-                f"📝 {text}\n"
-                f"━━━━━━━━━━━━━━━━━━━━",
-                parse_mode="Markdown"
-            )
-        except:
-            pass
     
     context.user_data['waiting_for'] = 'receipt'
 
@@ -302,7 +283,7 @@ async def send_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# ========== دریافت عکس رسید ==========
+# ========== دریافت عکس رسید و ارسال به ادمین ==========
 async def get_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
@@ -318,25 +299,25 @@ async def get_receipt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file_id = update.message.photo[-1].file_id
         update_order_receipt(order_id, file_id)
         
+        # پیام به کاربر
         await update.message.reply_text(
             f"✅ *رسید شما دریافت شد!*\n\n"
             f"🌟 سفارش شما در چند دقیقه انجام خواهد شد.\n\n"
             f"🆔 شماره سفارش: {order_id}\n"
-            f"👤 کاربر: @{username}\n"
-            f"🛒 محصول: {item_name}\n"
-            f"💰 مبلغ: {fmt(price)} تومن\n\n"
+            f"👤 کاربر: @{username}\n\n"
             f"⏳ لطفاً صبر کنید...\n"
             f"🔜 به زودی تحویل داده میشه!",
             parse_mode="Markdown"
         )
         
-        # ارسال به ادمین با اطلاعات کامل + دکمه انجام سفارش
+        # دریافت اطلاعات کامل سفارش
+        cursor.execute('SELECT extra_info FROM orders WHERE id = ?', (order_id,))
+        extra = cursor.fetchone()
+        extra_info = extra[0] if extra else ""
+        
+        # ارسال به ادمین با عکس رسید + اطلاعات کامل
         for admin_id in ADMIN_IDS:
             try:
-                cursor.execute('SELECT extra_info FROM orders WHERE id = ?', (order_id,))
-                extra = cursor.fetchone()
-                extra_info = extra[0] if extra else ""
-                
                 await context.bot.send_photo(
                     admin_id,
                     photo=file_id,
