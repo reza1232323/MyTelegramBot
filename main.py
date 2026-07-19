@@ -16,7 +16,7 @@ CHANNEL_USERNAME = "@starzland_shop"
 ADMIN_IDS = [5571951071, 6691993264]
 BOT_USERNAME = "starzland_bot"
 CARD_NUMBER = "6219861354518598"
-BANK_NAME = "بلو بانک"
+BANK_NAME = "   آقای پور احمد - بلو بانک"
 
 # ========== لاگ ==========
 logging.basicConfig(
