@@ -15,8 +15,8 @@ CHANNEL_ID = -1004296146485
 CHANNEL_USERNAME = "@starzland_shop"
 ADMIN_IDS = [5571951071, 6691993264]
 BOT_USERNAME = "starzland_bot"
-CARD_NUMBER = "-"
-BANK_NAME = "بانک -"
+CARD_NUMBER = "6219861354518598"
+BANK_NAME = "بلو بانک"
 
 # ========== لاگ ==========
 logging.basicConfig(
@@ -346,8 +346,8 @@ async def get_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ لطفاً فقط عدد وارد کن!")
             return
 
-        if qty <= 0:
-            await update.message.reply_text("❌ لطفاً یک عدد بزرگتر از 0 وارد کن!")
+        if qty <= 0.1:
+            await update.message.reply_text("❌ لطفاً یک عدد بزرگتر از 0.1 وارد کن!")
             return
         if qty > 1_000_000:
             await update.message.reply_text("❌ عدد وارد شده خیلی بزرگه، با پشتیبانی تماس بگیر.")
