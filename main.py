@@ -1,3 +1,6 @@
+
+
+
 # bot.py
 import sqlite3
 import logging
@@ -64,6 +67,7 @@ class Database:
 
         conn.commit()
         conn.close()
+        logging.info("✅ دیتابیس با موفقیت ایجاد شد")
 
     def add_user(self, user_id, username, first_name, last_name, referred_by=None):
         conn = self.get_connection()
@@ -168,7 +172,7 @@ class Database:
         conn.close()
         return transactions
 
-# ==================== توابع کمکی ====================
+# ==================== تنظیمات لاگ ====================
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -176,39 +180,80 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 db = Database()
 
+# ==================== توابع کمکی ====================
 async def check_membership(user_id, context):
-    """بررسی عضویت کاربر در کانال‌های اجباری"""
+    """بررسی عضویت کاربر در کانال‌های اجباری - نسخه اصلاح شده با خطاگیری"""
     bot = context.bot
-    for channel_id in REQUIRED_CHANNELS:
+    
+    # اگر کانالی تنظیم نشده، همه را قبول کن
+    if not REQUIRED_CHANNELS:
+        logger.warning("⚠️ هیچ کانال اجباری تنظیم نشده است!")
+        return True
+    
+    for channel in REQUIRED_CHANNELS:
         try:
-            member = await bot.get_chat_member(chat_id=channel_id, user_id=user_id)
-            if member.status not in ['member', 'administrator', 'creator']:
+            # پاک کردن @ از ابتدا اگر وجود داشت
+            channel_username = channel.replace('@', '').strip()
+            
+            # بررسی اینکه کانال وجود دارد یا نه
+            try:
+                chat = await bot.get_chat(f"@{channel_username}")
+                logger.info(f"✅ کانال پیدا شد: {chat.title} (یوزرنیم: @{channel_username})")
+            except Exception as e:
+                logger.error(f"❌ کانال @{channel_username} پیدا نشد! خطا: {e}")
+                # اگر کانال پیدا نشد، به کاربر پیام بده
                 return False
-        except:
+            
+            # بررسی عضویت کاربر
+            try:
+                member = await bot.get_chat_member(chat_id=f"@{channel_username}", user_id=user_id)
+                if member.status in ['member', 'administrator', 'creator']:
+                    logger.info(f"✅ کاربر {user_id} در کانال @{channel_username} عضو است")
+                else:
+                    logger.info(f"❌ کاربر {user_id} در کانال @{channel_username} عضو نیست")
+                    return False
+            except Exception as e:
+                logger.error(f"❌ خطا در بررسی عضویت کاربر در @{channel_username}: {e}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ خطای کلی در بررسی کانال {channel}: {e}")
             return False
+    
     return True
 
+async def get_channel_link(channel):
+    """دریافت لینک کانال"""
+    channel_username = channel.replace('@', '').strip()
+    return f"https://t.me/{channel_username}"
+
 async def show_join_message(update, context):
-    """نمایش پیام عضویت اجباری"""
+    """نمایش پیام عضویت اجباری - نسخه اصلاح شده"""
     keyboard = []
-    for i, channel_id in enumerate(REQUIRED_CHANNELS):
+    
+    for channel in REQUIRED_CHANNELS:
+        channel_username = channel.replace('@', '').strip()
+        link = f"https://t.me/{channel_username}"
+        
         try:
-            chat = await context.bot.get_chat(channel_id)
-            channel_username = chat.username if chat.username else f"کانال {i+1}"
-            keyboard.append([InlineKeyboardButton(f"📢 عضویت در {channel_username}", url=f"https://t.me/{channel_username}")])
-        except:
-            keyboard.append([InlineKeyboardButton(f"📢 عضویت در کانال {i+1}", url=f"https://t.me/YourChannel{i+1}")])
+            chat = await context.bot.get_chat(f"@{channel_username}")
+            channel_name = chat.title or channel
+            keyboard.append([InlineKeyboardButton(f"📢 عضویت در {channel_name}", url=link)])
+        except Exception as e:
+            logger.error(f"❌ خطا در دریافت اطلاعات کانال {channel}: {e}")
+            keyboard.append([InlineKeyboardButton(f"📢 عضویت در کانال", url=link)])
     
     keyboard.append([InlineKeyboardButton("✅ بررسی عضویت", callback_data="check_membership")])
     
     text = "❌ **برای استفاده از ربات باید در کانال‌های زیر عضو شوید:**\n\n"
-    for i, channel_id in enumerate(REQUIRED_CHANNELS):
+    for channel in REQUIRED_CHANNELS:
+        channel_username = channel.replace('@', '').strip()
         try:
-            chat = await context.bot.get_chat(channel_id)
-            channel_name = chat.title or f"کانال {i+1}"
+            chat = await context.bot.get_chat(f"@{channel_username}")
+            channel_name = chat.title or channel
             text += f"🔹 {channel_name}\n"
         except:
-            text += f"🔹 کانال {i+1}\n"
+            text += f"🔹 {channel}\n"
     
     text += "\nپس از عضویت، دکمه **بررسی عضویت** را بزنید."
     
@@ -223,6 +268,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
     
+    logger.info(f"🚀 کاربر جدید: {user_id} - {user.first_name}")
+    
     # بررسی عضویت
     if not await check_membership(user_id, context):
         await show_join_message(update, context)
@@ -235,6 +282,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             referred_by = int(context.args[0])
             if referred_by == user_id:
                 referred_by = None
+            else:
+                logger.info(f"🔗 کاربر {user_id} توسط {referred_by} دعوت شده")
         except:
             referred_by = None
     
@@ -248,6 +297,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             last_name=user.last_name,
             referred_by=referred_by
         )
+        logger.info(f"✅ کاربر {user_id} به دیتابیس اضافه شد")
     
     # نمایش منوی اصلی
     await main_menu(update, context)
@@ -589,6 +639,10 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==================== تابع اصلی ====================
 def main():
     """اجرای اصلی ربات"""
+    print("="*50)
+    print("🤖 ربات خفن در حال راه‌اندازی...")
+    print("="*50)
+    
     # ایجاد اپلیکیشن
     application = Application.builder().token(BOT_TOKEN).build()
     
@@ -602,9 +656,10 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
     
     # اجرای ربات
-    print("🤖 ربات خفن شروع به کار کرد!")
-    print(f"✅ ربات با موفقیت اجرا شد!")
+    print("✅ ربات با موفقیت اجرا شد!")
+    print("📱 برای شروع به ربات خود در تلگرام پیام دهید")
+    print("="*50)
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
-    main
+    main()
