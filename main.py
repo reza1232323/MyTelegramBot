@@ -7,8 +7,8 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 
 # ==================== تنظیمات ====================
 BOT_TOKEN = "8666500631:AAFGa6fM4jnUYlYBiBLYl1vDmgGM8PSQpa8"
-REQUIRED_CHANNEL = "@YourChannel"  # 🔴 یوزرنیم کانال خودت رو بذار
-ADMIN_ID = 123456789  # 🔴 آیدی عددی خودت رو بذار
+REQUIRED_CHANNEL = "@meowpoint_news"  # 🔴 یوزرنیم کانال خودت رو بذار
+ADMIN_ID = 6691993264  # 🔴 آیدی عددی خودت رو بذار
 WITHDRAW_AMOUNTS = [120000, 240000, 360000, 490000, 620000, 750000]
 REFERRAL_BONUS = 30000
 
