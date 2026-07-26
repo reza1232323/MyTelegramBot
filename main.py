@@ -7,12 +7,19 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 
 # ==================== تنظیمات ====================
 BOT_TOKEN = "8666500631:AAFGa6fM4jnUYlYBiBLYl1vDmgGM8PSQpa8"
-REQUIRED_CHANNEL = "@meowpoint_news"  # 🔴 یوزرنیم کانال خودت رو بذار
-ADMIN_ID = 6691993264  # 🔴 آیدی عددی خودت رو بذار
+
+# 📢 لیست کانال‌های اجباری (هر تعداد که دوست داری)
+REQUIRED_CHANNELS = [
+    "@meowpoint_news",  # ← کانال اول
+    "@meowpoint_buy",  # ← کانال دوم
+    # "@YourChannel3",  # ← کانال سوم (اختیاری)
+]
+
+ADMIN_ID = 123456789  # ← آیدی عددی خودت (با @userinfobot پیدا کن)
 WITHDRAW_AMOUNTS = [120000, 240000, 360000, 490000, 620000, 750000]
 REFERRAL_BONUS = 30000
 
-# ==================== دیتابیس ====================
+# ==================== دیتابیس (سازگار با قبلی) ====================
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -24,6 +31,7 @@ class Database:
         self.create_tables()
 
     def create_tables(self):
+        # جدول کاربران (همون قبلی)
         self.c.execute('''CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
             username TEXT,
@@ -33,6 +41,8 @@ class Database:
             referred_by INTEGER DEFAULT NULL,
             join_date TEXT
         )''')
+        
+        # جدول تراکنش‌ها (همون قبلی)
         self.c.execute('''CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
@@ -40,13 +50,30 @@ class Database:
             description TEXT,
             date TEXT
         )''')
+        
+        # جدول درخواست‌های برداشت (همون قبلی)
+        self.c.execute('''CREATE TABLE IF NOT EXISTS withdraw_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            amount INTEGER,
+            status TEXT DEFAULT 'pending',
+            date TEXT
+        )''')
+        
+        # ✅ جدول جدید برای تنظیمات (اختیاری)
+        self.c.execute('''CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )''')
+        
         self.conn.commit()
+        logger.info("✅ دیتابیس آماده است (سازگار با نسخه قبلی)")
 
     def add_user(self, user_id, username, first_name, referred_by=None):
         if self.get_user(user_id):
             return False
         date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.c.execute('INSERT INTO users VALUES (?,?,?,0,0,?,?)',
+        self.c.execute('INSERT INTO users (user_id, username, first_name, referred_by, join_date) VALUES (?,?,?,?,?)',
                        (user_id, username, first_name, referred_by, date))
         if referred_by:
             self.c.execute('UPDATE users SET balance = balance + ?, referral_count = referral_count + 1 WHERE user_id = ?',
@@ -60,8 +87,15 @@ class Database:
         self.c.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
         user = self.c.fetchone()
         if user:
-            return {'user_id': user[0], 'username': user[1], 'first_name': user[2],
-                    'balance': user[3], 'referral_count': user[4], 'referred_by': user[5], 'join_date': user[6]}
+            return {
+                'user_id': user[0],
+                'username': user[1],
+                'first_name': user[2],
+                'balance': user[3],
+                'referral_count': user[4],
+                'referred_by': user[5],
+                'join_date': user[6]
+            }
         return None
 
     def update_balance(self, user_id, amount, description):
@@ -84,35 +118,66 @@ class Database:
         self.c.execute('SELECT user_id, username, first_name, balance, referral_count FROM users')
         return self.c.fetchall()
 
+    def add_withdraw_request(self, user_id, amount):
+        self.c.execute('INSERT INTO withdraw_requests (user_id, amount, date) VALUES (?,?,?)',
+                       (user_id, amount, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        self.conn.commit()
+        return True
+
+    def get_withdraw_requests(self, status='pending'):
+        self.c.execute('SELECT id, user_id, amount, date FROM withdraw_requests WHERE status = ? ORDER BY id DESC', (status,))
+        return self.c.fetchall()
+
+    def update_withdraw_status(self, request_id, status):
+        self.c.execute('UPDATE withdraw_requests SET status = ? WHERE id = ?', (status, request_id))
+        self.conn.commit()
+
 db = Database()
 
-# ==================== عضویت اجباری ====================
+# ==================== عضویت اجباری (چند کانال) ====================
 async def check_membership(user_id, context):
-    if not REQUIRED_CHANNEL:
+    """بررسی عضویت در چند کانال"""
+    if not REQUIRED_CHANNELS:
         return True
-    channel = REQUIRED_CHANNEL.replace('@', '').strip()
-    try:
-        await context.bot.get_chat(f"@{channel}")
-        member = await context.bot.get_chat_member(chat_id=f"@{channel}", user_id=user_id)
-        return member.status in ['member', 'administrator', 'creator']
-    except Exception as e:
-        logger.error(f"خطا در بررسی عضویت: {e}")
-        return True
+    
+    for channel in REQUIRED_CHANNELS:
+        try:
+            ch = channel.replace('@', '').strip()
+            # بررسی وجود کانال
+            await context.bot.get_chat(f"@{ch}")
+            # بررسی عضویت کاربر
+            member = await context.bot.get_chat_member(chat_id=f"@{ch}", user_id=user_id)
+            if member.status not in ['member', 'administrator', 'creator']:
+                logger.info(f"❌ کاربر {user_id} در کانال {channel} عضو نیست")
+                return False
+        except Exception as e:
+            logger.error(f"❌ خطا در بررسی کانال {channel}: {e}")
+            return False
+    
+    logger.info(f"✅ کاربر {user_id} در همه کانال‌ها عضو است")
+    return True
 
 async def show_join_message(update, context):
-    channel = REQUIRED_CHANNEL.replace('@', '').strip()
-    keyboard = [
-        [InlineKeyboardButton("📢 عضویت در کانال", url=f"https://t.me/{channel}")],
-        [InlineKeyboardButton("✅ بررسی عضویت", callback_data="check_membership")]
-    ]
-    text = "❌ برای استفاده از ربات باید در کانال عضو شوید!\n\n"
-    try:
-        chat = await context.bot.get_chat(f"@{channel}")
-        text += f"🔹 {chat.title}\n"
-    except:
-        text += f"🔹 {REQUIRED_CHANNEL}\n"
-    text += "\nپس از عضویت، دکمه بررسی عضویت را بزنید."
-
+    """نمایش پیام عضویت در چند کانال"""
+    keyboard = []
+    text = "❌ **برای استفاده از ربات باید در کانال‌های زیر عضو شوید:**\n\n"
+    
+    for channel in REQUIRED_CHANNELS:
+        ch = channel.replace('@', '').strip()
+        link = f"https://t.me/{ch}"
+        
+        try:
+            chat = await context.bot.get_chat(f"@{ch}")
+            channel_name = chat.title or channel
+            text += f"🔹 {channel_name}\n"
+        except:
+            text += f"🔹 {channel}\n"
+        
+        keyboard.append([InlineKeyboardButton(f"📢 عضویت در کانال", url=link)])
+    
+    keyboard.append([InlineKeyboardButton("✅ بررسی عضویت", callback_data="check_membership")])
+    text += "\nپس از عضویت در همه کانال‌ها، دکمه **بررسی عضویت** را بزنید."
+    
     if update.message:
         await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     else:
@@ -123,7 +188,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
     
-    logger.info(f"🚀 کاربر: {user.first_name}")
+    logger.info(f"🚀 کاربر: {user.first_name} (ID: {user_id})")
     
     if not await check_membership(user_id, context):
         await show_join_message(update, context)
@@ -140,8 +205,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not db.get_user(user_id):
         db.add_user(user_id, user.username, user.first_name, referred_by)
+        logger.info(f"✅ کاربر جدید ثبت شد: {user_id}")
     
-    # اگر ادمین بود، منوی ادمین رو نشون بده
     if user_id == ADMIN_ID:
         await admin_menu(update, context)
     else:
@@ -196,7 +261,8 @@ async def admin_menu(update, context):
     keyboard = [
         [InlineKeyboardButton("💰 انتقال اعتبار", callback_data="admin_transfer")],
         [InlineKeyboardButton("📊 آمار کاربران", callback_data="admin_stats")],
-        [InlineKeyboardButton("📢 ارسال پیام همگانی", callback_data="admin_broadcast")],
+        [InlineKeyboardButton("📋 درخواست‌های برداشت", callback_data="admin_withdraws")],
+        [InlineKeyboardButton("📢 پیام همگانی", callback_data="admin_broadcast")],
         [InlineKeyboardButton("🔙 منوی کاربر", callback_data="user_menu")],
     ]
     
@@ -207,96 +273,214 @@ async def admin_menu(update, context):
     else:
         await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
-# ==================== انتقال اعتبار ====================
+# ==================== انتقال اعتبار (دکمه‌ای) ====================
 async def admin_transfer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """انتقال اعتبار به کاربر"""
+    """نمایش لیست کاربران برای انتقال"""
     q = update.callback_query
     await q.answer()
     
-    await q.edit_message_text(
-        "💰 **انتقال اعتبار**\n\n"
-        "فرمت: `/transfer [آیدی] [مبلغ]`\n"
-        "مثال: `/transfer 123456789 50000`\n\n"
-        "برای لغو: /cancel"
-    )
-    context.user_data['admin_mode'] = 'transfer'
-
-async def handle_transfer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """پردازش انتقال"""
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ شما ادمین نیستید!")
+    if q.from_user.id != ADMIN_ID:
+        await q.edit_message_text("❌ شما ادمین نیستید!")
         return
     
+    users = db.get_all_users()
+    
+    if not users:
+        await q.edit_message_text("❌ هیچ کاربری در دیتابیس وجود ندارد!")
+        return
+    
+    text = "💰 **انتقال اعتبار**\n\nکاربر مورد نظر را انتخاب کنید:\n"
+    
+    keyboard = []
+    for user in users[:10]:
+        user_id, username, first_name, balance, _ = user
+        name = first_name if first_name else f"کاربر {user_id}"
+        keyboard.append([
+            InlineKeyboardButton(
+                f"👤 {name} - {balance:,}",
+                callback_data=f"transfer_user_{user_id}"
+            )
+        ])
+    
+    keyboard.append([InlineKeyboardButton("🔙 برگشت", callback_data="admin_panel")])
+    await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def transfer_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمایش دکمه‌های مبلغ برای انتقال"""
+    q = update.callback_query
+    await q.answer()
+    
+    if q.from_user.id != ADMIN_ID:
+        await q.edit_message_text("❌ شما ادمین نیستید!")
+        return
+    
+    target_id = int(q.data.split('_')[2])
+    context.user_data['transfer_target'] = target_id
+    
+    target_user = db.get_user(target_id)
+    if not target_user:
+        await q.edit_message_text("❌ کاربر یافت نشد!")
+        return
+    
+    text = f"💰 **انتقال به {target_user['first_name']}**\n\n"
+    text += f"👤 کاربر: {target_user['first_name']}\n"
+    text += f"💰 موجودی فعلی: {target_user['balance']:,}\n\n"
+    text += "مبلغ را انتخاب کنید:\n"
+    
+    keyboard = [
+        [InlineKeyboardButton("💰 50,000", callback_data="transfer_amount_50000")],
+        [InlineKeyboardButton("💰 100,000", callback_data="transfer_amount_100000")],
+        [InlineKeyboardButton("💰 200,000", callback_data="transfer_amount_200000")],
+        [InlineKeyboardButton("💰 500,000", callback_data="transfer_amount_500000")],
+        [InlineKeyboardButton("💰 1,000,000", callback_data="transfer_amount_1000000")],
+        [InlineKeyboardButton("🔙 برگشت", callback_data="admin_transfer")],
+    ]
+    
+    await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def process_transfer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """پردازش انتقال اعتبار"""
+    q = update.callback_query
+    await q.answer()
+    
+    if q.from_user.id != ADMIN_ID:
+        await q.edit_message_text("❌ شما ادمین نیستید!")
+        return
+    
+    target_id = context.user_data.get('transfer_target')
+    if not target_id:
+        await q.edit_message_text("❌ خطا! دوباره تلاش کنید.")
+        return
+    
+    amount = int(q.data.split('_')[2])
+    target_user = db.get_user(target_id)
+    
+    if not target_user:
+        await q.edit_message_text("❌ کاربر یافت نشد!")
+        return
+    
+    db.update_balance(target_id, amount, f'انتقال از ادمین: {amount:,} میوپوینت')
+    
+    text = f"✅ **انتقال اعتبار انجام شد!**\n\n"
+    text += f"👤 کاربر: {target_user['first_name']}\n"
+    text += f"💰 مبلغ: {amount:,} میوپوینت\n"
+    text += f"💎 موجودی جدید: {db.get_balance(target_id):,}"
+    
+    await q.edit_message_text(text)
+    
     try:
-        parts = update.message.text.split()
-        if len(parts) != 3:
-            await update.message.reply_text("❌ فرمت اشتباه!\nمثال: `/transfer 123456789 50000`")
-            return
-        
-        target_id = int(parts[1])
-        amount = int(parts[2])
-        
-        if amount <= 0:
-            await update.message.reply_text("❌ مبلغ باید مثبت باشد!")
-            return
-        
-        user = db.get_user(target_id)
-        if not user:
-            await update.message.reply_text(f"❌ کاربر با آیدی {target_id} پیدا نشد!")
-            return
-        
-        db.update_balance(target_id, amount, f'انتقال از ادمین: {amount:,} میوپوینت')
-        
-        await update.message.reply_text(
-            f"✅ انتقال انجام شد!\n"
-            f"👤 {user['first_name']}\n"
-            f"💰 {amount:,} میوپوینت\n"
+        await context.bot.send_message(
+            target_id,
+            f"💰 {amount:,} میوپوینت به حساب شما واریز شد!\n"
             f"💎 موجودی جدید: {db.get_balance(target_id):,}"
         )
-        
-        try:
-            await context.bot.send_message(
-                target_id,
-                f"💰 {amount:,} میوپوینت به حساب شما واریز شد!\n"
-                f"💎 موجودی: {db.get_balance(target_id):,}"
-            )
-        except:
-            pass
-            
-    except ValueError:
-        await update.message.reply_text("❌ لطفاً اعداد را درست وارد کنید!")
+    except:
+        pass
     
-    context.user_data.pop('admin_mode', None)
+    context.user_data.pop('transfer_target', None)
 
 # ==================== آمار کاربران ====================
 async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش آمار"""
     q = update.callback_query
     await q.answer()
     
+    if q.from_user.id != ADMIN_ID:
+        await q.edit_message_text("❌ شما ادمین نیستید!")
+        return
+    
     users = db.get_all_users()
-    total = len(users)
-    total_balance = sum(u[3] for u in users)
-    total_referrals = sum(u[4] for u in users)
+    total_users = len(users)
+    total_balance = sum(user[3] for user in users)
+    total_referrals = sum(user[4] for user in users)
     
     text = f"📊 **آمار کلی**\n\n"
-    text += f"👥 کل کاربران: {total} نفر\n"
+    text += f"👥 تعداد کل کاربران: {total_users} نفر\n"
     text += f"💰 کل موجودی: {total_balance:,} میوپوینت\n"
     text += f"👥 کل زیرمجموعه‌ها: {total_referrals} نفر\n\n"
     
-    # برترین‌ها
     sorted_users = sorted(users, key=lambda x: x[3], reverse=True)[:5]
     if sorted_users:
         text += "🏆 **۵ کاربر برتر**\n"
-        for i, u in enumerate(sorted_users, 1):
-            text += f"{i}. {u[2]} - {u[3]:,}\n"
+        for i, user in enumerate(sorted_users, 1):
+            text += f"{i}. {user[2]} - {user[3]:,} میوپوینت\n"
     
-    keyboard = [[InlineKeyboardButton("🔙 برگشت", callback_data="admin_panel")]]
+    keyboard = [[InlineKeyboardButton("🔙 برگشت به پنل", callback_data="admin_panel")]]
     await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
-# ==================== ارسال پیام همگانی ====================
+# ==================== درخواست‌های برداشت ====================
+async def admin_withdraws(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    
+    if q.from_user.id != ADMIN_ID:
+        await q.edit_message_text("❌ شما ادمین نیستید!")
+        return
+    
+    pending = db.get_withdraw_requests('pending')
+    
+    if not pending:
+        text = "📋 هیچ درخواست برداشتی در انتظار نیست!"
+        keyboard = [[InlineKeyboardButton("🔙 برگشت", callback_data="admin_panel")]]
+        await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+    
+    text = f"📋 **درخواست‌های برداشت** ({len(pending)} مورد)\n\n"
+    
+    keyboard = []
+    for req in pending:
+        req_id, user_id, amount, date = req
+        user = db.get_user(user_id)
+        name = user['first_name'] if user else f"کاربر {user_id}"
+        keyboard.append([
+            InlineKeyboardButton(
+                f"✅ {name} - {amount:,}",
+                callback_data=f"approve_withdraw_{req_id}"
+            )
+        ])
+    
+    keyboard.append([InlineKeyboardButton("🔙 برگشت", callback_data="admin_panel")])
+    await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def approve_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    
+    if q.from_user.id != ADMIN_ID:
+        await q.edit_message_text("❌ شما ادمین نیستید!")
+        return
+    
+    req_id = int(q.data.split('_')[2])
+    
+    pending = db.get_withdraw_requests('pending')
+    req = next((r for r in pending if r[0] == req_id), None)
+    
+    if not req:
+        await q.edit_message_text("❌ این درخواست قبلاً پردازش شده!")
+        return
+    
+    req_id, user_id, amount, date = req
+    
+    db.update_withdraw_status(req_id, 'approved')
+    
+    user = db.get_user(user_id)
+    name = user['first_name'] if user else f"کاربر {user_id}"
+    
+    text = f"✅ درخواست برداشت تایید شد!\n\n"
+    text += f"👤 {name}\n"
+    text += f"💰 {amount:,} میوپوینت\n"
+    
+    await q.edit_message_text(text)
+    
+    try:
+        await context.bot.send_message(
+            user_id,
+            f"✅ درخواست برداشت {amount:,} میوپوینت شما تایید شد!\nبه زودی پرداخت خواهد شد."
+        )
+    except:
+        pass
+
+# ==================== پیام همگانی ====================
 async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ارسال پیام همگانی"""
     q = update.callback_query
     await q.answer()
     
@@ -308,19 +492,18 @@ async def admin_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['admin_mode'] = 'broadcast'
 
 async def handle_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """پردازش پیام همگانی"""
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ شما ادمین نیستید!")
         return
     
     if update.message.text == "/cancel":
-        await update.message.reply_text("❌ لغو شد!")
+        await update.message.reply_text("❌ عملیات لغو شد!")
         context.user_data.pop('admin_mode', None)
         await admin_menu(update, context)
         return
     
     users = db.get_all_users()
-    await update.message.reply_text(f"📤 ارسال به {len(users)} کاربر...")
+    await update.message.reply_text(f"📤 در حال ارسال پیام به {len(users)} کاربر...")
     
     success = 0
     for user in users:
@@ -341,7 +524,7 @@ async def referral_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_username = (await context.bot.get_me()).username
     link = f"https://t.me/{bot_username}?start={q.from_user.id}"
     
-    text = f"👥 زیرمجموعه‌گیری\n\n"
+    text = f"👥 **زیرمجموعه‌گیری**\n\n"
     text += f"🎁 هر دعوت = {REFERRAL_BONUS:,} میوپوینت\n\n"
     text += f"🔗 لینک دعوتت:\n{link}\n\n"
     text += f"👥 زیرمجموعه: {user['referral_count']} نفر\n"
@@ -367,7 +550,7 @@ async def wallet_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.answer()
     user = db.get_user(q.from_user.id)
     
-    text = f"💰 کیف پول\n\n"
+    text = f"💰 **کیف پول**\n\n"
     text += f"👤 {user['first_name']}\n"
     if user['username']:
         text += f"🆔 @{user['username']}\n"
@@ -391,7 +574,7 @@ async def transactions_section(update: Update, context: ContextTypes.DEFAULT_TYP
     if not txs:
         text = "📊 هنوز تراکنشی نداری!"
     else:
-        text = "📊 آخرین تراکنش‌ها\n\n"
+        text = "📊 **آخرین تراکنش‌ها**\n\n"
         for t in txs:
             emoji = "➕" if t[0] > 0 else "➖"
             text += f"{emoji} {t[0]:+,} - {t[1]}\n   📅 {t[2]}\n\n"
@@ -404,7 +587,7 @@ async def withdraw_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.answer()
     user = db.get_user(q.from_user.id)
     
-    text = f"💳 برداشت\n\n💰 موجودی: {user['balance']:,} میوپوینت\n\nمبلغ رو انتخاب کن:\n"
+    text = f"💳 **برداشت**\n\n💰 موجودی: {user['balance']:,} میوپوینت\n\nمبلغ رو انتخاب کن:\n"
     
     keyboard = []
     for amount in WITHDRAW_AMOUNTS:
@@ -427,17 +610,19 @@ async def process_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     db.update_balance(q.from_user.id, -amount, f'برداشت {amount:,} میوپوینت')
+    db.add_withdraw_request(q.from_user.id, amount)
     
-    text = f"✅ برداشت موفق!\n\n"
+    text = f"✅ **برداشت موفق!**\n\n"
     text += f"💰 {amount:,} میوپوینت برداشت شد.\n"
-    text += f"💎 موجودی جدید: {db.get_user(q.from_user.id)['balance']:,}"
+    text += f"💎 موجودی جدید: {db.get_user(q.from_user.id)['balance']:,}\n\n"
+    text += "📝 درخواست شما ثبت شد و پس از تایید ادمین پرداخت می‌شود."
     
     keyboard = [[InlineKeyboardButton("🔙 برگشت", callback_data="user_menu")]]
     await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     
     await context.bot.send_message(
         ADMIN_ID,
-        f"🆕 برداشت:\n👤 {user['first_name']}\n💰 {amount:,}"
+        f"🆕 درخواست برداشت جدید:\n👤 {user['first_name']}\n💰 {amount:,} میوپوینت"
     )
 
 async def no_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -449,7 +634,7 @@ async def profile_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.answer()
     user = db.get_user(q.from_user.id)
     
-    text = f"📊 اطلاعات من\n\n"
+    text = f"📊 **اطلاعات من**\n\n"
     text += f"🆔 آیدی: {q.from_user.id}\n"
     text += f"👤 نام: {user['first_name']}\n"
     if user['username']:
@@ -465,18 +650,20 @@ async def profile_section(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("🔙 برگشت", callback_data="user_menu")]]
     await q.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
-# ==================== بررسی عضویت ====================
+# ==================== بررسی عضویت با دکمه ====================
 async def check_membership_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     
-    if await check_membership(q.from_user.id, context):
-        await q.edit_message_text("✅ عضویت تایید شد!")
-        if not db.get_user(q.from_user.id):
-            db.add_user(q.from_user.id, q.from_user.username, q.from_user.first_name)
+    user_id = q.from_user.id
+    
+    if await check_membership(user_id, context):
+        await q.edit_message_text("✅ عضویت شما در همه کانال‌ها تایید شد!")
+        if not db.get_user(user_id):
+            db.add_user(user_id, q.from_user.username, q.from_user.first_name)
         await user_menu(update, context)
     else:
-        await q.answer("❌ عضو نشدی!", show_alert=True)
+        await q.answer("❌ هنوز در همه کانال‌ها عضو نشدی!", show_alert=True)
 
 # ==================== مدیریت دکمه‌ها ====================
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -489,8 +676,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await admin_menu(update, context)
     elif data == "admin_transfer":
         await admin_transfer(update, context)
+    elif data.startswith("transfer_user_"):
+        await transfer_amount(update, context)
+    elif data.startswith("transfer_amount_"):
+        await process_transfer(update, context)
     elif data == "admin_stats":
         await admin_stats(update, context)
+    elif data == "admin_withdraws":
+        await admin_withdraws(update, context)
+    elif data.startswith("approve_withdraw_"):
+        await approve_withdraw(update, context)
     elif data == "admin_broadcast":
         await admin_broadcast(update, context)
     elif data == "referral":
@@ -512,16 +707,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "check_membership":
         await check_membership_button(update, context)
 
-# ==================== پیام‌ها ====================
+# ==================== مدیریت پیام‌ها ====================
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """مدیریت پیام‌های متنی"""
     user_id = update.effective_user.id
     text = update.message.text
-    
-    # حالت ادمین
-    if context.user_data.get('admin_mode') == 'transfer' and user_id == ADMIN_ID:
-        await handle_transfer(update, context)
-        return
     
     if context.user_data.get('admin_mode') == 'broadcast' and user_id == ADMIN_ID:
         await handle_broadcast(update, context)
@@ -531,28 +720,32 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await start(update, context)
     elif text == "/cancel":
         context.user_data.pop('admin_mode', None)
-        await update.message.reply_text("✅ لغو شد!")
+        await update.message.reply_text("✅ عملیات لغو شد!")
         if user_id == ADMIN_ID:
             await admin_menu(update, context)
         else:
             await user_menu(update, context)
     else:
-        await update.message.reply_text("❌ از دکمه‌ها استفاده کن!")
+        await update.message.reply_text("❌ لطفاً از دکمه‌ها استفاده کنید.")
 
 # ==================== اجرا ====================
 def main():
-    print("=" * 50)
-    print("🌟 ربات خفن با پنل ادمین")
-    print("=" * 50)
-    print(f"👑 ادمین: {ADMIN_ID}")
-    print("=" * 50)
+    print("=" * 60)
+    print("🌟 ربات خفن - نسخه حرفه‌ای با چند کانال")
+    print("=" * 60)
+    print(f"📢 کانال‌ها: {REQUIRED_CHANNELS}")
+    print(f"👑 آیدی ادمین: {ADMIN_ID}")
+    print("=" * 60)
     
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
     
-    print("✅ ربات روشن شد!")
+    print("✅ ربات با موفقیت روشن شد!")
+    print("📱 به ربات خود بروید و /start بزنید")
+    print("=" * 60)
+    
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
