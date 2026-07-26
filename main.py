@@ -15,7 +15,7 @@ REQUIRED_CHANNELS = [
     # "@YourChannel3",  # ← کانال سوم (اختیاری)
 ]
 
-ADMIN_ID = 6691996134  # ← آیدی عددی خودت (با @userinfobot پیدا کن)
+ADMIN_ID = 6691663264  # ← آیدی عددی خودت (با @userinfobot پیدا کن)
 WITHDRAW_AMOUNTS = [120000, 240000, 360000, 490000, 620000, 750000]
 REFERRAL_BONUS = 30000
 
