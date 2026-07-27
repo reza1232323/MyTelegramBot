@@ -17,7 +17,7 @@ REQUIRED_CHANNELS = [
 
 ADMIN_ID = 6691993264  # ← آیدی عددی خودت (با @userinfobot پیدا کن)
 WITHDRAW_AMOUNTS = [120000, 240000, 360000, 490000, 620000, 750000]
-REFERRAL_BONUS = 30000
+REFERRAL_BONUS = 20000
 
 # ==================== دیتابیس (سازگار با قبلی) ====================
 logging.basicConfig(level=logging.INFO)
