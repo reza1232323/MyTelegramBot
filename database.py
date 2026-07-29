@@ -136,7 +136,8 @@ def check_level_up(user_id):
     row = cursor.fetchone()
     if row:
         points, current_level = row[0], row[1]
-        new_level = (points // 100) + 1
+        # فرمول لول آپ جدید: هر ۲۰۰ هاپ = ۱ لول
+        new_level = (points // 200) + 1
         if new_level > current_level:
             cursor.execute("UPDATE users SET level = ? WHERE user_id = ?", (new_level, user_id))
             conn.commit()
@@ -144,7 +145,6 @@ def check_level_up(user_id):
             return True, new_level
     conn.close()
     return False, 1
-
 def get_city():
     conn = get_connection()
     cursor = conn.cursor()
