@@ -11,7 +11,6 @@ async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     wallet = current_user[2] # موجودی کیف پول (هاپ)
     bank = current_user[5]   # موجودی بانک
 
-    # ۱. مدیریت دستورات واریز و برداشت
     parts = text.split()
     
     # اگر فقط کلمه "بانک" فرستاده شد
@@ -20,7 +19,7 @@ async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
             f"🏦 **حساب بانکی شما**\n\n"
             f"🪙 **موجودی کیف پول:** {wallet} هاپ\n"
             f"💳 **موجودی در بانک:** {bank} هاپ\n\n"
-            f"👇 **راهنمای استفاده:**\.
+            f"👇 **راهنمای استفاده:**\n"
             f"• جهت واریز: `بانک واریز 100`\n"
             f"• جهت برداشت: `بانک برداشت 100`\n"
             f"• واریز همه موجودی: `بانک واریز همه`"
@@ -36,7 +35,7 @@ async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
             try:
                 amount = int(parts[2])
             except ValueError:
-                await update.message.reply_text("❌ لطفاً مبلغ را به عدد انگلیسی یا صحیح وارد کنید. مثال: `بانک واریز 100`", parse_mode='Markdown')
+                await update.message.reply_text("❌ لطفاً مبلغ را به عدد وارد کنید. مثال: `بانک واریز 100`", parse_mode='Markdown')
                 return
 
         if amount <= 0:
