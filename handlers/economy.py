@@ -23,6 +23,36 @@ CONTRABAND_PRODUCTS = {
     "car": {"name": "🏎 خودروی قاچاق", "cost": 10000, "profit": 35000, "db_field": "inventory_car"},
 }
 
+# ----------------- ۴. نمایش کارخونه من (انبار محصولات کاربر) -----------------
+
+async def show_my_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    user_id = update.effective_user.id
+    
+    # گرفتن تعداد محصولات کارخانه و قاچاق از دیتابیس کاربر
+    clothes = db.get_user_field(user_id, "inventory_clothes") or 0
+    food = db.get_user_field(user_id, "inventory_food") or 0
+    toy = db.get_user_field(user_id, "inventory_toy") or 0
+    house = db.get_user_field(user_id, "inventory_house") or 0
+    
+    cig = db.get_user_field(user_id, "inventory_cig") or 0
+    diamond = db.get_user_field(user_id, "inventory_diamond") or 0
+    gold = db.get_user_field(user_id, "inventory_gold") or 0
+    car = db.get_user_field(user_id, "inventory_car") or 0
+
+    text = (
+        "🏭 **کارخانه و انبار محصولات شما:**\n\n"
+        f"👕 لباس هاپویی: `{clothes}` عدد\n"
+        f"🦴 غذای ویژه: `{food}` عدد\n"
+        f"🎾 توپ بازی: `{toy}` عدد\n"
+        f"🏠 لانه شیک: `{house}` عدد\n\n"
+        "🕵️‍♂️ **اجناس قاچاق انبار شده:**\n"
+        f"🚬 سیگار قاچاق: `{cig}` عدد\n"
+        f"💎 الماس سیاه: `{diamond}` عدد\n"
+        f"🪙 شمش طلا: `{gold}` عدد\n"
+        f"🏎 خودروی قاچاق: `{car}` عدد"
+    )
+    
+    await update.message.reply_text(text, parse_mode="Markdown")
 # ----------------- ۱. بخش کارخانه -----------------
 
 async def show_factory(update: Update, context: ContextTypes.DEFAULT_TYPE):
