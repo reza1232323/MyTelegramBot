@@ -30,12 +30,52 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, user)
 
     await update.message.reply_text(msg, parse_mode='Markdown')
 
+
 async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
-    # چک کردن زمان ۵ دقیقه در دیتابیس (نمونه ساده)
+    username = update.effective_user.first_name
+    
+    # بررسی زمان آخرین هاپ
+    last_hop_str = db.get_user_field(user_id, "last_hop")
+    now = datetime.now()
+    
+    COOLDOWN_MINUTES = 5
+    
+    if last_hop_str:
+        try:
+            last_hop_time = datetime.strptime(last_hop_str, "%Y-%m-%d %H:%M:%S")
+            time_passed = now - last_hop_time
+            
+            if time_passed < timedelta(minutes=COOLDOWN_MINUTES):
+                remaining = timedelta(minutes=COOLDOWN_MINUTES) - time_passed
+                minutes, seconds = divmod(remaining.seconds, 60)
+                
+                await update.message.reply_text(
+                    f"⏳ **صبر کن {username} جان!**\n\n"
+                    f"شما تازگی هاپ زدید. برای هاپ بعدی باید **{minutes} دقیقه و {seconds} ثانیه** صبر کنید.",
+                    parse_mode='Markdown'
+                )
+                return
+        except Exception as e:
+            pass
+
+    # واریز جایزه هاپ
     reward = 50
     db.update_field(user_id, "points", reward)
-    await update.message.reply_text(f"🎉 شما **{reward}** هاپ پوینت دریافت کردید! (۵ دقیقه بعد دوباره امتحان کنید)")
+    # ثبت زمان فعلی
+    db.update_field(user_id, "last_hop", now.strftime("%Y-%m-%d %H:%M:%S"), relative=False)
+
+    current_points = db.get_user_field(user_id, "points") or (user[2] + reward)
+
+    msg = (
+        f"🎉 **هاپ با موفقیت انجام شد!**\n\n"
+        f"👤 کاربر: {update.effective_user.mention_markdown()}\n"
+        f"🎁 پوینت دریافتی: **+{reward}** هاپ\n"
+        f"💰 موجودی کل: **{current_points:,}** هاپ\n\n"
+        f"⏱ _۵ دقیقه دیگر می‌توانید دوباره هاپ بزنید._"
+    )
+
+    await update.message.reply_text(msg, parse_mode='Markdown')
 
 async def buy_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
