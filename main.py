@@ -35,7 +35,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif text.startswith("همگانی"):
             await admin.broadcast_message(update, context); return
 
-    # 🎮 دستورات عمومی و مربوط به سگ (Pet)
+    # 🎮 دستورات عمومی و سگ
     if text in ["هاپ", "hop"]: 
         await pet.claim_hop(update, context, user)
     elif text in ["هاپوهام", "پروفایل", "profile"]: 
@@ -63,12 +63,16 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    if query.data.startswith("join_gamble:"):
+    data = query.data
+
+    if data.startswith("join_gamble:"):
         await games.handle_gamble_callback(update, context)
-    elif query.data.startswith("bank_"):
+    elif data.startswith("bank_"):
         await economy.handle_bank_callback(update, context)
-    elif query.data.startswith("buy_factory_"):
+    elif data.startswith("buy_factory_"):
         await economy.handle_factory_callback(update, context)
+    elif data.startswith("smuggle_"):
+        await economy.handle_smuggle_callback(update, context)
 
 def main():
     app = ApplicationBuilder().token(config.BOT_TOKEN).build()
