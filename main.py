@@ -12,9 +12,19 @@ logging.basicConfig(level=logging.INFO)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👋 ربات هاپو مگا فعال است!")
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    """ثبت دقیق تمام خطاهای ثبت نشده برای جلوگیری از کرش"""
+    logging.error(f"خطایی در پردازش رخ داد: {context.error}", exc_info=context.error)
+
 async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
+
+    # اول چک می‌کنیم آیا کاربر در حال وارد کردن تعداد برای خرید کارخانه یا قاچاق است؟
+    if hasattr(economy, "handle_factory_and_smuggle_text"):
+        handled = await economy.handle_factory_and_smuggle_text(update, context)
+        if handled:
+            return
 
     text = update.message.text.strip()
     user_id = update.effective_user.id
@@ -33,14 +43,12 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "غذا":
         await pet.feed_dog(update, context, user)
 
-    # 🏦 ۲. بانک، اقتصاد و بازی‌ها
+    # 🏦 ۲. بانک، اقتصاد، کارخانه و قاچاق
     elif text.startswith("بانک"):
         await economy.bank_status(update, context, user)
-    elif text == "کارخونه من":
+    elif text in ["کارخونه", "کارخونه من"]:
         await economy.show_factory(update, context)
-    elif text == "کارخونه":
-        await economy.handle_factory(update, context, user)
-    elif text == "قاچاق":
+    elif text in ["قاچاق", "قاچاقچی"]:
         await economy.show_contraband(update, context)
     elif text.startswith("زندان"):
         await economy.jail_status(update, context, user)
@@ -65,15 +73,26 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await admin.broadcast(update, context)
 
 async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = update.callback_query.data
+    query = update.callback_query
+    data = query.data
+
     if data.startswith("bank_"):
         await economy.handle_bank_callback(update, context)
     elif data.startswith("buy_fac_") or data.startswith("fac_"):
-        await economy.handle_factory_callback(update, context)
+        if hasattr(economy, "factory_callback"):
+            await economy.factory_callback(update, context)
+        elif hasattr(economy, "handle_factory_callback"):
+            await economy.handle_factory_callback(update, context)
+    elif data.startswith("select_contra_") or data in ["start_smuggling", "pay_bail"]:
+        if hasattr(economy, "handle_smuggle_callback"):
+            await economy.handle_smuggle_callback(update, context)
 
 def main():
     db.init_db()
     app = ApplicationBuilder().token(config.BOT_TOKEN).build()
+
+    # ثبت Error Handler برای لاگ خطاهایی مثل Conflict یا AttributeError
+    app.add_error_handler(error_handler)
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, router))
