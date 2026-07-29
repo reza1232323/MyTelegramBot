@@ -35,12 +35,12 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ثبت کاربر در دیتابیس
     user = db.get_user(user_id, username)
 
-    # عدم پاسخ‌دهی به دستورات در پیوی (به جز استارت)
+    # عدم پاسخ‌دهی در پیوی
     if chat_type == 'private':
         await update.message.reply_text("❌ برای استفاده از امکانات، ربات را به گروه اضافه کنید!")
         return
 
-    # 🎮 ۱. دستورات عمومی (قابل اجرا برای همه اعضا)
+    # ---------------- 🎮 ۱. دستورات عمومی (قابل اجرا برای کل کاربران) ----------------
     if text in ["هاپوهام", "هاپو هام", "پروفایل", "profile"]:
         await pet.show_profile(update, context, user)
         return
@@ -51,18 +51,21 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await pet.show_help(update, context)
         return
 
-    # 💼 ۲. اقتصاد و بازار (عمومی)
-    if text.startswith("بانک"):
-        await economy.bank_status(update, context, user)
+    # ---------------- 💼 ۲. تفکیک دقیق کارخانه و انبار (اقتصاد) ----------------
+    if text in ["کارخونه من", "کارخانه من", "انبار من", "انبار"]:
+        await economy.my_inventory(update, context, user)
         return
-    elif text.startswith("کارخونه") or text.startswith("کارخانه"):
+    elif text in ["کارخونه", "کارخانه"]:
         await economy.handle_factory(update, context, user)
+        return
+    elif text.startswith("بانک"):
+        await economy.bank_status(update, context, user)
         return
     elif text.startswith("قاچاق"):
         await economy.handle_smuggle(update, context, user)
         return
 
-    # 👑 ۳. دستورات ادمین (مخصوص ادمین‌های تنظیم شده در کانفیگ)
+    # ---------------- 👑 ۳. دستورات مدیریتی ادمین ----------------
     if user_id in config.ADMIN_IDS:
         if text.startswith("افزایش پوینت"):
             await admin.add_points(update, context)
