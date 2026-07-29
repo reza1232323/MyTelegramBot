@@ -73,13 +73,16 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await city.city_info(update, context)
     elif text == "قاچاق":
         await city.smuggle(update, context, user)
-
-    # دستورات ادمین
+# دستورات ادمین
     elif user_id in config.ADMIN_IDS:
         if text.startswith("افزایش پوینت"):
             await admin.add_points(update, context)
         elif text.startswith("کاهش پوینت"):
             await admin.remove_points(update, context)
+        elif text.startswith("افزایش لول"):
+            await admin.add_level(update, context)
+        elif text.startswith("کاهش لول"):
+            await admin.remove_level(update, context)
 
 def main():
     app = ApplicationBuilder().token(config.BOT_TOKEN).build()
