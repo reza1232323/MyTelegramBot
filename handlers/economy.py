@@ -181,15 +181,16 @@ async def handle_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, use
         f"👇 یکی از کارخانه‌های زیر را برای خرید انتخاب کنید:"
     )
 
+    # شناسه کاربر به callback_data اضافه شد تا فقط خودش بتواند کلیک کند
     keyboard = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("👕 کارخانه لباس (۲۰۰ هاپ)", callback_data="buy_factory_لباس")
+            InlineKeyboardButton("👕 کارخانه لباس (۲۰۰ هاپ)", callback_data=f"buy_factory_لباس_{user_id}")
         ],
         [
-            InlineKeyboardButton("🍕 کارخانه غذا (۵۰۰ هاپ)", callback_data="buy_factory_غذا")
+            InlineKeyboardButton("🍕 کارخانه غذا (۵۰۰ هاپ)", callback_data=f"buy_factory_غذا_{user_id}")
         ],
         [
-            InlineKeyboardButton("🧸 کارخانه اسباب‌بازی (۱,۰۰۰ هاپ)", callback_data="buy_factory_اسباب‌بازی")
+            InlineKeyboardButton("🧸 کارخانه اسباب‌بازی (۱,۰۰۰ هاپ)", callback_data=f"buy_factory_اسباب‌بازی_{user_id}")
         ]
     ])
 
@@ -201,16 +202,24 @@ async def handle_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, use
 
 async def handle_factory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    clicker_id = query.from_user.id  # کسی که روی دکمه کلیک کرده
     
-    data = query.data
-    user_id = query.from_user.id
-    user = db.get_user(user_id)
+    data = query.data.replace("buy_factory_", "")
+    parts = data.split("_")
+    
+    ftype = parts[0]
+    owner_id = int(parts[1])
+
+    # 🔒 بررسی اختصاصی بودن پنل
+    if clicker_id != owner_id:
+        await query.answer("❌ این پنل مدیریت برای شما نیست!", show_alert=True)
+        return
+
+    await query.answer()
+
+    user = db.get_user(clicker_id)
     user_points = user[2]
 
-    # استخراج نوع کارخانه از callback_data
-    ftype = data.replace("buy_factory_", "")
-    
     factories = {
         "لباس": {"cost": 200, "icon": "👕"},
         "غذا": {"cost": 500, "icon": "🍕"},
@@ -231,8 +240,8 @@ async def handle_factory_callback(update: Update, context: ContextTypes.DEFAULT_
             return
 
         # کسر هزینه و ثبت کارخانه
-        db.update_field(user_id, "points", -cost)
-        db.update_field(user_id, "factory_type", f"کارخانه {ftype}", relative=False)
+        db.update_field(clicker_id, "points", -cost)
+        db.update_field(clicker_id, "factory_type", f"کارخانه {ftype}", relative=False)
 
         await query.message.reply_text(
             f"🎉 **تبریک! خرید موفقیت‌آمیز بود!** {icon}\n\n"
@@ -241,6 +250,6 @@ async def handle_factory_callback(update: Update, context: ContextTypes.DEFAULT_
             parse_mode='Markdown'
         )
         
-        # به‌روزرسانی منوی کارخانه
-        updated_user = db.get_user(user_id)
+        # به‌روزرسانی منوی کارخانه برای خریدار
+        updated_user = db.get_user(clicker_id)
         await handle_factory(update, context, updated_user)
