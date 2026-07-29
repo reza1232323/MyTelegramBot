@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime, timedelta
 
 DB_NAME = 'database.db'
 
@@ -9,7 +10,6 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
     
-    # ساخت جدول اصلی کاربران همراه با تمام ستون‌های مورد نیاز
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -23,13 +23,19 @@ def init_db():
             last_hop TEXT,
             factory_count INTEGER DEFAULT 0,
             in_jail INTEGER DEFAULT 0,
+            jail_until TEXT DEFAULT NULL,
             inventory_diamond INTEGER DEFAULT 0,
             inventory_cig INTEGER DEFAULT 0,
-            inventory_choco INTEGER DEFAULT 0
+            inventory_choco INTEGER DEFAULT 0,
+            inventory_car INTEGER DEFAULT 0,
+            inventory_gold INTEGER DEFAULT 0,
+            inventory_clothes INTEGER DEFAULT 0,
+            inventory_food INTEGER DEFAULT 0,
+            inventory_toy INTEGER DEFAULT 0,
+            inventory_house INTEGER DEFAULT 0
         )
     ''')
 
-    # ساخت جدول برای متغیرهای کلی سیستم (مثل صندوق شهر)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS global_vars (
             key TEXT PRIMARY KEY,
@@ -99,3 +105,25 @@ def update_global_field(key, amount):
     cursor.execute("INSERT INTO global_vars (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = value + ?", (key, amount, amount))
     conn.commit()
     conn.close()
+
+# ----------------- متدهای جدید مربوط به زندان -----------------
+
+def set_jail(user_id, minutes=15):
+    jail_until = (datetime.now() + timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
+    update_field(user_id, "in_jail", 1, relative=False)
+    update_field(user_id, "jail_until", jail_until, relative=False)
+
+def is_in_jail(user_id):
+    jail_until_str = get_user_field(user_id, "jail_until")
+    if jail_until_str:
+        jail_until = datetime.strptime(jail_until_str, "%Y-%m-%d %H:%M:%S")
+        if datetime.now() < jail_until:
+            return True, jail_until
+    # اگر زمان گذشته باشه زندان رو صفر می‌کنه
+    update_field(user_id, "in_jail", 0, relative=False)
+    update_field(user_id, "jail_until", None, relative=False)
+    return False, None
+
+def release_from_jail(user_id):
+    update_field(user_id, "in_jail", 0, relative=False)
+    update_field(user_id, "jail_until", None, relative=False)
