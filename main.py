@@ -20,7 +20,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
 
-    # اول چک می‌کنیم آیا کاربر در حال وارد کردن تعداد برای خرید کارخانه یا قاچاق است؟
+    # بررسی اینکه آیا کاربر در حال ارسال تعداد برای خرید یا قاچاق است
     if hasattr(economy, "handle_factory_and_smuggle_text"):
         handled = await economy.handle_factory_and_smuggle_text(update, context)
         if handled:
@@ -43,8 +43,8 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "غذا":
         await pet.feed_dog(update, context, user)
 
-# 🏦 ۲. بانک، اقتصاد، کارخانه و قاچاق
-    if text.startswith("بانک"):
+    # 🏦 ۲. بانک، اقتصاد، کارخانه و قاچاق
+    elif text.startswith("بانک"):
         await economy.bank_status(update, context, user)
     elif text == "کارخونه":
         await economy.show_factory(update, context)
@@ -62,6 +62,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await economy.city_status(update, context, user)
     elif text.startswith("اهدا"):
         await economy.donate_city(update, context, user)
+
     # 👑 ۳. دستورات ادمین (روی ریپلای)
     elif user_id in config.ADMIN_IDS:
         if text.startswith("افزایش پوینت"):
@@ -74,7 +75,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await admin.remove_level(update, context)
         elif text.startswith("همگانی"):
             await admin.broadcast(update, context)
-
+            
 async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
