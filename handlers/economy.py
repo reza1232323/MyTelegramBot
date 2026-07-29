@@ -171,27 +171,76 @@ async def handle_smuggle(update: Update, context: ContextTypes.DEFAULT_TYPE, use
 
 async def handle_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
-    text = update.message.text.strip()
+    user_points = user[2]
+    current_factory = user[14]
 
-    if text == "کارخونه":
-        msg = (
-            f"🏭 **کارخانه شما:** {user[14]}\n\n"
-            "👇 **انواع کارخانه‌های قابل خرید:**\n"
-            "• `خرید کارخونه لباس` (هزینه: ۲۰۰ هاپ)\n"
-            "• `خرید کارخونه غذا` (هزینه: ۵۰۰ هاپ)\n"
-            "• `خرید کارخونه اسباب‌بازی` (هزینه: ۱۰۰۰ هاپ)"
+    msg = (
+        f"🏭 **مدیریت کارخانه هاپویی**\n\n"
+        f"🏗 **کارخانه فعلی شما:** {current_factory}\n"
+        f"💰 **موجودی کیف پول:** {user_points:,} هاپ\n\n"
+        f"👇 یکی از کارخانه‌های زیر را برای خرید انتخاب کنید:"
+    )
+
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("👕 کارخانه لباس (۲۰۰ هاپ)", callback_data="buy_factory_لباس")
+        ],
+        [
+            InlineKeyboardButton("🍕 کارخانه غذا (۵۰۰ هاپ)", callback_data="buy_factory_غذا")
+        ],
+        [
+            InlineKeyboardButton("🧸 کارخانه اسباب‌بازی (۱,۰۰۰ هاپ)", callback_data="buy_factory_اسباب‌بازی")
+        ]
+    ])
+
+    if update.callback_query:
+        await update.callback_query.edit_message_text(msg, reply_markup=keyboard, parse_mode='Markdown')
+    else:
+        await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
+
+
+async def handle_factory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    user_id = query.from_user.id
+    user = db.get_user(user_id)
+    user_points = user[2]
+
+    # استخراج نوع کارخانه از callback_data
+    ftype = data.replace("buy_factory_", "")
+    
+    factories = {
+        "لباس": {"cost": 200, "icon": "👕"},
+        "غذا": {"cost": 500, "icon": "🍕"},
+        "اسباب‌بازی": {"cost": 1000, "icon": "🧸"}
+    }
+
+    if ftype in factories:
+        cost = factories[ftype]["cost"]
+        icon = factories[ftype]["icon"]
+
+        if user_points < cost:
+            await query.message.reply_text(
+                f"❌ **موجودی ناکافی!**\n"
+                f"برای خرید {icon} **کارخانه {ftype}** به **{cost:,} هاپ** نیاز داری!\n"
+                f"💰 موجودی فعلی شما: {user_points:,} هاپ",
+                parse_mode='Markdown'
+            )
+            return
+
+        # کسر هزینه و ثبت کارخانه
+        db.update_field(user_id, "points", -cost)
+        db.update_field(user_id, "factory_type", f"کارخانه {ftype}", relative=False)
+
+        await query.message.reply_text(
+            f"🎉 **تبریک! خرید موفقیت‌آمیز بود!** {icon}\n\n"
+            f"🏭 شما صاحب **کارخانه {ftype}** شدید!\n"
+            f"💸 مبلغ **{cost:,} هاپ** از حسابتان کسر شد.",
+            parse_mode='Markdown'
         )
-        await update.message.reply_text(msg, parse_mode='Markdown')
-        return
-
-    if text.startswith("خرید کارخونه"):
-        ftype = text.replace("خرید کارخونه", "").strip()
-        costs = {"لباس": 200, "غذا": 500, "اسباب‌بازی": 1000}
-        if ftype in costs:
-            cost = costs[ftype]
-            if user[2] < cost:
-                await update.message.reply_text(f"❌ برای خرید به {cost} هاپ نیاز دارید.")
-                return
-            db.update_field(user_id, "points", -cost)
-            db.update_field(user_id, "factory_type", f"کارخانه {ftype}", relative=False)
-            await update.message.reply_text(f"🎉 **کارخانه {ftype} خریداری شد!**")
+        
+        # به‌روزرسانی منوی کارخانه
+        updated_user = db.get_user(user_id)
+        await handle_factory(update, context, updated_user)
