@@ -1,4 +1,5 @@
 import sqlite3
+import random
 from datetime import datetime, timedelta
 
 DB_NAME = "hapo_advanced.db"
@@ -10,7 +11,6 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # جدول جامع کاربران
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY,
@@ -34,11 +34,12 @@ def init_db():
         
         in_jail_until TEXT,
         last_hop TEXT,
-        last_income_claim TEXT
+        last_income_claim TEXT,
+        account_number TEXT,
+        last_profit_claim TEXT
     )
     ''')
 
-    # جدول ارزهای ساختنی در مارکت
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS tokens (
         token_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,7 +50,6 @@ def init_db():
     )
     ''')
 
-    # سرمایه‌گذاری‌ها روی ارزها
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS investments (
         user_id INTEGER,
@@ -58,7 +58,6 @@ def init_db():
     )
     ''')
 
-    # جدول خزانه شهر
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS city (
         id INTEGER PRIMARY KEY,
@@ -69,7 +68,6 @@ def init_db():
         total_fish INTEGER DEFAULT 0
     )
     ''')
-    
     cursor.execute("INSERT OR IGNORE INTO city (id, treasury) VALUES (1, 0)")
 
     conn.commit()
@@ -90,13 +88,28 @@ def get_user(user_id, username=""):
     user = cursor.fetchone()
 
     if not user:
-        cursor.execute("INSERT INTO users (user_id, username) VALUES (?, ?)", (user_id, username))
+        acc_num = str(random.randint(1000000000, 9999999999))
+        cursor.execute("INSERT INTO users (user_id, username, account_number) VALUES (?, ?, ?)", (user_id, username, acc_num))
         conn.commit()
         cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
         user = cursor.fetchone()
 
     conn.close()
     return user
+
+def get_or_create_account_number(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT account_number FROM users WHERE user_id = ?", (user_id,))
+    res = cursor.fetchone()
+    if res and res[0]:
+        acc = res[0]
+    else:
+        acc = str(random.randint(1000000000, 9999999999))
+        cursor.execute("UPDATE users SET account_number = ? WHERE user_id = ?", (acc, user_id))
+        conn.commit()
+    conn.close()
+    return acc
 
 def update_field(user_id, field, value, relative=True):
     conn = get_connection()
