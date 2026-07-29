@@ -4,6 +4,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import database as db
 
+# ==================== 🏦 بخش بانک ====================
+
 async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
     text = update.message.text.strip() if update.message else ""
@@ -39,7 +41,7 @@ async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
         await update.message.reply_text(f"✅ مبلغ **{amt:,}** هاپ از بانک برداشت شد. 🪙", parse_mode='Markdown')
         return
 
-    # ۲. نمایش پنل تصویری شیشه‌ای بانک (در صورت فرستادن کلمه "بانک")
+    # ۲. نمایش پنل تصویری شیشه‌ای بانک (اختصاصی برای هر کاربر)
     acc_num = db.get_or_create_account_number(user_id)
     daily_profit = int(bank * 0.03)
 
@@ -66,14 +68,14 @@ async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
 
     keyboard = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("➕ واریز", callback_data="bank_deposit_help"),
-            InlineKeyboardButton("➖ برداشت", callback_data="bank_withdraw_help")
+            InlineKeyboardButton("➕ واریز", callback_data=f"bank_deposit_help_{user_id}"),
+            InlineKeyboardButton("➖ برداشت", callback_data=f"bank_withdraw_help_{user_id}")
         ],
         [
-            InlineKeyboardButton("💸 دریافت سود", callback_data="bank_claim_profit")
+            InlineKeyboardButton("💸 دریافت سود", callback_data=f"bank_claim_profit_{user_id}")
         ],
         [
-            InlineKeyboardButton("🔄 تغییر شماره حساب", callback_data="bank_change_acc")
+            InlineKeyboardButton("🔄 تغییر شماره حساب", callback_data=f"bank_change_acc_{user_id}")
         ]
     ])
 
@@ -82,20 +84,42 @@ async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     else:
         await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
 
+
 async def handle_bank_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    clicker_id = query.from_user.id
     data = query.data
-    user_id = query.from_user.id
-    user = db.get_user(user_id)
 
-    if data == "bank_deposit_help":
-        await query.message.reply_text("💡 **راهنمای واریز:**\nعبارت زیر را ارسال کنید:\n`بانک واریز 100` یا `بانک واریز همه`", parse_mode='Markdown')
+    # استخراج دستور و آیدی مالک پنل
+    data_clean = data.replace("bank_", "")
+    parts = data_clean.split("_")
     
-    elif data == "bank_withdraw_help":
+    # پردازش نام اکشن و آیدی صاحب دکمه
+    if len(parts) >= 3 and parts[0] in ["deposit", "withdraw"]:
+        action = f"{parts[0]}_{parts[1]}"
+        owner_id = int(parts[2])
+    elif len(parts) >= 3 and parts[0] in ["claim", "change"]:
+        action = f"{parts[0]}_{parts[1]}"
+        owner_id = int(parts[2])
+    else:
+        action = parts[0]
+        owner_id = int(parts[1]) if len(parts) > 1 else clicker_id
+
+    # 🔒 بررسی اختصاصی بودن پنل بانک
+    if clicker_id != owner_id:
+        await query.answer("❌ این پنل بانک متعلق به شما نیست!", show_alert=True)
+        return
+
+    await query.answer()
+    user = db.get_user(clicker_id)
+
+    if action == "deposit_help":
+        await query.message.reply_text("💡 **راهنمای واریز:**\nعبارت زیر را ارسال کنید:\n`بانک واریز 100` یا `بانک واریز همه`", parse_mode='Markdown')
+        
+    elif action == "withdraw_help":
         await query.message.reply_text("💡 **راهنمای برداشت:**\nعبارت زیر را ارسال کنید:\n`بانک برداشت 100` یا `بانک برداشت همه`", parse_mode='Markdown')
 
-    elif data == "bank_claim_profit":
+    elif action == "claim_profit":
         bank_bal = user[5]
         daily_profit = int(bank_bal * 0.03)
         if daily_profit <= 0:
@@ -115,23 +139,19 @@ async def handle_bank_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             except Exception:
                 pass
 
-        db.update_field(user_id, "bank_balance", daily_profit)
-        db.update_field(user_id, "last_profit_claim", datetime.now().isoformat(), relative=False)
+        db.update_field(clicker_id, "bank_balance", daily_profit)
+        db.update_field(clicker_id, "last_profit_claim", datetime.now().isoformat(), relative=False)
         await query.message.reply_text(f"🎉 **مبلغ {daily_profit:,} هاپ (سود ۳٪ روزانه)** اضافه شد!")
-        await bank_status(update, context, db.get_user(user_id))
+        await bank_status(update, context, db.get_user(clicker_id))
 
-    elif data == "bank_change_acc":
+    elif action == "change_acc":
         new_acc = str(random.randint(1000000000, 9999999999))
-        db.update_field(user_id, "account_number", new_acc, relative=False)
+        db.update_field(clicker_id, "account_number", new_acc, relative=False)
         await query.message.reply_text(f"✅ شماره حساب جدید شما صادر شد:\n`{new_acc}`", parse_mode='Markdown')
-        await bank_status(update, context, db.get_user(user_id))
+        await bank_status(update, context, db.get_user(clicker_id))
 
-import random
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
-import database as db
 
-# ==================== 🏭 کارخانه ====================
+# ==================== 🏭 بخش کارخانه ====================
 
 async def handle_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
@@ -155,7 +175,6 @@ async def handle_factory_callback(update: Update, context: ContextTypes.DEFAULT_
     query = update.callback_query
     clicker_id = query.from_user.id
 
-    # بررسی ایدی مالک دکمه
     data = query.data.replace("buy_factory_", "")
     parts = data.split("_")
     fac_type = parts[0]
@@ -186,7 +205,7 @@ async def handle_factory_callback(update: Update, context: ContextTypes.DEFAULT_
     )
 
 
-# ==================== 🕵️‍♂️ قاچاق ====================
+# ==================== 🕵️‍♂️ بخش قاچاق ====================
 
 async def handle_smuggle(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
