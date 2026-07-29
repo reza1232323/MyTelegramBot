@@ -3,6 +3,16 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import database as db
 
+# --- 🎯 اهداف و نیازمندی‌های هر سطح برای ارتقا به سطح بعدی ---
+CITY_LEVEL_REQUIREMENTS = {
+    1: {"treasury": 10000, "hops": 100, "dogs": 5, "bones": 20, "fish": 10},
+    2: {"treasury": 30000, "hops": 200, "dogs": 15, "bones": 40, "fish": 20},
+    3: {"treasury": 60000, "hops": 400, "dogs": 35, "bones": 80, "fish": 40},
+    4: {"treasury": 120000, "hops": 800, "dogs": 50, "bones": 150, "fish": 80},
+    5: {"treasury": 250000, "hops": 1500, "dogs": 80, "bones": 300, "fish": 150},
+    # برای سطوح بالاتر هم به همین ترتیب افزوده می‌شود
+}
+
 # --- 🎯 تابع محاسبه نوار پیشرفت (۵ خانه‌ای) ---
 def get_progress_bar(current, total):
     if total <= 0:
@@ -218,10 +228,9 @@ async def gamble(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
 
 # --- 🏙 شهر و اهدا ---
 async def city_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
-    # نام شهر همان نام گروه است
     chat_title = update.effective_chat.title or "شهر هاپو"
     
-    # دریافت اطلاعات شهر از دیتابیس
+    # دریافت آمار شهر از دیتابیس
     if hasattr(db, 'get_city'):
         city_data = db.get_city()
         treasury = city_data[0]
@@ -229,19 +238,48 @@ async def city_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
         dogs = city_data[2]
         bones = city_data[3]
         fish = city_data[4]
+        level = city_data[5] if len(city_data) > 5 else (db.get_global_field("city_level") or 1)
     else:
         treasury = db.get_global_field("city_fund") or 0
-        hops = 8642
-        dogs = 24
-        bones = 775
-        fish = 775
+        hops = db.get_global_field("city_hops") or 0
+        dogs = db.get_global_field("city_dogs") or 0
+        bones = db.get_global_field("city_bones") or 0
+        fish = db.get_global_field("city_fish") or 0
+        level = db.get_global_field("city_level") or 1
 
-    # اهداف سطح ۴
-    req_treasury = 60000
-    req_hops = 400
-    req_dogs = 35
-    req_bones = 80
-    req_fish = 40
+    # دریافت نیازمندی‌های سطح جاری برای ارتقا به سطح بعدی
+    reqs = CITY_LEVEL_REQUIREMENTS.get(level, CITY_LEVEL_REQUIREMENTS[3])
+    req_treasury = reqs["treasury"]
+    req_hops = reqs["hops"]
+    req_dogs = reqs["dogs"]
+    req_bones = reqs["bones"]
+    req_fish = reqs["fish"]
+
+    # بررسی شرط ارتقای سطح (Level Up)
+    if (treasury >= req_treasury and 
+        hops >= req_hops and 
+        dogs >= req_dogs and 
+        bones >= req_bones and 
+        fish >= req_fish and 
+        level < 10):
+        
+        level += 1
+        if hasattr(db, 'update_city_level'):
+            db.update_city_level(level)
+        else:
+            db.update_global_field("city_level", level, relative=False)
+            
+        await update.message.reply_text(f"🎉 **تبریک! شهر هاپو شما به سطح {level} ارتقا یافت!** 🥳\nامکانات و باف‌های جدید فعال شدند.")
+        
+        # به‌روزرسانی نیازمندی‌ها برای سطح جدید
+        reqs = CITY_LEVEL_REQUIREMENTS.get(level, CITY_LEVEL_REQUIREMENTS[min(level, 5)])
+        req_treasury = reqs["treasury"]
+        req_hops = reqs["hops"]
+        req_dogs = reqs["dogs"]
+        req_bones = reqs["bones"]
+        req_fish = reqs["fish"]
+
+    next_level = min(level + 1, 10)
 
     msg = (
         "╮──「  شهر هاپو  」\n\n"
@@ -249,17 +287,17 @@ async def city_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
         "┐─  رتبه جهانی : #1\n"
         "└─ \n\n"
         " آمار شهر:\n"
-        "┐─  سطح : 3 / 10\n"
+        f"┐─  سطح : {level} / 10\n"
         f"┐─  خزانه : {treasury:,}\n"
         f"┐─  کل هاپ : {hops:,}\n"
         f"┐─  کل سگ : {dogs:,}\n"
         f"┐─  کل استخوان : {bones:,}\n"
         f"└─  کل ماهی : {fish:,}\n\n"
-        " باف‌های فعال (سطح 3):\n"
-        "┐─  کولداون هاپ : 290s (اصلی 300s)\n"
-        "┐─  کاهش کولداون ماهیگیری : 60s\n"
-        "└─  کاهش آستانه پیشی خیابونی : 10%\n\n"
-        " پیشرفت به سطح 4:\n"
+        f" باف‌های فعال (سطح {level}):\n"
+        f"┐─  کولداون هاپ : {300 - (level * 3.33):.0f}s (اصلی 300s)\n"
+        f"┐─  کاهش کولداون ماهیگیری : {level * 20}s\n"
+        f"└─  کاهش آستانه پیشی خیابونی : {level * 3.33:.0f}%\n\n"
+        f" پیشرفت به سطح {next_level}:\n"
         f"┐─  خزانه : {treasury:,} / {req_treasury:,}  {get_progress_bar(treasury, req_treasury)}\n"
         f"┐─  هاپ‌های کل : {hops:,} / {req_hops:,}  {get_progress_bar(hops, req_hops)}\n"
         f"┐─  سگ‌های خریداری شده : {dogs:,} / {req_dogs:,}  {get_progress_bar(dogs, req_dogs)}\n"
@@ -289,3 +327,6 @@ async def donate_city(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
         db.update_global_field("city_fund", amt)
         
     await update.message.reply_text(f"🏛️ با تشکر! مبلغ {amt:,} هاپ به خزانه شهر اهدا شد.")
+    
+    # بررسی بلافاصله ارتقای سطح پس از اهدا
+    await city_status(update, context, user)
