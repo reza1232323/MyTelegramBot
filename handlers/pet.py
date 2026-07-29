@@ -3,17 +3,30 @@ from telegram import Update
 from telegram.ext import ContextTypes
 import database as db
 
-def format_balance(amount: int) -> str:
+ddef format_balance(amount: int) -> str:
+    """
+    فرمت‌سازی هوشمند موجودی:
+    - زیر ۱,۰۰۰: مثلاً ۸۷۶ دونه
+    - از ۱,۰۰۰ تا ۹۹۹,۹۹۹: مثلاً ۸۷۸۸ کا
+    - از ۱,۰۰۰,۰۰۰ تا ۹۹۹,۹۹۹,۹۹۹: مثلاً ۱.۵ میلیون یا ۱ میلیون
+    - از ۱,۰۰۰,۰۰۰,۰۰۰ به بالا: مثلاً ۲.۵ میلیارد یا ۲ میلیارد
+    """
     if amount < 1000:
         return f"{amount} دونه"
     elif amount < 1_000_000:
         return f"{amount} کا"
-    else:
+    elif amount < 1_000_000_000:
         millions = amount / 1_000_000
         if millions.is_integer():
             return f"{int(millions)} میلیون"
         else:
             return f"{millions:.1f} میلیون"
+    else:
+        billions = amount / 1_000_000_000
+        if billions.is_integer():
+            return f"{int(billions)} میلیارد"
+        else:
+            return f"{billions:.1f} میلیارد"
 
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     target_user = user
