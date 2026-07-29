@@ -1,41 +1,61 @@
+from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import ContextTypes
 import database as db
 
-async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
-    target_user = user
-    if update.message and update.message.reply_to_message:
-        reply_user = update.message.reply_to_message.from_user
-        target_user = db.get_user(reply_user.id, reply_user.username or reply_user.first_name)
+async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
+    user_id = user[0]
+    username = update.effective_user.first_name
+    
+    # ۱. بررسی زمان آخرین هاپ (محدودیت ۵ دقیقه‌ای)
+    last_hop_str = db.get_user_field(user_id, "last_hop")
+    now = datetime.now()
+    COOLDOWN_MINUTES = 5
+    
+    if last_hop_str:
+        try:
+            last_hop_time = datetime.strptime(last_hop_str, "%Y-%m-%d %H:%M:%S")
+            time_passed = now - last_hop_time
+            
+            if time_passed < timedelta(minutes=COOLDOWN_MINUTES):
+                remaining = timedelta(minutes=COOLDOWN_MINUTES) - time_passed
+                minutes, seconds = divmod(remaining.seconds, 60)
+                
+                await update.message.reply_text(
+                    f"⏳ **صبر کن {username} جان!**\n\n"
+                    f"شما تازگی هاپ زدید. برای هاپ بعدی باید **{minutes} دقیقه و {seconds} ثانیه** صبر کنید.",
+                    parse_mode='Markdown'
+                )
+                return
+        except Exception:
+            pass
 
-    user_id = target_user[0]
-    username = target_user[1] or "کاربر"
-    points = target_user[2]
-    bank_balance = target_user[5] if len(target_user) > 5 else 0
+    # ۲. دریافت لول کاربر و محاسبه پوینت بر اساس سطح
+    user_level = db.get_user_field(user_id, "level") or 1
+    
+    # فرمول محاسبه پوینت: پوینت پایه (۵۰) ضرب در لول کاربر
+    # (مثلاً: لول ۱ = ۵۰ هاپ | لول ۲ = ۱۰۰ هاپ | لول ۳ = ۱۵۰ هاپ)
+    base_reward = 50
+    reward = user_level * base_reward
 
-    dog_status = db.get_user_field(user_id, "dog_status") or "بدون سگ"
-    dog_health = db.get_user_field(user_id, "dog_health") or 0
-    acc_num = db.get_or_create_account_number(user_id)
+    # ۳. واریز جایزه و ثبت زمان فعلی
+    db.update_field(user_id, "points", reward)
+    db.update_field(user_id, "last_hop", now.strftime("%Y-%m-%d %H:%M:%S"), relative=False)
 
+    # دریافت موجودی جدید کل
+    current_points = db.get_user_field(user_id, "points") or (user[2] + reward)
+
+    # ۴. ارسال پیام همراه با مشخصات سطح و پوینت دریافتی
     msg = (
-        f"🐶 **پروفایل و مشخصات هاپو**\n\n"
-        f"👤 **کاربر:** `{username}`\n"
-        f"🆔 **شناسه:** `{user_id}`\n"
-        f"💳 **شماره حساب:** `{acc_num}`\n\n"
-        f"💰 **موجودی کیف پول:** {points:,} هاپ\n"
-        f"🏦 **موجودی بانک:** {bank_balance:,} هاپ\n\n"
-        f"🐕 **وضعیت سگ:** {dog_status}\n"
-        f"❤️ **سلامت سگ:** %{dog_health}\n"
+        f"🎉 **هاپ با موفقیت انجام شد!**\n\n"
+        f"👤 کاربر: {update.effective_user.mention_markdown()}\n"
+        f"⭐️ **سطح (لول) شما:** {user_level}\n"
+        f"🎁 **پاداش سطح:** +{reward:,} هاپ\n"
+        f"💰 **موجودی کل:** {current_points:,} هاپ\n\n"
+        f"⏱ _۵ دقیقه دیگر می‌توانید دوباره هاپ بزنید._"
     )
 
     await update.message.reply_text(msg, parse_mode='Markdown')
-
-async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
-    user_id = user[0]
-    # چک کردن زمان ۵ دقیقه در دیتابیس (نمونه ساده)
-    reward = 50
-    db.update_field(user_id, "points", reward)
-    await update.message.reply_text(f"🎉 شما **{reward}** هاپ پوینت دریافت کردید! (۵ دقیقه بعد دوباره امتحان کنید)")
 
 async def buy_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
