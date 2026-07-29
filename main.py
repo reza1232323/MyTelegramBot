@@ -35,10 +35,10 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif text.startswith("همگانی"):
             await admin.broadcast_message(update, context); return
 
-  # 🎮 دستورات عمومی
+    # 🎮 دستورات عمومی
     if text == "هاپ": await pet.claim_hop(update, context, user)
     elif text in ["هاپوهام", "پروفایل"]: await pet.show_profile(update, context, user)
-    elif text in ["راهنما", "help"]: await pet.show_help(update, context)  # 👈 اضافه شد
+    elif text in ["راهنما", "help"]: await pet.show_help(update, context)
     elif text in ["خرید سگ", "ارتقا سگ"]: await pet.buy_dog(update, context, user)
     elif text in ["غذا", "غذا دادن"]: await pet.feed_dog(update, context, user)
     elif text.startswith("بانک"): await economy.bank_status(update, context, user)
@@ -54,6 +54,8 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await games.handle_gamble_callback(update, context)
     elif query.data.startswith("bank_"):
         await economy.handle_bank_callback(update, context)
+    elif query.data.startswith("buy_factory_"):  # 👈 اضافه شد برای خرید دکمه‌ای کارخانه
+        await economy.handle_factory_callback(update, context)
 
 def main():
     app = ApplicationBuilder().token(config.BOT_TOKEN).build()
