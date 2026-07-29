@@ -41,7 +41,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "کارخونه":
         await economy.handle_factory(update, context, user)
     elif text == "قاچاق":
-        await economy.handle_smuggle(update, context, user)
+        await economy.show_contraband(update, context)
     elif text.startswith("زندان"):
         await economy.jail_status(update, context, user)
     elif text.startswith("قمار"):
