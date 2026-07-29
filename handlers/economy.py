@@ -126,42 +126,88 @@ async def handle_bank_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.message.reply_text(f"✅ شماره حساب جدید شما صادر شد:\n`{new_acc}`", parse_mode='Markdown')
         await bank_status(update, context, db.get_user(user_id))
 
-# --- 📦 پنل اصلی قاچاق ---
+import random
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+import database as db
+
+# ==================== 🏭 کارخانه ====================
+
+async def handle_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
+    user_id = user[0]
+    user_points = user[2]
+
+    msg = (
+        f"🏭 **بازار خرید کارخانه**\n\n"
+        f"💰 **موجودی شما:** {user_points:,} هاپ\n\n"
+        f"نوع کارخانه‌ای که می‌خواهید احداث کنید را انتخاب کنید:"
+    )
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🏭 کارخانه کوچک (قیمت: ۱,۰۰۰ | درآمد: ۵۰/ساعت)", callback_data=f"buy_factory_small_{user_id}")],
+        [InlineKeyboardButton("🏭 کارخانه بزرگ (قیمت: ۵,۰۰۰ | درآمد: ۳۰۰/ساعت)", callback_data=f"buy_factory_big_{user_id}")],
+    ])
+
+    await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
+
+
+async def handle_factory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    clicker_id = query.from_user.id
+
+    # بررسی ایدی مالک دکمه
+    data = query.data.replace("buy_factory_", "")
+    parts = data.split("_")
+    fac_type = parts[0]
+    owner_id = int(parts[1]) if len(parts) > 1 else clicker_id
+
+    if clicker_id != owner_id:
+        await query.answer("❌ این پنل برای شما نیست!", show_alert=True)
+        return
+
+    await query.answer()
+
+    prices = {"small": 1000, "big": 5000}
+    names = {"small": "کوچک", "big": "بزرگ"}
+
+    cost = prices.get(fac_type, 0)
+    user = db.get_user(clicker_id)
+
+    if user[2] < cost:
+        await query.message.reply_text("❌ موجودی شما برای خرید این کارخانه کافی نیست!")
+        return
+
+    # کسر سکه
+    db.update_field(clicker_id, "points", -cost)
+    
+    await query.message.edit_text(
+        f"🎉 **تبریک!**\n\nشما با موفقیت یک **کارخانه {names.get(fac_type)}** ساختید!",
+        parse_mode='Markdown'
+    )
+
+
+# ==================== 🕵️‍♂️ قاچاق ====================
+
 async def handle_smuggle(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
     user_points = user[2]
 
-    # بررسی وضعیت زندان
-    if len(user) > 19 and user[19] == 1:
-        await show_jail_panel(update, context, user)
-        return
-
     msg = (
         f"🕵️‍♂️ **بازار سیاه قاچاق هاپویی**\n\n"
         f"💰 **موجودی فعلی شما:** {user_points:,} هاپ\n\n"
-        f"⚠️ **هشدار:** قاچاق سود زیادی دارد اما در صورت دستگیری توسط پلیس، به **زندان** می‌افتید و باید جریمه بپردازید!\n\n"
+        f"⚠️ **هشدار:** در صورت لورفتن، به **زندان** می‌افتید!\n\n"
         f"👇 جنس مورد نظر برای قاچاق را انتخاب کنید:"
     )
 
     keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("💎 قاچاق الماس (سود: ۵۰۰ | ریسک: ۶۰٪)", callback_data=f"smuggle_diamond_{user_id}")
-        ],
-        [
-            InlineKeyboardButton("📦 قاچاق سیگار (سود: ۲۰۰ | ریسک: ۳۰٪)", callback_data=f"smuggle_cig_{user_id}")
-        ],
-        [
-            InlineKeyboardButton("🍫 قاچاق شکلات (سود: ۱۰۰ | ریسک: ۱۰٪)", callback_data=f"smuggle_choco_{user_id}")
-        ]
+        [InlineKeyboardButton("💎 قاچاق الماس (سود: ۵۰۰ | ریسک: ۶۰٪)", callback_data=f"smuggle_diamond_{user_id}")],
+        [InlineKeyboardButton("📦 قاچاق سیگار (سود: ۲۰۰ | ریسک: ۳۰٪)", callback_data=f"smuggle_cig_{user_id}")],
+        [InlineKeyboardButton("🍫 قاچاق شکلات (سود: ۱۰۰ | ریسک: ۱۰٪)", callback_data=f"smuggle_choco_{user_id}")],
     ])
 
-    if update.callback_query:
-        await update.callback_query.edit_message_text(msg, reply_markup=keyboard, parse_mode='Markdown')
-    else:
-        await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
+    await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
 
 
-# --- 🎲 پردازش کلیک روی دکمه‌های قاچاق ---
 async def handle_smuggle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     clicker_id = query.from_user.id
@@ -169,23 +215,14 @@ async def handle_smuggle_callback(update: Update, context: ContextTypes.DEFAULT_
     data = query.data.replace("smuggle_", "")
     parts = data.split("_")
     item_type = parts[0]
-    owner_id = int(parts[1])
+    owner_id = int(parts[1]) if len(parts) > 1 else clicker_id
 
-    # 🔒 بررسی اختصاصی بودن پنل
     if clicker_id != owner_id:
         await query.answer("❌ این پنل قاچاق برای شما نیست!", show_alert=True)
         return
 
     await query.answer()
 
-    user = db.get_user(clicker_id)
-
-    # بررسی مجدد زندان
-    if len(user) > 19 and user[19] == 1:
-        await query.message.reply_text("⛓ شما هم‌اکنون در زندان هستید! ابتدا جریمه را بپردازید.")
-        return
-
-    # تنظیمات اقلام قاچاق (سود و درصد شانس لورفتن)
     items = {
         "diamond": {"name": "الماس 💎", "profit": 500, "risk_percent": 60},
         "cig": {"name": "سیگار 📦", "profit": 200, "risk_percent": 30},
@@ -200,22 +237,15 @@ async def handle_smuggle_callback(update: Update, context: ContextTypes.DEFAULT_
     risk = selected["risk_percent"]
     item_name = selected["name"]
 
-    # محاسبه شانس لورفتن
     chance = random.randint(1, 100)
 
     if chance <= risk:
-        # 🚨 دستگیری توسط پلیس و انتقال به زندان
-        db.update_field(clicker_id, "is_jailed", 1, relative=False)
-        
         await query.message.edit_text(
-            f"🚨 **آژیر پلیس! آژیر پلیس!** 🚓\n\n"
-            f"😱 شما هنگام قاچاق **{item_name}** دستگیر شدید!\n"
-            f"⛓ شما به **زندان** منتقل شدید.\n"
-            f"💡 برای آزادی، دستور `زندان` را ارسال کنید و جریمه بپردازید.",
+            f"🚨 **آژیر پلیس!** 🚓\n\n"
+            f"😱 شما هنگام قاچاق **{item_name}** دستگیر شدید!",
             parse_mode='Markdown'
         )
     else:
-        # 🎉 قاچاق موفق
         db.update_field(clicker_id, "points", profit)
         updated_user = db.get_user(clicker_id)
 
@@ -226,88 +256,3 @@ async def handle_smuggle_callback(update: Update, context: ContextTypes.DEFAULT_
             f"💰 **موجودی جدید:** {updated_user[2]:,} هاپ",
             parse_mode='Markdown'
         )
-
-async def handle_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
-    user_id = user[0]
-    user_points = user[2]
-    current_factory = user[14]
-
-    msg = (
-        f"🏭 **مدیریت کارخانه هاپویی**\n\n"
-        f"🏗 **کارخانه فعلی شما:** {current_factory}\n"
-        f"💰 **موجودی کیف پول:** {user_points:,} هاپ\n\n"
-        f"👇 یکی از کارخانه‌های زیر را برای خرید انتخاب کنید:"
-    )
-
-    # شناسه کاربر به callback_data اضافه شد تا فقط خودش بتواند کلیک کند
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("👕 کارخانه لباس (۲۰۰ هاپ)", callback_data=f"buy_factory_لباس_{user_id}")
-        ],
-        [
-            InlineKeyboardButton("🍕 کارخانه غذا (۵۰۰ هاپ)", callback_data=f"buy_factory_غذا_{user_id}")
-        ],
-        [
-            InlineKeyboardButton("🧸 کارخانه اسباب‌بازی (۱,۰۰۰ هاپ)", callback_data=f"buy_factory_اسباب‌بازی_{user_id}")
-        ]
-    ])
-
-    if update.callback_query:
-        await update.callback_query.edit_message_text(msg, reply_markup=keyboard, parse_mode='Markdown')
-    else:
-        await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
-
-
-async def handle_factory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    clicker_id = query.from_user.id  # کسی که روی دکمه کلیک کرده
-    
-    data = query.data.replace("buy_factory_", "")
-    parts = data.split("_")
-    
-    ftype = parts[0]
-    owner_id = int(parts[1])
-
-    # 🔒 بررسی اختصاصی بودن پنل
-    if clicker_id != owner_id:
-        await query.answer("❌ این پنل مدیریت برای شما نیست!", show_alert=True)
-        return
-
-    await query.answer()
-
-    user = db.get_user(clicker_id)
-    user_points = user[2]
-
-    factories = {
-        "لباس": {"cost": 200, "icon": "👕"},
-        "غذا": {"cost": 500, "icon": "🍕"},
-        "اسباب‌بازی": {"cost": 1000, "icon": "🧸"}
-    }
-
-    if ftype in factories:
-        cost = factories[ftype]["cost"]
-        icon = factories[ftype]["icon"]
-
-        if user_points < cost:
-            await query.message.reply_text(
-                f"❌ **موجودی ناکافی!**\n"
-                f"برای خرید {icon} **کارخانه {ftype}** به **{cost:,} هاپ** نیاز داری!\n"
-                f"💰 موجودی فعلی شما: {user_points:,} هاپ",
-                parse_mode='Markdown'
-            )
-            return
-
-        # کسر هزینه و ثبت کارخانه
-        db.update_field(clicker_id, "points", -cost)
-        db.update_field(clicker_id, "factory_type", f"کارخانه {ftype}", relative=False)
-
-        await query.message.reply_text(
-            f"🎉 **تبریک! خرید موفقیت‌آمیز بود!** {icon}\n\n"
-            f"🏭 شما صاحب **کارخانه {ftype}** شدید!\n"
-            f"💸 مبلغ **{cost:,} هاپ** از حسابتان کسر شد.",
-            parse_mode='Markdown'
-        )
-        
-        # به‌روزرسانی منوی کارخانه برای خریدار
-        updated_user = db.get_user(clicker_id)
-        await handle_factory(update, context, updated_user)
