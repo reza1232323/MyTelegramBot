@@ -45,6 +45,32 @@ def init_db():
 
     conn.commit()
     conn.close()
+    def get_city_treasury(self):
+    res = self.cursor.execute("SELECT SUM(amount) FROM city_donations").fetchone()
+    return res[0] if res and res[0] else 0
+
+def get_total_hops(self):
+    res = self.cursor.execute("SELECT SUM(hops) FROM users").fetchone()
+    return res[0] if res and res[0] else 0
+
+def get_total_dogs(self):
+    res = self.cursor.execute("SELECT SUM(dogs) FROM users").fetchone()
+    return res[0] if res and res[0] else 0
+
+def get_total_item(self, column_name):
+    try:
+        res = self.cursor.execute(f"SELECT SUM({column_name}) FROM users").fetchone()
+        return res[0] if res and res[0] else 0
+    except:
+        return 0
+
+def get_city_level(self):
+    res = self.cursor.execute("SELECT value FROM settings WHERE key='city_level'").fetchone()
+    return int(res[0]) if res else 1
+
+def set_city_level(self, level):
+    self.cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('city_level', ?)", (str(level),))
+    self.conn.commit()
 
 def get_user(user_id, username="کاربر"):
     conn = get_connection()
