@@ -23,36 +23,6 @@ CONTRABAND_PRODUCTS = {
     "car": {"name": "🏎 خودروی قاچاق", "cost": 10000, "profit": 35000, "db_field": "inventory_car"},
 }
 
-# ----------------- ۴. نمایش کارخونه من (انبار محصولات کاربر) -----------------
-
-async def show_my_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
-    user_id = update.effective_user.id
-    
-    # گرفتن تعداد محصولات کارخانه و قاچاق از دیتابیس کاربر
-    clothes = db.get_user_field(user_id, "inventory_clothes") or 0
-    food = db.get_user_field(user_id, "inventory_food") or 0
-    toy = db.get_user_field(user_id, "inventory_toy") or 0
-    house = db.get_user_field(user_id, "inventory_house") or 0
-    
-    cig = db.get_user_field(user_id, "inventory_cig") or 0
-    diamond = db.get_user_field(user_id, "inventory_diamond") or 0
-    gold = db.get_user_field(user_id, "inventory_gold") or 0
-    car = db.get_user_field(user_id, "inventory_car") or 0
-
-    text = (
-        "🏭 **کارخانه و انبار محصولات شما:**\n\n"
-        f"👕 لباس هاپویی: `{clothes}` عدد\n"
-        f"🦴 غذای ویژه: `{food}` عدد\n"
-        f"🎾 توپ بازی: `{toy}` عدد\n"
-        f"🏠 لانه شیک: `{house}` عدد\n\n"
-        "🕵️‍♂️ **اجناس قاچاق انبار شده:**\n"
-        f"🚬 سیگار قاچاق: `{cig}` عدد\n"
-        f"💎 الماس سیاه: `{diamond}` عدد\n"
-        f"🪙 شمش طلا: `{gold}` عدد\n"
-        f"🏎 خودروی قاچاق: `{car}` عدد"
-    )
-    
-    await update.message.reply_text(text, parse_mode="Markdown")
 # ----------------- ۱. بخش کارخانه -----------------
 
 async def show_factory(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -144,13 +114,13 @@ async def handle_smuggle_callback(update: Update, context: ContextTypes.DEFAULT_
         await query.message.reply_text(f"تعداد مورد نظر برای **{CONTRABAND_PRODUCTS[code]['name']}** را وارد کنید:")
         return
 
-  if data == "start_smuggling":
+    if data == "start_smuggling":
         cart = context.user_data.get('contra_cart', {})
         if not cart:
             await query.message.reply_text("❌ سبد قاچاق شما خالی است!")
             return
 
-        # بررسی اینکه آیا کاربر قاچاق فعالی دارد یا خیر (جلوگیری از قاچاق همزمان)
+        # جلوگیری از قاچاق همزمان
         if context.user_data.get('is_smuggling_active', False):
             await query.message.reply_text("⏳ شما از قبل یک قاچاق در انتظار دارید! صبر کنید تا محموله قبلی برسد.")
             return
@@ -165,7 +135,7 @@ async def handle_smuggle_callback(update: Update, context: ContextTypes.DEFAULT_
         db.update_field(user_id, "points", -total_cost, relative=True)
         context.user_data['contra_cart'] = {}
         
-        # فعال کردن قاچاق برای این کاربر
+        # فعال کردن قاچاق
         context.user_data['is_smuggling_active'] = True
         
         await query.message.reply_text("🚚 **عملیات قاچاق آغاز شد!**\nمحموله ارسال شد. نتیجه تا ۳۰ دقیقه دیگر مشخص می‌شود...")
@@ -173,7 +143,10 @@ async def handle_smuggle_callback(update: Update, context: ContextTypes.DEFAULT_
         asyncio.create_task(process_smuggling_result(context, user_id, total_cost, cart))
 
 async def process_smuggling_result(context, user_id, total_cost, cart):
-    await asyncio.sleep(3600) # ۱ ساعت انتظار
+    await asyncio.sleep(1800) # ۳۰ دقیقه انتظار
+    
+    # آزاد کردن وضعیت قاچاق
+    context.user_data['is_smuggling_active'] = False
     
     is_busted = random.random() < 0.35 # ۳۵٪ شانس گیر افتادن
 
@@ -247,23 +220,45 @@ async def handle_factory_and_smuggle_text(update: Update, context: ContextTypes.
         return True
 
     return False
-    # این دو تابع را به انتهای فایل handlers/economy.py اضافه کن:
 
-async def handle_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
-    return await show_factory(update, context)
+# ----------------- ۴. نمایش کارخونه من (انبار محصولات) -----------------
 
-async def handle_smuggle(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
-    return await show_contraband(update, context)
+async def show_my_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    user_id = update.effective_user.id
+    
+    clothes = db.get_user_field(user_id, "inventory_clothes") or 0
+    food = db.get_user_field(user_id, "inventory_food") or 0
+    toy = db.get_user_field(user_id, "inventory_toy") or 0
+    house = db.get_user_field(user_id, "inventory_house") or 0
+    
+    cig = db.get_user_field(user_id, "inventory_cig") or 0
+    diamond = db.get_user_field(user_id, "inventory_diamond") or 0
+    gold = db.get_user_field(user_id, "inventory_gold") or 0
+    car = db.get_user_field(user_id, "inventory_car") or 0
+
+    text = (
+        "🏭 **کارخانه و انبار محصولات شما:**\n\n"
+        f"👕 لباس هاپویی: `{clothes}` عدد\n"
+        f"🦴 غذای ویژه: `{food}` عدد\n"
+        f"🎾 توپ بازی: `{toy}` عدد\n"
+        f"🏠 لانه شیک: `{house}` عدد\n\n"
+        "🕵️‍♂️ **اجناس قاچاق انبار شده:**\n"
+        f"🚬 سیگار قاچاق: `{cig}` عدد\n"
+        f"💎 الماس سیاه: `{diamond}` عدد\n"
+        f"🪙 شمش طلا: `{gold}` عدد\n"
+        f"🏎 خودروی قاچاق: `{car}` عدد"
+    )
+    
+    await update.message.reply_text(text, parse_mode="Markdown")
+
 # ----------------- ۵. بخش فروش محصولات انبار -----------------
 
 async def show_sell_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
-    user_id = update.effective_user.id
-    
     keyboard = [
-        [InlineKeyboardButton("👕 فروش لباس (هر عدد ۴۰ میو/هاپ)", callback_data="sell_clothes")],
-        [InlineKeyboardButton("🦴 فروش غذا (هر عدد ۸۰ میو/هاپ)", callback_data="sell_food")],
-        [InlineKeyboardButton("🎾 فروش توپ (هر عدد ۲۵ میو/هاپ)", callback_data="sell_toy")],
-        [InlineKeyboardButton("🏠 فروش لانه (هر عدد ۸۰۰ میو/هاپ)", callback_data="sell_house")],
+        [InlineKeyboardButton("👕 فروش لباس (هر عدد ۴۰)", callback_data="sell_clothes")],
+        [InlineKeyboardButton("🦴 فروش غذا (هر عدد ۸۰)", callback_data="sell_food")],
+        [InlineKeyboardButton("🎾 فروش توپ (هر عدد ۲۵)", callback_data="sell_toy")],
+        [InlineKeyboardButton("🏠 فروش لانه (هر عدد ۸۰۰)", callback_data="sell_house")],
         [InlineKeyboardButton("🚬 فروش سیگار قاچاق (هر عدد ۱,۲۰۰)", callback_data="sell_cig")],
         [InlineKeyboardButton("💎 فروش الماس سیاه (هر عدد ۵,۰۰۰)", callback_data="sell_diamond")],
     ]
@@ -280,7 +275,6 @@ async def sell_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     await query.answer()
     
-    # مپ کردن دکمه‌ها به فیلد دیتابیس و قیمت فروش
     prices = {
         "sell_clothes": {"field": "inventory_clothes", "price": 40, "name": "لباس هاپویی"},
         "sell_food": {"field": "inventory_food", "price": 80, "name": "غذای ویژه"},
@@ -298,7 +292,6 @@ async def sell_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text(f"❌ شما هیچ عددی از **{item['name']}** در انبار ندارید که بفروشید!")
             return
             
-        # کم کردن ۱ عدد از انبار و اضافه کردن پول به کاربر
         db.update_field(user_id, item["field"], -1, relative=True)
         db.update_field(user_id, "points", item["price"], relative=True)
         
@@ -306,3 +299,12 @@ async def sell_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✅ ۱ عدد **{item['name']}** با موفقیت فروخته شد!\n"
             f"💵 مبلغ **{item['price']}** به کیف پول شما اضافه شد."
         )
+
+# توابع کمکی برای سازگاری با main.py
+async def handle_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    return await show_factory(update, context)
+
+async def handle_smuggle(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    return await show_contraband(update, context)
+
+handle_sell = show_sell_menu
