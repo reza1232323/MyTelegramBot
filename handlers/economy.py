@@ -301,33 +301,95 @@ async def sell_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         # ----------------- ۶. بخش شهر و اهدا -----------------
 
-async def city_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
-    await update.message.reply_text(
-        "🏙 **شهر هاپو مگا:**\n"
-        "شهر در حال توسعه است. می‌توانید با دستور `اهدا [مبلغ]` به پیشرفت شهر کمک کنید."
-    )
+# ----------------- سیستم پیشرفته شهر -----------------
 
-async def donate_city(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
-    text = update.message.text
-    parts = text.split()
-    user_id = update.effective_user.id
+# اهداف هر سطح برای ارتقا به سطح بعدی
+CITY_LEVEL_REQUIREMENTS = {
+    1: {"treasury": 10000, "hops": 100, "dogs": 5, "bones": 10, "fish": 10},
+    2: {"treasury": 50000, "hops": 500, "dogs": 15, "bones": 30, "fish": 30},
+    3: {"treasury": 60000, "hops": 400, "dogs": 35, "bones": 80, "fish": 40},
+    4: {"treasury": 500000, "hops": 2000, "dogs": 100, "bones": 200, "fish": 200},
+    5: {"treasury": 2000000, "hops": 5000, "dogs": 250, "bones": 500, "fish": 500},
+}
+
+def make_progress_bar(current, target):
+    """ساخت نوار پیشرفت ۵ تایی با مربعات پر و خالی"""
+    if target <= 0:
+        percent = 1.0
+    else:
+        percent = min(1.0, current / target)
     
-    if len(parts) < 2 or not parts[1].isdigit():
-        await update.message.reply_text("❌ لطفاً مبلغ اهدا را وارد کنید. مثال:\n`اهدا 1000`", parse_mode="Markdown")
-        return
+    filled = int(round(percent * 5))
+    empty = 5 - filled
+    return "▰" * filled + "▱" * empty
+
+async def city_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    chat = update.effective_chat
+    chat_title = chat.title if chat and chat.title else "شهر هاپویی"
+    
+    # آمار کل شهر از دیتابیس
+    treasury = db.get_city_treasury() if hasattr(db, "get_city_treasury") else 0
+    total_hops = db.get_total_hops() if hasattr(db, "get_total_hops") else 0
+    total_dogs = db.get_total_dogs() if hasattr(db, "get_total_dogs") else 0
+    total_bones = db.get_total_item("inventory_food") if hasattr(db, "get_total_item") else 0
+    total_fish = db.get_total_item("inventory_toy") if hasattr(db, "get_total_item") else 0
+    
+    # سطح فعلی شهر
+    current_level = db.get_city_level() if hasattr(db, "get_city_level") else 1
+    
+    # بررسی ارتقای اتوماتیک سطح شهر
+    next_req = CITY_LEVEL_REQUIREMENTS.get(current_level, CITY_LEVEL_REQUIREMENTS[5])
+    
+    if (treasury >= next_req["treasury"] and 
+        total_hops >= next_req["hops"] and 
+        total_dogs >= next_req["dogs"] and 
+        total_bones >= next_req["bones"] and 
+        total_fish >= next_req["fish"] and current_level < 10):
         
-    amount = int(parts[1])
-    if amount <= 0:
-        await update.message.reply_text("❌ مبلغ اهدا باید بیشتر از صفر باشد.")
-        return
-        
-    points = db.get_user_field(user_id, "points") or 0
-    if points < amount:
-        await update.message.reply_text("❌ موجودی کافی برای اهدا ندارید!")
-        return
-        
-    db.update_field(user_id, "points", -amount, relative=True)
-    await update.message.reply_text(f"🙏 با تشکر! مبلغ {format_balance(amount)} به شهر اهدا شد.")
+        current_level += 1
+        if hasattr(db, "set_city_level"):
+            db.set_city_level(current_level)
+            
+        await update.message.reply_text(f"🎉 **تبریک! شهر هاپویی شما به سطح {current_level} ارتقا یافت!** 🎉")
+        next_req = CITY_LEVEL_REQUIREMENTS.get(current_level, CITY_LEVEL_REQUIREMENTS[5])
+
+    # ساخت نوارهای پیشرفت
+    bar_treasury = make_progress_bar(treasury, next_req["treasury"])
+    bar_hops = make_progress_bar(total_hops, next_req["hops"])
+    bar_dogs = make_progress_bar(total_dogs, next_req["dogs"])
+    bar_bones = make_progress_bar(total_bones, next_req["bones"])
+    bar_fish = make_progress_bar(total_fish, next_req["fish"])
+
+    # فرمت‌بندی اعداد
+    treasury_str = format_balance(treasury)
+    target_treasury_str = format_balance(next_req["treasury"])
+
+    text = (
+        f"╮──「  شهر هاپو  」\n\n"
+        f"┐─  نام : {chat_title}\n"
+        f"┐─  رتبه جهانی : #1\n"
+        f"└─  \n\n"
+        f"  آمار شهر:\n"
+        f"┐─  سطح : {current_level} / 10\n"
+        f"┐─  خزانه : {treasury_str}\n"
+        f"┐─  کل هاپ : {total_hops:,}\n"
+        f"┐─  کل سگ : {total_dogs:,}\n"
+        f"┐─  کل استخوان : {total_bones:,}\n"
+        f"└─  کل ماهی : {total_fish:,}\n\n"
+        f"  باف‌های فعال (سطح {current_level}):\n"
+        f"┐─  کولداون هاپ : {max(300 - current_level * 5, 200)}s (اصلی 300s)\n"
+        f"┐─  کاهش کولداون ماهیگیری : {current_level * 20}s\n"
+        f"└─  کاهش آستانه پیشی خیابونی : {current_level * 3}%\n\n"
+        f"  پیشرفت به سطح {current_level + 1}:\n"
+        f"┐─  خزانه : {treasury_str} / {target_treasury_str}  {bar_treasury}\n"
+        f"┐─  هاپ‌های کل : {total_hops:,} / {next_req['hops']:,}  {bar_hops}\n"
+        f"┐─  سگ‌های خریداری شده : {total_dogs:,} / {next_req['dogs']:,}  {bar_dogs}\n"
+        f"┐─  استخوان‌ها : {total_bones:,} / {next_req['bones']:,}  {bar_bones}\n"
+        f"└─  ماهی‌ها : {total_fish:,} / {next_req['fish']:,}  {bar_fish}\n\n"
+        f"  برای کمک به خزانه بنویس: اهدا [مقدار]"
+    )
+    
+    await update.message.reply_text(text)
 
 # توابع کمکی برای سازگاری با main.py
 async def handle_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
