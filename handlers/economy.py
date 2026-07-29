@@ -144,10 +144,15 @@ async def handle_smuggle_callback(update: Update, context: ContextTypes.DEFAULT_
         await query.message.reply_text(f"تعداد مورد نظر برای **{CONTRABAND_PRODUCTS[code]['name']}** را وارد کنید:")
         return
 
-    if data == "start_smuggling":
+  if data == "start_smuggling":
         cart = context.user_data.get('contra_cart', {})
         if not cart:
             await query.message.reply_text("❌ سبد قاچاق شما خالی است!")
+            return
+
+        # بررسی اینکه آیا کاربر قاچاق فعالی دارد یا خیر (جلوگیری از قاچاق همزمان)
+        if context.user_data.get('is_smuggling_active', False):
+            await query.message.reply_text("⏳ شما از قبل یک قاچاق در انتظار دارید! صبر کنید تا محموله قبلی برسد.")
             return
 
         total_cost = sum(CONTRABAND_PRODUCTS[code]['cost'] * qty for code, qty in cart.items())
@@ -160,7 +165,10 @@ async def handle_smuggle_callback(update: Update, context: ContextTypes.DEFAULT_
         db.update_field(user_id, "points", -total_cost, relative=True)
         context.user_data['contra_cart'] = {}
         
-        await query.message.reply_text("🚚 **عملیات قاچاق آغاز شد!**\nمحموله ارسال شد. نتیجه تا ۱ ساعت دیگر مشخص می‌شود...")
+        # فعال کردن قاچاق برای این کاربر
+        context.user_data['is_smuggling_active'] = True
+        
+        await query.message.reply_text("🚚 **عملیات قاچاق آغاز شد!**\nمحموله ارسال شد. نتیجه تا ۳۰ دقیقه دیگر مشخص می‌شود...")
 
         asyncio.create_task(process_smuggling_result(context, user_id, total_cost, cart))
 
