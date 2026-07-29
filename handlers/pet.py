@@ -3,7 +3,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 import database as db
 
-ddef format_balance(amount: int) -> str:
+def format_balance(amount: int) -> str:
     """
     فرمت‌سازی هوشمند موجودی:
     - زیر ۱,۰۰۰: مثلاً ۸۷۶ دونه
