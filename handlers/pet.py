@@ -8,6 +8,7 @@ async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
     last_hop_str = user[18]
 
+    # بررسی تایمر ۱ دقیقه‌ای
     if last_hop_str:
         last_hop = datetime.fromisoformat(last_hop_str)
         if datetime.now() - last_hop < timedelta(minutes=1):
@@ -21,11 +22,23 @@ async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     db.update_city("total_hops", 1)
 
     leveled_up, new_lvl = db.check_level_up(user_id)
-    msg = f"🦴 **هاپ!** شما {reward} پوینت دریافت کردید."
-    if leveled_up:
-        msg += f"\n🎉 **تبریک!** شما به لول {new_lvl} ارتقا یافتید!"
+    
+    # دریافت آخرین اطلاعات به‌روزرسانی‌شده کاربر
+    current_user = db.get_user(user_id)
+    total_points = current_user[2]
+    current_level = current_user[4]
 
-    await update.message.reply_text(msg)
+    # قالب‌بندی جدید
+    msg = (
+        f"➕ **{reward:,} هاپ دریافت کردی!**\n"
+        f"💰 **موجودی کل:** {total_points:,} هاپ\n"
+        f"⭐ **سطح فعلی:** {current_level}"
+    )
+
+    if leveled_up:
+        msg += f"\n\n🎉 **تبریک!** شما به لول {new_lvl} ارتقا یافتید!"
+
+    await update.message.reply_text(msg, parse_mode='Markdown')
 
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     acc_num = db.get_or_create_account_number(user[0])
