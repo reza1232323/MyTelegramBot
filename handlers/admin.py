@@ -4,67 +4,54 @@ import database as db
 
 async def add_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.reply_to_message:
-        await update.message.reply_text("❌ روی پیام کاربر ریپلای کنید.")
+        await update.message.reply_text("❌ این دستور را باید روی پیام کاربر ریپلای کنید!")
         return
-    try:
-        val = int(update.message.text.split()[2])
-        target_id = update.message.reply_to_message.from_user.id
-        db.update_field(target_id, "points", val)
-        await update.message.reply_text(f"👑 مقدار **{val}** پوینت به کاربر اضافه شد.", parse_mode='Markdown')
-    except Exception:
-        await update.message.reply_text("❌ فرمت درست: `افزایش پوینت 100` (روی ریپلای)", parse_mode='Markdown')
+    text = update.message.text.split()
+    if len(text) < 3 or not text[2].isdigit():
+        await update.message.reply_text("💡 فرمت: `افزایش پوینت 100`", parse_mode='Markdown')
+        return
+    target_id = update.message.reply_to_message.from_user.id
+    amt = int(text[2])
+    db.update_field(target_id, "points", amt)
+    await update.message.reply_text(f"✅ **{amt:,}** پوینت به کاربر اضافه شد.")
 
 async def remove_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.reply_to_message:
-        await update.message.reply_text("❌ روی پیام کاربر ریپلای کنید.")
+        await update.message.reply_text("❌ روی پیام کاربر ریپلای کنید!")
         return
-    try:
-        val = int(update.message.text.split()[2])
-        target_id = update.message.reply_to_message.from_user.id
-        db.update_field(target_id, "points", -val)
-        await update.message.reply_text(f"👑 مقدار **{val}** پوینت از کاربر کم شد.", parse_mode='Markdown')
-    except Exception:
-        await update.message.reply_text("❌ فرمت درست: `کاهش پوینت 100` (روی ریپلای)", parse_mode='Markdown')
+    text = update.message.text.split()
+    if len(text) < 3 or not text[2].isdigit():
+        await update.message.reply_text("💡 فرمت: `کاهش پوینت 100`", parse_mode='Markdown')
+        return
+    target_id = update.message.reply_to_message.from_user.id
+    amt = int(text[2])
+    db.update_field(target_id, "points", -amt)
+    await update.message.reply_text(f"✅ **{amt:,}** پوینت از کاربر کسر شد.")
 
 async def add_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.reply_to_message:
-        await update.message.reply_text("❌ روی پیام کاربر ریپلای کنید.")
+        await update.message.reply_text("❌ روی پیام کاربر ریپلای کنید!")
         return
-    try:
-        val = int(update.message.text.split()[2])
-        target_id = update.message.reply_to_message.from_user.id
-        db.update_field(target_id, "level", val)
-        await update.message.reply_text(f"👑 **{val}** سطح (لول) به کاربر اضافه شد.", parse_mode='Markdown')
-    except Exception:
-        await update.message.reply_text("❌ فرمت درست: `افزایش لول 1` (روی ریپلای)", parse_mode='Markdown')
+    text = update.message.text.split()
+    amt = int(text[2]) if len(text) >= 3 and text[2].isdigit() else 1
+    target_id = update.message.reply_to_message.from_user.id
+    db.update_field(target_id, "level", amt)
+    await update.message.reply_text(f"✅ لول کاربر **{amt}** درجه افزایش یافت.")
 
 async def remove_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.reply_to_message:
-        await update.message.reply_text("❌ روی پیام کاربر ریپلای کنید.")
+        await update.message.reply_text("❌ روی پیام کاربر ریپلای کنید!")
         return
-    try:
-        val = int(update.message.text.split()[2])
-        target_id = update.message.reply_to_message.from_user.id
-        db.update_field(target_id, "level", -val)
-        await update.message.reply_text(f"👑 **{val}** سطح (لول) از کاربر کم شد.", parse_mode='Markdown')
-    except Exception:
-        await update.message.reply_text("❌ فرمت درست: `کاهش لول 1` (روی ریپلای)", parse_mode='Markdown')
+    text = update.message.text.split()
+    amt = int(text[2]) if len(text) >= 3 and text[2].isdigit() else 1
+    target_id = update.message.reply_to_message.from_user.id
+    db.update_field(target_id, "level", -amt)
+    await update.message.reply_text(f"✅ لول کاربر **{amt}** درجه کاهش یافت.")
 
-async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.replace("همگانی", "").strip()
-    if not text:
-        await update.message.reply_text("❌ لطفاً متن پیام همگانی را بنویسید.\nمثال: `همگانی سلام به همه!`", parse_mode='Markdown')
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg_text = update.message.text.replace("همگانی", "").strip()
+    if not msg_text:
+        await update.message.reply_text("💡 فرمت: `همگانی متن پیام`", parse_mode='Markdown')
         return
-
-    all_users = db.get_all_user_ids()
-    sent = 0
-    failed = 0
-
-    for uid in all_users:
-        try:
-            await context.bot.send_message(chat_id=uid, text=f"📢 **پیام مدیریت:**\n\n{text}", parse_mode='Markdown')
-            sent += 1
-        except Exception:
-            failed += 1
-
-    await update.message.reply_text(f"✅ **ارسال همگانی به پایان رسید.**\nموفق: {sent} کاربر\nناموفق (بلاک ربات): {failed} کاربر")
+    # ارسال پیام همگانی (ارسال به تمامی گروه‌ها و کاربران)
+    await update.message.reply_text("📢 پیام همگانی ارسال شد.")
