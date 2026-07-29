@@ -92,6 +92,8 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("select_contra_") or data in ["start_smuggling", "pay_bail"]:
         if hasattr(economy, "handle_smuggle_callback"):
             await economy.handle_smuggle_callback(update, context)
+            elif text in ["فروش", "بازار"]:
+        await economy.show_sell_menu(update, context, user)
 
 def main():
     db.init_db()
