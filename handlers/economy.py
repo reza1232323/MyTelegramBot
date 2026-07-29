@@ -4,7 +4,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import database as db
 
-# ==================== 🏦 بخش بانک ====================
+# ==================== 🏦 بانک ====================
 
 async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
@@ -14,56 +14,35 @@ async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     wallet = current_user[2]
     bank = current_user[5]
 
-    # ۱. مدیریت دستورات متنی واریز و برداشت
     if len(parts) >= 3 and parts[1] == "واریز":
         amt = wallet if parts[2] == "همه" else int(parts[2])
-        if amt <= 0:
-            await update.message.reply_text("❌ مبلغ باید بیشتر از ۰ باشد.")
-            return
-        if wallet < amt:
-            await update.message.reply_text(f"❌ موجودی کیف پول شما کافی نیست! ({wallet:,} هاپ)")
+        if amt <= 0 or wallet < amt:
+            await update.message.reply_text("❌ موجودی کیف پول کافی نیست!")
             return
         db.update_field(user_id, "points", -amt)
         db.update_field(user_id, "bank_balance", amt)
-        await update.message.reply_text(f"✅ مبلغ **{amt:,}** هاپ با موفقیت به بانک واریز شد. 🏦", parse_mode='Markdown')
+        await update.message.reply_text(f"✅ مبلغ **{amt:,}** هاپ به بانک واریز شد.")
         return
 
     elif len(parts) >= 3 and parts[1] == "برداشت":
         amt = bank if parts[2] == "همه" else int(parts[2])
-        if amt <= 0:
-            await update.message.reply_text("❌ مبلغ باید بیشتر از ۰ باشد.")
-            return
-        if bank < amt:
-            await update.message.reply_text(f"❌ موجودی بانک شما کافی نیست! ({bank:,} هاپ)")
+        if amt <= 0 or bank < amt:
+            await update.message.reply_text("❌ موجودی بانک کافی نیست!")
             return
         db.update_field(user_id, "bank_balance", -amt)
         db.update_field(user_id, "points", amt)
-        await update.message.reply_text(f"✅ مبلغ **{amt:,}** هاپ از بانک برداشت شد. 🪙", parse_mode='Markdown')
+        await update.message.reply_text(f"✅ مبلغ **{amt:,}** هاپ برداشت شد.")
         return
 
-    # ۲. نمایش پنل تصویری شیشه‌ای بانک
     acc_num = db.get_or_create_account_number(user_id)
     daily_profit = int(bank * 0.03)
-
-    last_claim_str = current_user[20] if len(current_user) > 20 else None
-    profit_ready = True
-    if last_claim_str:
-        try:
-            last_claim = datetime.fromisoformat(last_claim_str)
-            if datetime.now() - last_claim < timedelta(hours=24):
-                profit_ready = False
-        except Exception:
-            pass
-
-    status_profit = "✅ سود آماده دریافته!" if profit_ready and daily_profit > 0 else "⏳ سود دریافت شده (یا موجودی صفر)"
 
     msg = (
         f"🏦 **بانک هاپی**\n\n"
         f"💳 **شماره حساب:** `{acc_num}`\n"
-        f"💰 **موجودی بانک:** {bank:,} هاپ پوینت\n"
-        f"👛 **موجودی کیف:** {wallet:,} هاپ پوینت\n\n"
-        f"📈 **سود روزانه (۳%):** {daily_profit:,}\n"
-        f"❇️ {status_profit}"
+        f"💰 **موجودی بانک:** {bank:,} هاپ\n"
+        f"👛 **موجودی کیف:** {wallet:,} هاپ\n\n"
+        f"📈 **سود روزانه (۳%):** {daily_profit:,}"
     )
 
     keyboard = InlineKeyboardMarkup([
@@ -71,82 +50,38 @@ async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
             InlineKeyboardButton("➕ واریز", callback_data=f"bank_deposit_help_{user_id}"),
             InlineKeyboardButton("➖ برداشت", callback_data=f"bank_withdraw_help_{user_id}")
         ],
-        [
-            InlineKeyboardButton("💸 دریافت سود", callback_data=f"bank_claim_profit_{user_id}")
-        ],
-        [
-            InlineKeyboardButton("🔄 تغییر شماره حساب", callback_data=f"bank_change_acc_{user_id}")
-        ]
+        [InlineKeyboardButton("💸 دریافت سود", callback_data=f"bank_claim_profit_{user_id}")]
     ])
 
-    if update.callback_query:
-        await update.callback_query.edit_message_text(msg, reply_markup=keyboard, parse_mode='Markdown')
-    else:
-        await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
+    await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
 
 
 async def handle_bank_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     clicker_id = query.from_user.id
-    data = query.data
+    parts = query.data.replace("bank_", "").split("_")
+    action = parts[0]
+    owner_id = int(parts[-1])
 
-    data_clean = data.replace("bank_", "")
-    parts = data_clean.split("_")
-    
-    if len(parts) >= 3 and parts[0] in ["deposit", "withdraw", "claim", "change"]:
-        action = f"{parts[0]}_{parts[1]}"
-        owner_id = int(parts[2])
-    else:
-        action = parts[0]
-        owner_id = int(parts[1]) if len(parts) > 1 else clicker_id
-
-    # بررسی مالکیت پنل
     if clicker_id != owner_id:
-        await query.answer("❌ این پنل بانک متعلق به شما نیست!", show_alert=True)
+        await query.answer("❌ این پنل متعلق به شما نیست!", show_alert=True)
         return
 
     await query.answer()
-    user = db.get_user(clicker_id)
 
-    if action == "deposit_help":
-        await query.message.reply_text("💡 **راهنمای واریز:**\nعبارت زیر را ارسال کنید:\n`بانک واریز 100` یا `بانک واریز همه`", parse_mode='Markdown')
-        
-    elif action == "withdraw_help":
-        await query.message.reply_text("💡 **راهنمای برداشت:**\nعبارت زیر را ارسال کنید:\n`بانک برداشت 100` یا `بانک برداشت همه`", parse_mode='Markdown')
-
-    elif action == "claim_profit":
-        bank_bal = user[5]
-        daily_profit = int(bank_bal * 0.03)
-        if daily_profit <= 0:
-            await query.message.reply_text("❌ موجودی بانک شما برای دریافت سود کافی نیست.")
-            return
-
-        last_claim_str = user[20] if len(user) > 20 else None
-        if last_claim_str:
-            try:
-                last_claim = datetime.fromisoformat(last_claim_str)
-                if datetime.now() - last_claim < timedelta(hours=24):
-                    rem = timedelta(hours=24) - (datetime.now() - last_claim)
-                    hours, remainder = divmod(rem.seconds, 3600)
-                    minutes, _ = divmod(remainder, 60)
-                    await query.message.reply_text(f"⏳ **زمان دریافت سود نرسیده!**\n{hours} ساعت و {minutes} دقیقه دیگر مراجعه کنید.")
-                    return
-            except Exception:
-                pass
-
-        db.update_field(clicker_id, "bank_balance", daily_profit)
-        db.update_field(clicker_id, "last_profit_claim", datetime.now().isoformat(), relative=False)
-        await query.message.reply_text(f"🎉 **مبلغ {daily_profit:,} هاپ (سود ۳٪ روزانه)** اضافه شد!")
-        await bank_status(update, context, db.get_user(clicker_id))
-
-    elif action == "change_acc":
-        new_acc = str(random.randint(1000000000, 9999999999))
-        db.update_field(clicker_id, "account_number", new_acc, relative=False)
-        await query.message.reply_text(f"✅ شماره حساب جدید شما صادر شد:\n`{new_acc}`", parse_mode='Markdown')
-        await bank_status(update, context, db.get_user(clicker_id))
+    if action == "deposit":
+        await query.message.reply_text("💡 جهت واریز: `بانک واریز 100`", parse_mode='Markdown')
+    elif action == "withdraw":
+        await query.message.reply_text("💡 جهت برداشت: `بانک برداشت 100`", parse_mode='Markdown')
+    elif action == "claim":
+        user = db.get_user(clicker_id)
+        profit = int(user[5] * 0.03)
+        if profit > 0:
+            db.update_field(clicker_id, "points", profit)
+            await query.message.reply_text(f"🎉 مبلغ {profit:,} هاپ سود دریافت شد.")
 
 
-# ==================== 🏭 بخش کارخانه ====================
+# ==================== 🏭 ساخت محصول (دستور: کارخونه) ====================
 
 async def handle_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
@@ -154,8 +89,8 @@ async def handle_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, use
 
     msg = (
         f"🏭 **خط تولید کارخانه**\n\n"
-        f"💰 **موجودی شما:** {user_points:,} هاپ\n\n"
-        f"چه محصولی می‌خواهید تولید کنید؟ (محصول در انبار شما ذخیره می‌شود):"
+        f"💰 **موجودی:** {user_points:,} هاپ\n\n"
+        f"محصول مورد نظر برای تولید را انتخاب کنید (محصول وارد انبار می‌شود):"
     )
 
     keyboard = InlineKeyboardMarkup([
@@ -170,133 +105,126 @@ async def handle_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, use
 async def handle_factory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     clicker_id = query.from_user.id
-
-    data = query.data.replace("buy_factory_", "")
-    parts = data.split("_")
+    parts = query.data.replace("buy_factory_", "").split("_")
     fac_type = parts[0]
-    owner_id = int(parts[1]) if len(parts) > 1 else clicker_id
+    owner_id = int(parts[1])
 
     if clicker_id != owner_id:
-        await query.answer("❌ این پنل برای شما نیست!", show_alert=True)
+        await query.answer("❌ این پنل متعلق به شما نیست!", show_alert=True)
         return
 
-    await query.answer()
-
-    items = {
-        "diamond": {"name": "الماس 💎", "cost": 300},
-        "cig": {"name": "سیگار 📦", "cost": 100},
-        "choco": {"name": "شکلات 🍫", "cost": 50},
-    }
-
-    if fac_type not in items:
-        return
-
-    selected = items[fac_type]
-    cost = selected["cost"]
-    item_name = selected["name"]
+    costs = {"diamond": 300, "cig": 100, "choco": 50}
+    names = {"diamond": "الماس 💎", "cig": "سیگار 📦", "choco": "شکلات 🍫"}
+    
+    cost = costs.get(fac_type, 0)
     user = db.get_user(clicker_id)
 
     if user[2] < cost:
-        await query.message.reply_text("❌ موجودی شما برای تولید این محصول کافی نیست!")
+        await query.answer("❌ موجودی کافی نیست!", show_alert=True)
         return
+
+    await query.answer()
 
     # کسر هزینه و ذخیره محصول در انبار
     db.update_field(clicker_id, "points", -cost)
     db.update_field(clicker_id, f"inventory_{fac_type}", 1)
 
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("💵 فروش قانونی", callback_data=f"action_sell_{fac_type}_{clicker_id}"),
-            InlineKeyboardButton("🕵️‍♂️ قاچاق (ریسک بالاتر)", callback_data=f"action_smuggle_{fac_type}_{clicker_id}")
-        ]
-    ])
-
     await query.message.edit_text(
-        f"🎉 **تولید موفقیت‌آمیز بود!** 🏭\n\n"
-        f"✅ ۱ عدد **{item_name}** تولید شد و در انبار قرار گرفت.\n\n"
-        f"حالا می‌خواهید با این محصول چه کار کنید؟",
-        reply_markup=keyboard,
+        f"🎉 **تولید موفقیت‌آمیز بود!**\n\n"
+        f"✅ ۱ عدد **{names[fac_type]}** به انبار شما اضافه شد.\n"
+        f"برای مشاهده انبار و فروش/قاچاق، دستور `کارخونه من` را ارسال کنید.",
         parse_mode='Markdown'
     )
 
 
-# ==================== 🛒 اقدام بعد از تولید (فروش / قاچاق) ====================
+# ==================== 📦 انبار محصولات (دستور: کارخونه من) ====================
+
+async def my_inventory(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
+    user_id = user[0]
+
+    diamond = db.get_user_field(user_id, "inventory_diamond") or 0
+    cig = db.get_user_field(user_id, "inventory_cig") or 0
+    choco = db.get_user_field(user_id, "inventory_choco") or 0
+
+    msg = (
+        f"📦 **انبار کارخانه شما**\n\n"
+        f"🔹 **الماس:** {diamond} عدد\n"
+        f"🔹 **سیگار:** {cig} عدد\n"
+        f"🔹 **شکلات:** {choco} عدد\n\n"
+        f"یکی از اجناس زیر را برای فروش یا قاچاق انتخاب کنید:"
+    )
+
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("💎 فروش الماس", callback_data=f"action_sell_diamond_{user_id}"),
+            InlineKeyboardButton("🕵️‍♂️ قاچاق الماس", callback_data=f"action_smuggle_diamond_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📦 فروش سیگار", callback_data=f"action_sell_cig_{user_id}"),
+            InlineKeyboardButton("🕵️‍♂️ قاچاق سیگار", callback_data=f"action_smuggle_cig_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🍫 فروش شکلات", callback_data=f"action_sell_choco_{user_id}"),
+            InlineKeyboardButton("🕵️‍♂️ قاچاق شکلات", callback_data=f"action_smuggle_choco_{user_id}")
+        ],
+    ])
+
+    await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
+
+
+# ==================== 🛒 اقدام فروش و قاچاق ====================
 
 async def handle_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     clicker_id = query.from_user.id
-    data = query.data
-
-    parts = data.split("_")
-    act_type = parts[1]   # sell یا smuggle
+    parts = query.data.split("_")
+    
+    act_type = parts[1]   # sell or smuggle
     item_type = parts[2]  # diamond, cig, choco
-    owner_id = int(parts[3]) if len(parts) > 3 else clicker_id
+    owner_id = int(parts[3])
 
     if clicker_id != owner_id:
         await query.answer("❌ این دستور متعلق به شما نیست!", show_alert=True)
         return
 
+    inv_count = db.get_user_field(clicker_id, f"inventory_{item_type}") or 0
+    if inv_count <= 0:
+        await query.answer("❌ شما این محصول را در انبار ندارید!", show_alert=True)
+        return
+
     await query.answer()
 
     items_info = {
-        "diamond": {"name": "الماس 💎", "sell_price": 450, "smuggle_profit": 800, "risk": 60},
-        "cig": {"name": "سیگار 📦", "sell_price": 150, "smuggle_profit": 300, "risk": 30},
-        "choco": {"name": "شکلات 🍫", "sell_price": 75, "smuggle_profit": 150, "risk": 10},
+        "diamond": {"name": "الماس 💎", "sell": 450, "smuggle": 800, "risk": 60},
+        "cig": {"name": "سیگار 📦", "sell": 150, "smuggle": 300, "risk": 30},
+        "choco": {"name": "شکلات 🍫", "sell": 75, "smuggle": 150, "risk": 10},
     }
+    info = items_info[item_type]
 
-    info = items_info.get(item_type)
-    if not info:
-        return
+    # کم کردن از انبار
+    db.update_field(clicker_id, f"inventory_{item_type}", -1)
 
-    # ۱. فروش قانونی
     if act_type == "sell":
-        db.update_field(clicker_id, f"inventory_{item_type}", -1)
-        db.update_field(clicker_id, "points", info["sell_price"])
-        
+        db.update_field(clicker_id, "points", info["sell"])
         await query.message.edit_text(
-            f"💰 **فروش موفق!**\n\nشما محصول **{info['name']}** را به صورت قانونی فروختید.\n"
-            f"💵 **سود:** +{info['sell_price']:,} هاپ",
+            f"💰 **فروش موفق!**\n\n۱ عدد {info['name']} به قیمت **{info['sell']:,}** هاپ فروخته شد.",
             parse_mode='Markdown'
         )
-
-    # ۲. قاچاق محصول
     elif act_type == "smuggle":
-        chance = random.randint(1, 100)
-        db.update_field(clicker_id, f"inventory_{item_type}", -1)
-
-        if chance <= info["risk"]:
+        if random.randint(1, 100) <= info["risk"]:
             await query.message.edit_text(
-                f"🚨 **آژیر پلیس!** 🚓\n\n"
-                f"😱 هنگام قاچاق **{info['name']}** بار شما ضبط شد و جریمه شدید!",
+                f"🚨 **آژیر پلیس!**\n\nبار {info['name']} شما توسط ماموران ضبط شد!",
                 parse_mode='Markdown'
             )
         else:
-            db.update_field(clicker_id, "points", info["smuggle_profit"])
+            db.update_field(clicker_id, "points", info["smuggle"])
             await query.message.edit_text(
-                f"🎉 **رد مال موفق!** 🕵️‍♂️\n\n"
-                f"✅ محموله **{info['name']}** با موفقیت قاچاق شد.\n"
-                f"💵 **سود خالص:** +{info['smuggle_profit']:,} هاپ",
+                f"🎉 **رد مال موفق!**\n\n{info['name']} قاچاق شد و **{info['smuggle']:,}** هاپ سود کردید.",
                 parse_mode='Markdown'
             )
 
 
-# ==================== 🕵️‍♂️ بخش مستقیم قاچاق ====================
+# ==================== 🕵️‍♂️ قاچاق عمومی ====================
 
 async def handle_smuggle(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
-    user_id = user[0]
-    user_points = user[2]
-
-    msg = (
-        f"🕵️‍♂️ **بازار سیاه قاچاق هاپویی**\n\n"
-        f"💰 **موجودی فعلی شما:** {user_points:,} هاپ\n\n"
-        f"⚠️ **هشدار:** در صورت لورفتن بار ضبط می‌شود!\n\n"
-        f"👇 جنس مورد نظر برای قاچاق را انتخاب کنید:"
-    )
-
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("💎 قاچاق الماس (سود: ۸۰۰ | ریسک: ۶۰٪)", callback_data=f"action_smuggle_diamond_{user_id}")],
-        [InlineKeyboardButton("📦 قاچاق سیگار (سود: ۳۰۰ | ریسک: ۳۰٪)", callback_data=f"action_smuggle_cig_{user_id}")],
-        [InlineKeyboardButton("🍫 قاچاق شکلات (سود: ۱۵۰ | ریسک: ۱۰٪)", callback_data=f"action_smuggle_choco_{user_id}")],
-    ])
-
-    await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
+    await my_inventory(update, context, user)
