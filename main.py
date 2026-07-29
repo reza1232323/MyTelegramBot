@@ -13,7 +13,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👋 ربات هاپو مگا فعال است!")
 
 async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
+    if not update.message:
+        return
+
+    # پردازش استیکرهای بازی (در صورت ارسال استیکر/تاس)
+    if update.message.dice:
+        await economy.process_dice_reply(update, context)
+        return
+
+    if not update.message.text:
         return
 
     text = update.message.text.strip()
@@ -24,17 +32,18 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 📌 ۱. عمومی و سگ
     if text in ["پروفایل", "هاپوهام", "هاپوهاش"]:
         await pet.show_profile(update, context, user)
-    elif text in ["هاپ", "hop"]:
+        return
+    elif text in ["هاپ", "hop", "هاپ زدن"]:
         await pet.claim_hop(update, context, user)
+        return
     elif text in ["راهنما", "help"]:
         await pet.show_help(update, context)
+        return
     elif text == "خرید سگ":
         await pet.buy_dog(update, context, user)
+        return
     elif text == "غذا":
         await pet.feed_dog(update, context, user)
-        # در بخش router فایل main.py:
-    if text in ["هاپ", "hop", "هاپ زدن"]:
-        await pet.claim_hop(update, context, user)
         return
 
     # 🏦 ۲. بانک، اقتصاد و بازی‌ها
@@ -50,6 +59,8 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await economy.jail_status(update, context, user)
     elif text.startswith("قمار"):
         await economy.gamble(update, context, user)
+    elif text.startswith("بازی"):
+        await economy.dice_games_menu(update, context, user)
     elif text == "شهر":
         await economy.city_status(update, context, user)
     elif text.startswith("اهدا"):
@@ -74,13 +85,15 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await economy.handle_bank_callback(update, context)
     elif data.startswith("buy_fac_") or data.startswith("fac_"):
         await economy.handle_factory_callback(update, context)
+    elif data.startswith("game_"):
+        await economy.handle_game_callback(update, context)
 
 def main():
     db.init_db()
     app = ApplicationBuilder().token(config.BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, router))
+    app.add_handler(MessageHandler((filters.TEXT | filters.DICE) & ~filters.COMMAND, router))
     app.add_handler(CallbackQueryHandler(callback_router))
 
     print("🤖 Bot is active...")
