@@ -6,7 +6,10 @@ import database as db
 
 async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
-    last_hop_str = user[18]
+    
+    # دریافت آخرین اطلاعات تازه‌ی کاربر از دیتابیس
+    current_user = db.get_user(user_id)
+    last_hop_str = current_user[18]
 
     # بررسی تایمر ۵ دقیقه‌ای (۳۰۰ ثانیه)
     if last_hop_str:
@@ -25,20 +28,21 @@ async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
                     
                 await update.message.reply_text(f"⏳ **صبر کن هاپو!** {time_msg} دیگر دوباره بزن.")
                 return
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Error checking hop timer: {e}")
 
+    # اضافه کردن پوینت و ثبت زمان جدید
     reward = random.randint(10, 50)
     db.update_field(user_id, "points", reward)
-    db.update_last_hop(user_id)
+    db.update_last_hop(user_id)  # ذخیره زمان فعلی
     db.update_city("total_hops", 1)
 
     leveled_up, new_lvl = db.check_level_up(user_id)
     
-    # دریافت اطلاعات به‌روزرسانی‌شده کاربر
-    current_user = db.get_user(user_id)
-    total_points = current_user[2]
-    current_level = current_user[4]
+    # دریافت موجودی به‌روزرسانی‌شده
+    updated_user = db.get_user(user_id)
+    total_points = updated_user[2]
+    current_level = updated_user[4]
 
     # قالب‌بندی پیام خروجی
     msg = (
@@ -50,22 +54,6 @@ async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     if leveled_up:
         msg += f"\n\n🎉 **تبریک!** شما به لول {new_lvl} ارتقا یافتید!"
 
-    await update.message.reply_text(msg, parse_mode='Markdown')
-
-    await update.message.reply_text(msg, parse_mode='Markdown')
-
-async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
-    acc_num = db.get_or_create_account_number(user[0])
-    msg = (
-        f"👤 **پروفایل کاربر:** {user[1]}\n\n"
-        f"🪙 **موجودی کیف:** {user[2]:,} هاپ پوینت\n"
-        f"🏦 **موجودی بانک:** {user[5]:,} هاپ پوینت\n"
-        f"💳 **شماره حساب:** `{acc_num}`\n"
-        f"⭐ **سطح (لول):** {user[4]}\n\n"
-        f"🐶 **سگ:** لول {user[6]} ({user[10]})\n"
-        f"🍗 **غذا:** {user[9]}% | ❤️ **سلامت:** {user[7]}%\n"
-        f"🏭 **کارخانه:** {user[14]}"
-    )
     await update.message.reply_text(msg, parse_mode='Markdown')
 
 async def buy_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
