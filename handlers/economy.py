@@ -126,48 +126,106 @@ async def handle_bank_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.message.reply_text(f"✅ شماره حساب جدید شما صادر شد:\n`{new_acc}`", parse_mode='Markdown')
         await bank_status(update, context, db.get_user(user_id))
 
+# --- 📦 پنل اصلی قاچاق ---
 async def handle_smuggle(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
-    text = update.message.text.strip()
-    parts = text.split()
+    user_points = user[2]
 
-    if text == "قاچاق":
-        msg = (
-            "🕵️ **منوی قاچاق هاپویی**\n\n"
-            "۱. `قاچاق لباس` (سود: ۲۰۰ تا ۵۰۰ | ریسک: کم)\n"
-            "۲. `قاچاق وسایل` (سود: ۸۰۰ تا ۲۰۰۰ | ریسک: بالا)\n\n"
-            "⚠️ در صورت گیر افتادن، ۱۵ دقیقه به **زندان** می‌افتید یا ۲۰,۰۰۰ هاپ جریمه می‌شوید!"
-        )
-        await update.message.reply_text(msg, parse_mode='Markdown')
+    # بررسی وضعیت زندان
+    if len(user) > 19 and user[19] == 1:
+        await show_jail_panel(update, context, user)
         return
 
-    type_smuggle = parts[1] if len(parts) > 1 else ""
-    
-    if type_smuggle == "لباس":
-        risk = random.randint(1, 10)
-        if risk <= 3:
-            jail_time = (datetime.now() + timedelta(minutes=15)).isoformat()
-            db.update_field(user_id, "in_jail_until", jail_time, relative=False)
-            await update.message.reply_text("🚔 **شرطه هاپویی شما رو گرفت!**\nبه مدت ۱۵ دقیقه افتادید زندان!")
-        else:
-            profit = random.randint(200, 500)
-            db.update_field(user_id, "points", profit)
-            await update.message.reply_text(f"✅ قاچاق لباس موفقیت‌آمیز بود! +{profit} هاپ سود کردید.")
+    msg = (
+        f"🕵️‍♂️ **بازار سیاه قاچاق هاپویی**\n\n"
+        f"💰 **موجودی فعلی شما:** {user_points:,} هاپ\n\n"
+        f"⚠️ **هشدار:** قاچاق سود زیادی دارد اما در صورت دستگیری توسط پلیس، به **زندان** می‌افتید و باید جریمه بپردازید!\n\n"
+        f"👇 جنس مورد نظر برای قاچاق را انتخاب کنید:"
+    )
 
-    elif type_smuggle == "وسایل":
-        risk = random.randint(1, 10)
-        if risk <= 6:
-            if user[2] >= 20000:
-                db.update_field(user_id, "points", -20000)
-                await update.message.reply_text("🚨 **لو رفتید!** مبلغ ۲۰,۰۰۰ هاپ جریمه پرداخت کردید!")
-            else:
-                jail_time = (datetime.now() + timedelta(minutes=15)).isoformat()
-                db.update_field(user_id, "in_jail_until", jail_time, relative=False)
-                await update.message.reply_text("🚔 **جریمه رو نداشتید و ۱۵ دقیقه افتادید زندان!**")
-        else:
-            profit = random.randint(800, 2000)
-            db.update_field(user_id, "points", profit)
-            await update.message.reply_text(f"🤑 **قاچاق وسایل سنگین موفق بود!** +{profit} هاپ سود کردید!")
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("💎 قاچاق الماس (سود: ۵۰۰ | ریسک: ۶۰٪)", callback_data=f"smuggle_diamond_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("📦 قاچاق سیگار (سود: ۲۰۰ | ریسک: ۳۰٪)", callback_data=f"smuggle_cig_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🍫 قاچاق شکلات (سود: ۱۰۰ | ریسک: ۱۰٪)", callback_data=f"smuggle_choco_{user_id}")
+        ]
+    ])
+
+    if update.callback_query:
+        await update.callback_query.edit_message_text(msg, reply_markup=keyboard, parse_mode='Markdown')
+    else:
+        await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
+
+
+# --- 🎲 پردازش کلیک روی دکمه‌های قاچاق ---
+async def handle_smuggle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    clicker_id = query.from_user.id
+
+    data = query.data.replace("smuggle_", "")
+    parts = data.split("_")
+    item_type = parts[0]
+    owner_id = int(parts[1])
+
+    # 🔒 بررسی اختصاصی بودن پنل
+    if clicker_id != owner_id:
+        await query.answer("❌ این پنل قاچاق برای شما نیست!", show_alert=True)
+        return
+
+    await query.answer()
+
+    user = db.get_user(clicker_id)
+
+    # بررسی مجدد زندان
+    if len(user) > 19 and user[19] == 1:
+        await query.message.reply_text("⛓ شما هم‌اکنون در زندان هستید! ابتدا جریمه را بپردازید.")
+        return
+
+    # تنظیمات اقلام قاچاق (سود و درصد شانس لورفتن)
+    items = {
+        "diamond": {"name": "الماس 💎", "profit": 500, "risk_percent": 60},
+        "cig": {"name": "سیگار 📦", "profit": 200, "risk_percent": 30},
+        "choco": {"name": "شکلات 🍫", "profit": 100, "risk_percent": 10},
+    }
+
+    if item_type not in items:
+        return
+
+    selected = items[item_type]
+    profit = selected["profit"]
+    risk = selected["risk_percent"]
+    item_name = selected["name"]
+
+    # محاسبه شانس لورفتن
+    chance = random.randint(1, 100)
+
+    if chance <= risk:
+        # 🚨 دستگیری توسط پلیس و انتقال به زندان
+        db.update_field(clicker_id, "is_jailed", 1, relative=False)
+        
+        await query.message.edit_text(
+            f"🚨 **آژیر پلیس! آژیر پلیس!** 🚓\n\n"
+            f"😱 شما هنگام قاچاق **{item_name}** دستگیر شدید!\n"
+            f"⛓ شما به **زندان** منتقل شدید.\n"
+            f"💡 برای آزادی، دستور `زندان` را ارسال کنید و جریمه بپردازید.",
+            parse_mode='Markdown'
+        )
+    else:
+        # 🎉 قاچاق موفق
+        db.update_field(clicker_id, "points", profit)
+        updated_user = db.get_user(clicker_id)
+
+        await query.message.edit_text(
+            f"🎉 **رد مال موفقیت‌آمیز بود!** 🕵️‍♂️\n\n"
+            f"✅ محموله **{item_name}** با موفقیت رد شد.\n"
+            f"💵 **سود خالص:** +{profit:,} هاپ\n"
+            f"💰 **موجودی جدید:** {updated_user[2]:,} هاپ",
+            parse_mode='Markdown'
+        )
 
 async def handle_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
