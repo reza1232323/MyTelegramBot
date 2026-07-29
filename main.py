@@ -43,17 +43,15 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "غذا":
         await pet.feed_dog(update, context, user)
 
- # 🏦 ۲. بانک، اقتصاد، کارخانه و قاچاق
-    elif text.startswith("بانک"):
+# 🏦 ۲. بانک، اقتصاد، کارخانه و قاچاق
+    if text.startswith("بانک"):
         await economy.bank_status(update, context, user)
     elif text == "کارخونه":
         await economy.show_factory(update, context)
     elif text == "کارخونه من":
-        # اگر نام تابع فروش یا مشاهده محصولات چیز دیگری است، آن را اینجا بگذارید
-        if hasattr(economy, "show_my_factory"):
-            await economy.show_my_factory(update, context, user)
-        else:
-            await economy.show_factory(update, context)
+        await economy.show_my_factory(update, context, user)
+    elif text in ["فروش", "بازار"]:
+        await economy.show_sell_menu(update, context, user)
     elif text in ["قاچاق", "قاچاقچی"]:
         await economy.show_contraband(update, context)
     elif text.startswith("زندان"):
@@ -64,7 +62,6 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await economy.city_status(update, context, user)
     elif text.startswith("اهدا"):
         await economy.donate_city(update, context, user)
-
     # 👑 ۳. دستورات ادمین (روی ریپلای)
     elif user_id in config.ADMIN_IDS:
         if text.startswith("افزایش پوینت"):
