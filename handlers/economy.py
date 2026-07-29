@@ -3,6 +3,14 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import database as db
 
+# --- 🎯 تابع محاسبه نوار پیشرفت (۵ خانه‌ای) ---
+def get_progress_bar(current, total):
+    if total <= 0:
+        return "▱▱▱▱▱"
+    ratio = min(max(current / total, 0.0), 1.0)
+    filled = int(round(ratio * 5))
+    return "▰" * filled + "▱" * (5 - filled)
+
 # --- 🏦 بانک ---
 async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
@@ -157,7 +165,7 @@ async def handle_smuggle(update: Update, context: ContextTypes.DEFAULT_TYPE, use
         await update.message.reply_text("🚓 شما در زندان هستید! ابتدا جریمه را پرداخت کنید.")
         return
 
-    if random.randint(1, 100) <= 40: # ۴۰ درصد احتمال دستگیری
+    if random.randint(1, 100) <= 40:
         db.update_field(user_id, "in_jail", 1, relative=False)
         await update.message.reply_text("🚨 **لو رفتی!** دستگیر شدی و به زندان افتادی. با دستور `زندان` جریمه بده.")
     else:
@@ -210,8 +218,56 @@ async def gamble(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
 
 # --- 🏙 شهر و اهدا ---
 async def city_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
-    fund = db.get_global_field("city_fund") or 0
-    await update.message.reply_text(f"🏙 **وضعیت شهر هاپو**\n\n🏦 صندوق توسعه شهر: **{fund:,}** هاپ\nبرای کمک: `اهدا [مبلغ]`")
+    # نام شهر همان نام گروه است
+    chat_title = update.effective_chat.title or "شهر هاپو"
+    
+    # دریافت اطلاعات شهر از دیتابیس
+    if hasattr(db, 'get_city'):
+        city_data = db.get_city()
+        treasury = city_data[0]
+        hops = city_data[1]
+        dogs = city_data[2]
+        bones = city_data[3]
+        fish = city_data[4]
+    else:
+        treasury = db.get_global_field("city_fund") or 0
+        hops = 8642
+        dogs = 24
+        bones = 775
+        fish = 775
+
+    # اهداف سطح ۴
+    req_treasury = 60000
+    req_hops = 400
+    req_dogs = 35
+    req_bones = 80
+    req_fish = 40
+
+    msg = (
+        "╮──「  شهر هاپو  」\n\n"
+        f"┐─  نام : {chat_title}\n"
+        "┐─  رتبه جهانی : #1\n"
+        "└─ \n\n"
+        " آمار شهر:\n"
+        "┐─  سطح : 3 / 10\n"
+        f"┐─  خزانه : {treasury:,}\n"
+        f"┐─  کل هاپ : {hops:,}\n"
+        f"┐─  کل سگ : {dogs:,}\n"
+        f"┐─  کل استخوان : {bones:,}\n"
+        f"└─  کل ماهی : {fish:,}\n\n"
+        " باف‌های فعال (سطح 3):\n"
+        "┐─  کولداون هاپ : 290s (اصلی 300s)\n"
+        "┐─  کاهش کولداون ماهیگیری : 60s\n"
+        "└─  کاهش آستانه پیشی خیابونی : 10%\n\n"
+        " پیشرفت به سطح 4:\n"
+        f"┐─  خزانه : {treasury:,} / {req_treasury:,}  {get_progress_bar(treasury, req_treasury)}\n"
+        f"┐─  هاپ‌های کل : {hops:,} / {req_hops:,}  {get_progress_bar(hops, req_hops)}\n"
+        f"┐─  سگ‌های خریداری شده : {dogs:,} / {req_dogs:,}  {get_progress_bar(dogs, req_dogs)}\n"
+        f"┐─  استخوان‌ها : {bones:,} / {req_bones:,}  {get_progress_bar(bones, req_bones)}\n"
+        f"└─  ماهی‌ها : {fish:,} / {req_fish:,}  {get_progress_bar(fish, req_fish)}\n\n"
+        " برای کمک به خزانه بنویس: اهدا [مقدار]"
+    )
+    await update.message.reply_text(msg)
 
 async def donate_city(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
@@ -227,5 +283,9 @@ async def donate_city(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
         return
 
     db.update_field(user_id, "points", -amt)
-    db.update_global_field("city_fund", amt)
-    await update.message.reply_text(f"❤️ با تشکر! مبلغ **{amt:,}** هاپ به صندوق شهر اهدا شد.")
+    if hasattr(db, 'update_city'):
+        db.update_city("treasury", amt)
+    else:
+        db.update_global_field("city_fund", amt)
+        
+    await update.message.reply_text(f"🏛️ با تشکر! مبلغ {amt:,} هاپ به خزانه شهر اهدا شد.")
