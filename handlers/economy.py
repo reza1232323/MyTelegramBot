@@ -90,15 +90,10 @@ async def handle_bank_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     clicker_id = query.from_user.id
     data = query.data
 
-    # استخراج دستور و آیدی مالک پنل
     data_clean = data.replace("bank_", "")
     parts = data_clean.split("_")
     
-    # پردازش نام اکشن و آیدی صاحب دکمه
-    if len(parts) >= 3 and parts[0] in ["deposit", "withdraw"]:
-        action = f"{parts[0]}_{parts[1]}"
-        owner_id = int(parts[2])
-    elif len(parts) >= 3 and parts[0] in ["claim", "change"]:
+    if len(parts) >= 3 and parts[0] in ["deposit", "withdraw", "claim", "change"]:
         action = f"{parts[0]}_{parts[1]}"
         owner_id = int(parts[2])
     else:
@@ -158,14 +153,15 @@ async def handle_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, use
     user_points = user[2]
 
     msg = (
-        f"🏭 **بازار خرید کارخانه**\n\n"
+        f"🏭 **بازار ساخت کارخانه**\n\n"
         f"💰 **موجودی شما:** {user_points:,} هاپ\n\n"
-        f"نوع کارخانه‌ای که می‌خواهید احداث کنید را انتخاب کنید:"
+        f"نوع خط تولید کارخانه‌ای که می‌خواهید احداث کنید را انتخاب کنید:"
     )
 
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🏭 کارخانه کوچک (قیمت: ۱,۰۰۰ | درآمد: ۵۰/ساعت)", callback_data=f"buy_factory_small_{user_id}")],
-        [InlineKeyboardButton("🏭 کارخانه بزرگ (قیمت: ۵,۰۰۰ | درآمد: ۳۰۰/ساعت)", callback_data=f"buy_factory_big_{user_id}")],
+        [InlineKeyboardButton("💎 کارخانه الماس (سود: ۵۰۰ | ریسک: ۶۰٪)", callback_data=f"buy_factory_diamond_{user_id}")],
+        [InlineKeyboardButton("📦 کارخانه سیگار (سود: ۲۰۰ | ریسک: ۳۰٪)", callback_data=f"buy_factory_cig_{user_id}")],
+        [InlineKeyboardButton("🍫 کارخانه شکلات (سود: ۱۰۰ | ریسک: ۱۰٪)", callback_data=f"buy_factory_choco_{user_id}")],
     ])
 
     await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
@@ -181,28 +177,44 @@ async def handle_factory_callback(update: Update, context: ContextTypes.DEFAULT_
     owner_id = int(parts[1]) if len(parts) > 1 else clicker_id
 
     if clicker_id != owner_id:
-        await query.answer("❌ این پنل برای شما نیست!", show_alert=True)
+        await query.answer("❌ این پنل کارخانه متعلق به شما نیست!", show_alert=True)
         return
 
     await query.answer()
 
-    prices = {"small": 1000, "big": 5000}
-    names = {"small": "کوچک", "big": "بزرگ"}
+    items = {
+        "diamond": {"name": "الماس 💎", "profit": 500, "risk_percent": 60},
+        "cig": {"name": "سیگار 📦", "profit": 200, "risk_percent": 30},
+        "choco": {"name": "شکلات 🍫", "profit": 100, "risk_percent": 10},
+    }
 
-    cost = prices.get(fac_type, 0)
-    user = db.get_user(clicker_id)
-
-    if user[2] < cost:
-        await query.message.reply_text("❌ موجودی شما برای خرید این کارخانه کافی نیست!")
+    if fac_type not in items:
         return
 
-    # کسر سکه
-    db.update_field(clicker_id, "points", -cost)
-    
-    await query.message.edit_text(
-        f"🎉 **تبریک!**\n\nشما با موفقیت یک **کارخانه {names.get(fac_type)}** ساختید!",
-        parse_mode='Markdown'
-    )
+    selected = items[fac_type]
+    profit = selected["profit"]
+    risk = selected["risk_percent"]
+    item_name = selected["name"]
+
+    chance = random.randint(1, 100)
+
+    if chance <= risk:
+        await query.message.edit_text(
+            f"💥 **خرابی خط تولید!** 🏭\n\n"
+            f"😱 خط تولید **{item_name}** با مشکل مواجه شد و خسارت دیدید!",
+            parse_mode='Markdown'
+        )
+    else:
+        db.update_field(clicker_id, "points", profit)
+        updated_user = db.get_user(clicker_id)
+
+        await query.message.edit_text(
+            f"🎉 **تولید موفقیت‌آمیز بود!** 🏭\n\n"
+            f"✅ محصول **{item_name}** با موفقیت تولید و فروخته شد.\n"
+            f"💵 **سود تولید:** +{profit:,} هاپ\n"
+            f"💰 **موجودی جدید:** {updated_user[2]:,} هاپ",
+            parse_mode='Markdown'
+        )
 
 
 # ==================== 🕵️‍♂️ بخش قاچاق ====================
@@ -237,7 +249,7 @@ async def handle_smuggle_callback(update: Update, context: ContextTypes.DEFAULT_
     owner_id = int(parts[1]) if len(parts) > 1 else clicker_id
 
     if clicker_id != owner_id:
-        await query.answer("❌ این پنل قاچاق برای شما نیست!", show_alert=True)
+        await query.answer("❌ این پنل قاچاق متعلق به شما نیست!", show_alert=True)
         return
 
     await query.answer()
