@@ -299,6 +299,35 @@ async def sell_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✅ ۱ عدد **{item['name']}** با موفقیت فروخته شد!\n"
             f"💵 مبلغ **{item['price']}** به کیف پول شما اضافه شد."
         )
+        # ----------------- ۶. بخش شهر و اهدا -----------------
+
+async def city_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    await update.message.reply_text(
+        "🏙 **شهر هاپو مگا:**\n"
+        "شهر در حال توسعه است. می‌توانید با دستور `اهدا [مبلغ]` به پیشرفت شهر کمک کنید."
+    )
+
+async def donate_city(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    text = update.message.text
+    parts = text.split()
+    user_id = update.effective_user.id
+    
+    if len(parts) < 2 or not parts[1].isdigit():
+        await update.message.reply_text("❌ لطفاً مبلغ اهدا را وارد کنید. مثال:\n`اهدا 1000`", parse_mode="Markdown")
+        return
+        
+    amount = int(parts[1])
+    if amount <= 0:
+        await update.message.reply_text("❌ مبلغ اهدا باید بیشتر از صفر باشد.")
+        return
+        
+    points = db.get_user_field(user_id, "points") or 0
+    if points < amount:
+        await update.message.reply_text("❌ موجودی کافی برای اهدا ندارید!")
+        return
+        
+    db.update_field(user_id, "points", -amount, relative=True)
+    await update.message.reply_text(f"🙏 با تشکر! مبلغ {format_balance(amount)} به شهر اهدا شد.")
 
 # توابع کمکی برای سازگاری با main.py
 async def handle_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
