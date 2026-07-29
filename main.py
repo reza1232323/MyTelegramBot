@@ -37,7 +37,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text.startswith("بانک"):
         await economy.bank_status(update, context, user)
     elif text == "کارخونه من":
-        await economy.my_factory(update, context, user)
+        await economy.show_factory(update, context)
     elif text == "کارخونه":
         await economy.handle_factory(update, context, user)
     elif text == "قاچاق":
