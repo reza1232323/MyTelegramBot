@@ -8,13 +8,25 @@ async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
     last_hop_str = user[18]
 
-    # بررسی تایمر ۱ دقیقه‌ای
+    # بررسی تایمر ۵ دقیقه‌ای (۳۰۰ ثانیه)
     if last_hop_str:
-        last_hop = datetime.fromisoformat(last_hop_str)
-        if datetime.now() - last_hop < timedelta(minutes=1):
-            rem = timedelta(minutes=1) - (datetime.now() - last_hop)
-            await update.message.reply_text(f"⏳ **صبر کن هاپو!** {rem.seconds} ثانیه دیگر دوباره بزن.")
-            return
+        try:
+            last_hop = datetime.fromisoformat(last_hop_str)
+            time_passed = datetime.now() - last_hop
+            
+            if time_passed < timedelta(minutes=5):
+                rem_seconds = int((timedelta(minutes=5) - time_passed).total_seconds())
+                mins, secs = divmod(rem_seconds, 60)
+                
+                if mins > 0:
+                    time_msg = f"{mins} دقیقه و {secs} ثانیه"
+                else:
+                    time_msg = f"{secs} ثانیه"
+                    
+                await update.message.reply_text(f"⏳ **صبر کن هاپو!** {time_msg} دیگر دوباره بزن.")
+                return
+        except Exception:
+            pass
 
     reward = random.randint(10, 50)
     db.update_field(user_id, "points", reward)
@@ -23,12 +35,12 @@ async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
 
     leveled_up, new_lvl = db.check_level_up(user_id)
     
-    # دریافت آخرین اطلاعات به‌روزرسانی‌شده کاربر
+    # دریافت اطلاعات به‌روزرسانی‌شده کاربر
     current_user = db.get_user(user_id)
     total_points = current_user[2]
     current_level = current_user[4]
 
-    # قالب‌بندی جدید
+    # قالب‌بندی پیام خروجی
     msg = (
         f"➕ **{reward:,} هاپ دریافت کردی!**\n"
         f"💰 **موجودی کل:** {total_points:,} هاپ\n"
@@ -37,6 +49,8 @@ async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
 
     if leveled_up:
         msg += f"\n\n🎉 **تبریک!** شما به لول {new_lvl} ارتقا یافتید!"
+
+    await update.message.reply_text(msg, parse_mode='Markdown')
 
     await update.message.reply_text(msg, parse_mode='Markdown')
 
