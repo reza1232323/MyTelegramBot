@@ -93,7 +93,7 @@ def main():
     app = ApplicationBuilder().token(config.BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler((filters.TEXT | filters.DICE) & ~filters.COMMAND, router))
+    app.add_handler(MessageHandler((filters.TEXT | filters.Dice.ALL) & ~filters.COMMAND, router))
     app.add_handler(CallbackQueryHandler(callback_router))
 
     print("🤖 Bot is active...")
