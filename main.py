@@ -21,7 +21,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
     db.get_user(user_id, username)
-    await update.message.reply_text("👋 سلام! به ربات هاپویی خوش آمدید. برای استفاده، ربات را به گروه اضافه کنید.")
+    await update.message.reply_text("👋 سلام! ربات با موفقیت فعال شد.")
 
 async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
@@ -32,16 +32,14 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
 
-    # ثبت کاربر در دیتابیس
     user = db.get_user(user_id, username)
 
-    # عدم پاسخ‌دهی در پیوی
     if chat_type == 'private':
-        await update.message.reply_text("❌ برای استفاده از امکانات، ربات را به گروه اضافه کنید!")
+        await update.message.reply_text("❌ لطفاً ربات را به گروه اضافه کنید!")
         return
 
-    # ---------------- 🎮 ۱. دستورات عمومی (قابل اجرا برای کل کاربران) ----------------
-    if text in ["هاپوهام", "هاپو هام", "پروفایل", "profile"]:
+    # 🌐 ۱. عمومی - پروفایل و راهنما (بدون شرط ادمین)
+    if text in ["هاپوهام", "هاپو هام", "هاپوهاش", "هاپو هاش", "پروفایل", "profile"]:
         await pet.show_profile(update, context, user)
         return
     elif text in ["هاپ", "hop"]:
@@ -51,8 +49,8 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await pet.show_help(update, context)
         return
 
-    # ---------------- 💼 ۲. تفکیک دقیق کارخانه و انبار (اقتصاد) ----------------
-    if text in ["کارخونه من", "کارخانه من", "انبار من", "انبار"]:
+    # 💼 ۲. اقتصاد، کارخانه و انبار
+    if text in ["کارخونه من", "کارخانه من", "انبار", "انبار من"]:
         await economy.my_inventory(update, context, user)
         return
     elif text in ["کارخونه", "کارخانه"]:
@@ -65,7 +63,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await economy.handle_smuggle(update, context, user)
         return
 
-    # ---------------- 👑 ۳. دستورات مدیریتی ادمین ----------------
+    # 👑 ۳. دستورات ادمین
     if user_id in config.ADMIN_IDS:
         if text.startswith("افزایش پوینت"):
             await admin.add_points(update, context)
@@ -93,7 +91,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, router))
     app.add_handler(CallbackQueryHandler(callback_router))
 
-    print("🤖 Bot is running...")
+    print("🤖 Bot started...")
     app.run_polling()
 
 if __name__ == "__main__":
