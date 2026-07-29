@@ -1,6 +1,6 @@
 import logging
 from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
+from telegram.ext import ApplicationBuilder, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 import config
 import database as db
 from handlers import economy, games, pet, city, admin
@@ -9,85 +9,41 @@ logging.basicConfig(level=logging.INFO)
 db.init_db()
 
 async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
-        return
+    if not update.message or not update.message.text: return
 
     text = update.message.text.strip()
     chat_type = update.effective_chat.type
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
 
-    # ثبت‌نام خودکار
     user = db.get_user(user_id, username)
 
-    # 🛑 ۱. بررسی پیوی (محدودیت استفاده فقط در گروه)
     if chat_type == 'private':
-        if text.startswith("ثبت آگهی"):
-            await economy.register_market_item(update, context)
-        else:
-            await update.message.reply_text(
-                "❌ **برای استفاده از ربات، لطفا من را وارد یک گروه (گپ) کنید!**\n\n"
-                "در پیوی فقط می‌توانید آگهی مارکت خود را ثبت و مدیریت کنید.",
-                parse_mode='Markdown'
-            )
+        await update.message.reply_text("❌ برای استفاده از من، من را وارد یک گپ کنید!")
         return
 
-    # 🛑 ۲. دستورات گروه
-    # دستورات عمومی
-    if text == "هاپ":
-        await pet.claim_hop(update, context, user)
-    elif text in ["هاپوهام", "پروفایل"]:
-        await pet.show_profile(update, context, user)
-    elif text == "هاپ هاش":
-        await pet.show_target_profile(update, context)
-    elif text in ["لیدربرد", "برترین‌ها"]:
-        await pet.show_leaderboard(update, context)
-    elif text == "راهنما":
-        await pet.show_help(update, context)
+    # دستورات
+    if text == "هاپ": await pet.claim_hop(update, context, user)
+    elif text in ["هاپوهام", "پروفایل"]: await pet.show_profile(update, context, user)
+    elif text in ["خرید سگ", "ارتقا سگ"]: await pet.buy_dog(update, context, user)
+    elif text in ["غذا", "غذا دادن"]: await pet.feed_dog(update, context, user)
+    elif text.startswith("بانک"): await economy.bank_status(update, context, user)
+    elif text.startswith("کارخونه"): await economy.handle_factory(update, context, user)
+    elif text.startswith("قاچاق"): await economy.handle_smuggle(update, context, user)
+    elif text.startswith("قمار"): await games.start_gambling(update, context, user)
+    elif text == "شهر": await city.show_city(update, context)
+    elif text.startswith("اهدا"): await city.donate_to_city(update, context, user)
 
-    # سگ و ماهیگیری
-    elif text in ["سگ", "هاپو"]:
-        await pet.dog_status(update, context, user)
-    elif text == "استخوان":
-        await pet.fish_bone(update, context, user)
-
-    # اقتصاد
-    # بخش اقتصاد
-    elif text.startswith("بانک"):
-        await economy.bank_status(update, context, user)
-    elif text == "کارخونه":
-        await economy.factory_status(update, context, user)
-    elif text.startswith("انتقال"):
-        await economy.transfer_points(update, context, user)
-    elif text == "مارکت":
-        await economy.show_market(update, context)
-
-    # بازی‌ها
-    elif text == "گردونه":
-        await games.spin_wheel(update, context, user)
-    elif text == "تاس":
-        await games.roll_dice(update, context, user)
-
-    # شهر و قاچاق
-    elif text == "شهر":
-        await city.city_info(update, context)
-    elif text == "قاچاق":
-        await city.smuggle(update, context, user)
-# دستورات ادمین
+    # ادمین
     elif user_id in config.ADMIN_IDS:
-        if text.startswith("افزایش پوینت"):
-            await admin.add_points(update, context)
-        elif text.startswith("کاهش پوینت"):
-            await admin.remove_points(update, context)
-        elif text.startswith("افزایش لول"):
-            await admin.add_level(update, context)
-        elif text.startswith("کاهش لول"):
-            await admin.remove_level(update, context)
+        if text.startswith("همگانی"):
+            await admin.broadcast_message(update, context)
 
 def main():
     app = ApplicationBuilder().token(config.BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT, router))
-    print("🤖 Hapo Advanced Bot Started...")
+    app.add_handler(CallbackQueryHandler(games.handle_gamble_callback, pattern="^join_gamble:"))
+    print("🤖 Hapo Mega Bot Started...")
     app.run_polling()
 
 if __name__ == '__main__':
