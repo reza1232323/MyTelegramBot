@@ -52,7 +52,8 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await pet.fish_bone(update, context, user)
 
     # اقتصاد
-    elif text == "بانک":
+    # بخش اقتصاد
+    elif text.startswith("بانک"):
         await economy.bank_status(update, context, user)
     elif text == "کارخونه":
         await economy.factory_status(update, context, user)
