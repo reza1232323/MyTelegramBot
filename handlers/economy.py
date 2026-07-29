@@ -209,3 +209,10 @@ async def handle_factory_and_smuggle_text(update: Update, context: ContextTypes.
         return True
 
     return False
+    # این دو تابع را به انتهای فایل handlers/economy.py اضافه کن:
+
+async def handle_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    return await show_factory(update, context)
+
+async def handle_smuggle(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    return await show_contraband(update, context)
