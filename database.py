@@ -10,12 +10,15 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
     
+    # جدول کاربران
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
             username TEXT,
             points INTEGER DEFAULT 0,
             level INTEGER DEFAULT 1,
+            hops INTEGER DEFAULT 0,
+            dogs INTEGER DEFAULT 0,
             dog_status TEXT DEFAULT 'بدون سگ',
             dog_health INTEGER DEFAULT 0,
             bank_balance INTEGER DEFAULT 0,
@@ -36,6 +39,7 @@ def init_db():
         )
     ''')
 
+    # جدول متغیرهای عمومی
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS global_vars (
             key TEXT PRIMARY KEY,
@@ -43,34 +47,26 @@ def init_db():
         )
     ''')
 
+    # جدول اهدایی‌های شهر
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS city_donations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            amount INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # جدول تنظیمات عمومی و سطح شهر
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    ''')
+
     conn.commit()
     conn.close()
-    def get_city_treasury(self):
-    res = self.cursor.execute("SELECT SUM(amount) FROM city_donations").fetchone()
-    return res[0] if res and res[0] else 0
-
-def get_total_hops(self):
-    res = self.cursor.execute("SELECT SUM(hops) FROM users").fetchone()
-    return res[0] if res and res[0] else 0
-
-def get_total_dogs(self):
-    res = self.cursor.execute("SELECT SUM(dogs) FROM users").fetchone()
-    return res[0] if res and res[0] else 0
-
-def get_total_item(self, column_name):
-    try:
-        res = self.cursor.execute(f"SELECT SUM({column_name}) FROM users").fetchone()
-        return res[0] if res and res[0] else 0
-    except:
-        return 0
-
-def get_city_level(self):
-    res = self.cursor.execute("SELECT value FROM settings WHERE key='city_level'").fetchone()
-    return int(res[0]) if res else 1
-
-def set_city_level(self, level):
-    self.cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('city_level', ?)", (str(level),))
-    self.conn.commit()
 
 def get_user(user_id, username="کاربر"):
     conn = get_connection()
@@ -132,7 +128,7 @@ def update_global_field(key, amount):
     conn.commit()
     conn.close()
 
-# ----------------- متدهای جدید مربوط به زندان -----------------
+# ----------------- متدهای مربوط به زندان -----------------
 
 def set_jail(user_id, minutes=15):
     jail_until = (datetime.now() + timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
@@ -145,7 +141,6 @@ def is_in_jail(user_id):
         jail_until = datetime.strptime(jail_until_str, "%Y-%m-%d %H:%M:%S")
         if datetime.now() < jail_until:
             return True, jail_until
-    # اگر زمان گذشته باشه زندان رو صفر می‌کنه
     update_field(user_id, "in_jail", 0, relative=False)
     update_field(user_id, "jail_until", None, relative=False)
     return False, None
@@ -153,3 +148,79 @@ def is_in_jail(user_id):
 def release_from_jail(user_id):
     update_field(user_id, "in_jail", 0, relative=False)
     update_field(user_id, "jail_until", None, relative=False)
+
+# ----------------- متدهای مربوط به آمار شهر -----------------
+
+def get_city_treasury():
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT SUM(amount) FROM city_donations")
+        res = cursor.fetchone()
+        return res[0] if res and res[0] else 0
+    except:
+        return 0
+    finally:
+        conn.close()
+
+def add_city_donation(user_id, amount):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO city_donations (user_id, amount) VALUES (?, ?)", (user_id, amount))
+    conn.commit()
+    conn.close()
+
+def get_total_hops():
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT SUM(hops) FROM users")
+        res = cursor.fetchone()
+        return res[0] if res and res[0] else 0
+    except:
+        return 0
+    finally:
+        conn.close()
+
+def get_total_dogs():
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT SUM(dogs) FROM users")
+        res = cursor.fetchone()
+        return res[0] if res and res[0] else 0
+    except:
+        return 0
+    finally:
+        conn.close()
+
+def get_total_item(column_name):
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(f"SELECT SUM({column_name}) FROM users")
+        res = cursor.fetchone()
+        return res[0] if res and res[0] else 0
+    except:
+        return 0
+    finally:
+        conn.close()
+
+def get_city_level():
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT value FROM settings WHERE key='city_level'")
+        res = cursor.fetchone()
+        return int(res[0]) if res and res[0] else 1
+    except:
+        return 1
+    finally:
+        conn.close()
+
+def set_city_level(level):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO settings (key, value) VALUES ('city_level', ?) ON CONFLICT(key) DO UPDATE SET value = ?", (str(level), str(level)))
+    conn.commit()
+    conn.close()
