@@ -6,28 +6,34 @@ import database as db
 
 async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
-    last_hop_str = user[19] # ستون مربوط به زمان آخرین هاپ
+    
+    # گرفتن آخرین اطلاعات کاربر مستقیم از دیتابیس
+    current_user = db.get_user(user_id)
+    last_hop_str = current_user[18] # ستون درست last_hop
 
     # ۱. بررسی تایمر ۵ دقیقه‌ای
     if last_hop_str:
-        last_hop_time = datetime.fromisoformat(last_hop_str)
-        time_passed = datetime.now() - last_hop_time
-        five_minutes = timedelta(minutes=5)
+        try:
+            last_hop_time = datetime.fromisoformat(last_hop_str)
+            time_passed = datetime.now() - last_hop_time
+            five_minutes = timedelta(minutes=5)
 
-        if time_passed < five_minutes:
-            remaining_seconds = int((five_minutes - time_passed).total_seconds())
-            mins = remaining_seconds // 60
-            secs = remaining_seconds % 60
-            await update.message.reply_text(
-                f"⏳ **هنوز زوده!**\nلطفاً **{mins} دقیقه و {secs} ثانیه** دیگر صبر کنید.",
-                parse_mode='Markdown'
-            )
-            return
+            if time_passed < five_minutes:
+                remaining_seconds = int((five_minutes - time_passed).total_seconds())
+                mins = remaining_seconds // 60
+                secs = remaining_seconds % 60
+                await update.message.reply_text(
+                    f"⏳ **هنوز زوده!**\nلطفاً **{mins} دقیقه و {secs} ثانیه** دیگر صبر کنید.",
+                    parse_mode='Markdown'
+                )
+                return
+        except Exception:
+            pass
 
     # ۲. محاسبه پاداش رندوم (بین ۱۰ تا ۵۰ هاپ)
     random_points = random.randint(10, 50)
     
-    # شانس دریافت جم کمیاب (۱۰٪ شانس)
+    # شانس دریافت جم (۱۰٪ شانس)
     bonus_gem = 0
     gem_msg = ""
     if random.randint(1, 10) == 1:
@@ -35,18 +41,18 @@ async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
         db.update_field(user_id, "gems", 1)
         gem_msg = "\n💎 **شانس آوردی! ۱ عدد جم هم پیدا کردی!**"
 
-    # بروزرسانی امتیاز و زمان آخرین دریافت
+    # بروزرسانی امتیاز و زمان دریافت
     db.update_field(user_id, "points", random_points)
     db.update_last_hop(user_id)
 
-    # ۳. بررسی و ارتقای لول خودکار
+    # ۳. بررسی ارتقای لول
     leveled_up, new_level = db.check_level_up(user_id)
     
     level_msg = ""
     if leveled_up:
         level_msg = f"\n🎉 **تبریک! شما به سطح {new_level} ارتقا یافتید!** 🌟"
 
-    # گرفتن اطلاعات جدید کاربر برای نمایش درست
+    # گرفتن موجودی جدید
     updated_user = db.get_user(user_id)
 
     msg = (
