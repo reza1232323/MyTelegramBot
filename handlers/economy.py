@@ -3,16 +3,220 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import database as db
 
+# --- 🎰 سیستم قمار ساده (عدد مشخص) ---
+async def gamble(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
+    user_id = user[0]
+    text = update.message.text.strip().split()
+    
+    # دریافت موجودی لحظه‌ای از دیتابیس
+    wallet = db.get_user_field(user_id, "points") or 0
+
+    if len(text) < 2:
+        await update.message.reply_text("💡 **روش استفاده:**\n`قمار 100` یا `قمار همه`", parse_mode='Markdown')
+        return
+
+    # تشخیص مقدار شرط‌بندی
+    amount_str = text[1]
+    if amount_str == "همه":
+        amt = wallet
+    elif amount_str.isdigit():
+        amt = int(amount_str)
+    else:
+        await update.message.reply_text("❌ لطفاً یک مبلغ معتبر وارد کنید!")
+        return
+
+    if amt <= 0:
+        await update.message.reply_text("❌ مبلغ قمار باید بیشتر از صفر باشد!")
+        return
+
+    if wallet < amt:
+        await update.message.reply_text(f"❌ موجودی کافی نیست! موجودی شما: **{wallet:,}** هاپ", parse_mode='Markdown')
+        return
+
+    # انجام قمار (۵۰/۵۰)
+    if random.choice([True, False]):
+        db.update_field(user_id, "points", amt)
+        new_balance = wallet + amt
+        await update.message.reply_text(f"🎉 **برنده شدی!**\nمبلغ **{amt:,}** هاپ اضافه شد.\n💰 موجودی جدید: **{new_balance:,}** هاپ", parse_mode='Markdown')
+    else:
+        db.update_field(user_id, "points", -amt)
+        new_balance = wallet - amt
+        await update.message.reply_text(f"💥 **باختی!**\nمبلغ **{amt:,}** هاپ از دست رفتی.\n💰 موجودی جدید: **{new_balance:,}** هاپ", parse_mode='Markdown')
+
+
+# --- 🎯 بازی‌های استیکری (دارت، تاس، بولینگ و...) ---
+async def dice_games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
+    user_id = user[0]
+    text = update.message.text.strip().split()
+    wallet = db.get_user_field(user_id, "points") or 0
+
+    if len(text) < 2:
+        await update.message.reply_text("💡 **روش استفاده:**\n`بازی 100` یا `بازی همه`", parse_mode='Markdown')
+        return
+
+    amount_str = text[1]
+    if amount_str == "همه":
+        amt = wallet
+    elif amount_str.isdigit():
+        amt = int(amount_str)
+    else:
+        await update.message.reply_text("❌ مبلغ معتبر وارد کنید!")
+        return
+
+    if amt <= 0 or wallet < amt:
+        await update.message.reply_text(f"❌ موجودی کافی نیست! موجودی: **{wallet:,}** هاپ", parse_mode='Markdown')
+        return
+
+    msg = (
+        f"🎯 **منوی بازی‌های استیکری**\n\n"
+        f"💰 مبلغ شرط‌بندی: **{amt:,}** هاپ\n"
+        f"یکی از بازی‌های زیر را انتخاب کنید:"
+    )
+
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🎯 دارت", callback_data=f"game_dart_{amt}_{user_id}"),
+            InlineKeyboardButton("🎲 تاس", callback_data=f"game_dice_{amt}_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🎳 بولینگ", callback_data=f"game_bowling_{amt}_{user_id}"),
+            InlineKeyboardButton("🏀 بسکتبال", callback_data=f"game_basketball_{amt}_{user_id}")
+        ],
+        [
+            InlineKeyboardButton("🎰 اسلات (کازینو)", callback_data=f"game_slots_{amt}_{user_id}")
+        ]
+    ])
+
+    await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
+
+
+async def handle_game_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    data = query.data.split("_")
+    game_type = data[1]
+    amt = int(data[2])
+    owner_id = int(data[3])
+
+    if query.from_user.id != owner_id:
+        await query.answer("❌ این بازی برای شخص دیگری است!", show_alert=True)
+        return
+
+    await query.answer()
+
+    emoji_map = {
+        "dart": "🎯",
+        "dice": "🎲",
+        "bowling": "🎳",
+        "basketball": "🏀",
+        "slots": "🎰"
+    }
+    target_emoji = emoji_map.get(game_type, "🎲")
+
+    msg = (
+        f"🕹 **بازی {target_emoji} آماده است!**\n\n"
+        f"مبلغ شرط: **{amt:,}** هاپ\n\n"
+        f"👇 **راهنما:**\n"
+        f"همین حالا استیکر {target_emoji} رو روی **همین پیام** ریپلای کن تا نتیجه ثبت بشه!"
+    )
+
+    # ذخیره اطلاعات بازی در bot_data مربوط به پیام جهت پردازش ریپلای
+    sent_msg = await query.message.edit_text(msg, parse_mode='Markdown')
+    context.bot_data[f"game_{sent_msg.message_id}"] = {
+        "user_id": owner_id,
+        "amt": amt,
+        "game_type": game_type,
+        "emoji": target_emoji
+    }
+
+
+async def process_dice_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.reply_to_message:
+        return
+
+    reply_to_id = update.message.reply_to_message.message_id
+    game_data = context.bot_data.get(f"game_{reply_to_id}")
+
+    if not game_data:
+        return
+
+    user_id = update.effective_user.id
+    if user_id != game_data["user_id"]:
+        return
+
+    # بررسی اینکه کاربر حتماً تاس/استیکر فرستاده باشه
+    if not update.message.dice:
+        await update.message.reply_text("❌ لطفاً دقیقا همان استیکر بازی (تاس/دارت/...) را ریپلای کنید!")
+        return
+
+    dice_val = update.message.dice.value
+    expected_emoji = game_data["emoji"]
+
+    if update.message.dice.emoji != expected_emoji:
+        await update.message.reply_text(f"❌ لطفاً استیکر {expected_emoji} را بفرستید!")
+        return
+
+    amt = game_data["amt"]
+    wallet = db.get_user_field(user_id, "points") or 0
+
+    if wallet < amt:
+        await update.message.reply_text("❌ موجودی شما کافی نیست!")
+        del context.bot_data[f"game_{reply_to_id}"]
+        return
+
+    # محاسبه برنده/بازنده بر اساس امتیاز استیکر تلگرام
+    win = False
+    multiplier = 2
+
+    if expected_emoji in ["🎯", "🏀", "🎳"]:
+        # امتیاز بالا (مثلاً ۵ یا ۶ در دارت/بسکتبال/بولینگ) برنده است
+        if dice_val >= 5:
+            win = True
+    elif expected_emoji == "🎲":
+        # ۴ و ۵ و ۶ برنده
+        if dice_val >= 4:
+            win = True
+    elif expected_emoji == "🎰":
+        # ۶۴ یعنی سه تا شکل یکسان در اسلات
+        if dice_val == 64:
+            win = True
+            multiplier = 5  # ضریب ۵ برای کازینو
+
+    if win:
+        profit = amt * (multiplier - 1)
+        db.update_field(user_id, "points", profit)
+        new_wallet = wallet + profit
+        await update.message.reply_text(
+            f"🎉 **تبریک! برنده شدی!**\n"
+            f"امتیاز استیکر: **{dice_val}**\n"
+            f"🎁 پاداش: **+{profit:,}** هاپ\n"
+            f"💰 موجودی جدید: **{new_wallet:,}** هاپ",
+            parse_mode='Markdown'
+        )
+    else:
+        db.update_field(user_id, "points", -amt)
+        new_wallet = wallet - amt
+        await update.message.reply_text(
+            f"💥 **متأسفانه باختی!**\n"
+            f"امتیاز استیکر: **{dice_val}**\n"
+            f"🔻 کسر شد: **-{amt:,}** هاپ\n"
+            f"💰 موجودی جدید: **{new_wallet:,}** هاپ",
+            parse_mode='Markdown'
+        )
+
+    # پاک کردن بازی از حافظه
+    del context.bot_data[f"game_{reply_to_id}"]
+
+
 # --- 🏦 بانک ---
 async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
     text = update.message.text.strip() if update.message else ""
     parts = text.split()
-    current_user = db.get_user(user_id)
-    wallet, bank = current_user[2], current_user[5]
+    wallet = db.get_user_field(user_id, "points") or 0
+    bank = db.get_user_field(user_id, "bank_balance") or 0
 
     if len(parts) >= 3 and parts[1] == "واریز":
-        amt = wallet if parts[2] == "همه" else int(parts[2])
+        amt = wallet if parts[2] == "همه" else int(parts[2]) if parts[2].isdigit() else 0
         if amt <= 0 or wallet < amt:
             await update.message.reply_text("❌ موجودی کافی نیست!")
             return
@@ -22,7 +226,7 @@ async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
         return
 
     elif len(parts) >= 3 and parts[1] == "برداشت":
-        amt = bank if parts[2] == "همه" else int(parts[2])
+        amt = bank if parts[2] == "همه" else int(parts[2]) if parts[2].isdigit() else 0
         if amt <= 0 or bank < amt:
             await update.message.reply_text("❌ موجودی بانک کافی نیست!")
             return
@@ -82,6 +286,7 @@ async def handle_bank_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         else:
             await query.message.reply_text("❌ موجودی بانک کافی نیست.")
     elif action == "change":
+        import random
         new_acc = str(random.randint(1000000000, 9999999999))
         db.update_field(clicker_id, "account_number", new_acc, relative=False)
         await query.message.reply_text(f"✅ شماره حساب جدید:\n`{new_acc}`", parse_mode='Markdown')
@@ -157,7 +362,7 @@ async def handle_smuggle(update: Update, context: ContextTypes.DEFAULT_TYPE, use
         await update.message.reply_text("🚓 شما در زندان هستید! ابتدا جریمه را پرداخت کنید.")
         return
 
-    if random.randint(1, 100) <= 40: # ۴۰ درصد احتمال دستگیری
+    if random.randint(1, 100) <= 40:
         db.update_field(user_id, "in_jail", 1, relative=False)
         await update.message.reply_text("🚨 **لو رفتی!** دستگیر شدی و به زندان افتادی. با دستور `زندان` جریمه بده.")
     else:
@@ -174,7 +379,7 @@ async def jail_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
         if not is_jail:
             await update.message.reply_text("شما آزاد هستید!")
             return
-        user_points = user[2]
+        user_points = db.get_user_field(user_id, "points") or 0
         bail = 200
         if user_points < bail:
             await update.message.reply_text(f"❌ برای آزادی نیاز به {bail} هاپ دارید.")
@@ -186,27 +391,6 @@ async def jail_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
 
     status = "🔴 در زندان" if is_jail else "🟢 آزاد"
     await update.message.reply_text(f"🚓 **وضعیت زندان:** {status}\nبرای آزادی از دستور `زندان پرداخت` استفاده کنید (جریمه: ۲۰۰ هاپ).")
-
-# --- 🎰 قمار ---
-async def gamble(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
-    user_id = user[0]
-    text = update.message.text.strip().split()
-    if len(text) < 2 or not text[1].isdigit():
-        await update.message.reply_text("💡 روش استفاده: `قمار 100`", parse_mode='Markdown')
-        return
-
-    amt = int(text[1])
-    wallet = user[2]
-    if amt <= 0 or wallet < amt:
-        await update.message.reply_text("❌ موجودی کافی نیست!")
-        return
-
-    if random.choice([True, False]):
-        db.update_field(user_id, "points", amt)
-        await update.message.reply_text(f"🎉 **برنده شدی!** مبلغ **{amt:,}** هاپ اضافه شد.")
-    else:
-        db.update_field(user_id, "points", -amt)
-        await update.message.reply_text(f"💥 **باختی!** مبلغ **{amt:,}** هاپ از دست رفتی.")
 
 # --- 🏙 شهر و اهدا ---
 async def city_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
@@ -221,7 +405,7 @@ async def donate_city(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
         return
 
     amt = int(text[1])
-    wallet = user[2]
+    wallet = db.get_user_field(user_id, "points") or 0
     if amt <= 0 or wallet < amt:
         await update.message.reply_text("❌ موجودی کافی نیست!")
         return
