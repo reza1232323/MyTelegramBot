@@ -1,6 +1,7 @@
 import random
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+import database as db
 # --- اصلاح قمار ساده (مشکل عدم تشخیص عدد) ---
 async def gamble(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
