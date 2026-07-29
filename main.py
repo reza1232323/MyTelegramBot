@@ -32,6 +32,10 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await pet.buy_dog(update, context, user)
     elif text == "غذا":
         await pet.feed_dog(update, context, user)
+        # در بخش router فایل main.py:
+    if text in ["هاپ", "hop", "هاپ زدن"]:
+        await pet.claim_hop(update, context, user)
+        return
 
     # 🏦 ۲. بانک، اقتصاد و بازی‌ها
     elif text.startswith("بانک"):
