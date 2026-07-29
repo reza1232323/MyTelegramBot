@@ -7,9 +7,9 @@ import database as db
 async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
     
-    # دریافت آخرین اطلاعات تازه‌ی کاربر از دیتابیس
+    # دریافت اطلاعات تازه‌ی کاربر از دیتابیس
     current_user = db.get_user(user_id)
-    last_hop_str = current_user[18]
+    last_hop_str = current_user[17]  # 👈 اصلاح اندیس از ۱۸ به ۱۷ (ستون اصلی last_hop)
 
     # بررسی تایمر ۵ دقیقه‌ای (۳۰۰ ثانیه)
     if last_hop_str:
@@ -34,7 +34,7 @@ async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     # اضافه کردن پوینت و ثبت زمان جدید
     reward = random.randint(10, 50)
     db.update_field(user_id, "points", reward)
-    db.update_last_hop(user_id)  # ذخیره زمان فعلی
+    db.update_last_hop(user_id)  # ذخیره زمان فعلی در ستون last_hop
     db.update_city("total_hops", 1)
 
     leveled_up, new_lvl = db.check_level_up(user_id)
