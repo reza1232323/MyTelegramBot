@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 DB_NAME = "hapo_advanced.db"
 
@@ -10,7 +10,6 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # جدول کامل کاربران
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY,
@@ -20,28 +19,24 @@ def init_db():
         level INTEGER DEFAULT 1,
         bank_balance INTEGER DEFAULT 0,
         
-        -- ویژگی‌های هاپو (سگ)
         dog_level INTEGER DEFAULT 1,
         dog_health INTEGER DEFAULT 100,
         dog_happiness INTEGER DEFAULT 100,
         dog_hunger INTEGER DEFAULT 100,
         dog_type TEXT DEFAULT 'معمولی',
         
-        -- ابزارها و کارخانه
         fishing_rod INTEGER DEFAULT 1,
         bones INTEGER DEFAULT 0,
         factory_level INTEGER DEFAULT 0,
         factory_income INTEGER DEFAULT 0,
         
-        -- وضعیت‌ها
         in_jail INTEGER DEFAULT 0,
         is_smuggler INTEGER DEFAULT 0,
         invites_count INTEGER DEFAULT 0,
-        last_hop TIMESTAMP
+        last_hop TEXT
     )
     ''')
 
-    # جدول مارکت (خرید و فروش)
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS market (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,6 +77,33 @@ def update_field(user_id, field, value, relative=True):
         cursor.execute(f"UPDATE users SET {field} = ? WHERE user_id = ?", (value, user_id))
     conn.commit()
     conn.close()
+
+def update_last_hop(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    now_str = datetime.now().isoformat()
+    cursor.execute("UPDATE users SET last_hop = ? WHERE user_id = ?", (now_str, user_id))
+    conn.commit()
+    conn.close()
+
+def check_level_up(user_id):
+    """بررسی و ارتقای لول براساس امتیاز هاپ (هر ۱۰۰ امتیاز = ۱ لول)"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT points, level FROM users WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    
+    if row:
+        points, current_level = row[0], row[1]
+        new_level = (points // 100) + 1
+        if new_level > current_level:
+            cursor.execute("UPDATE users SET level = ? WHERE user_id = ?", (new_level, user_id))
+            conn.commit()
+            conn.close()
+            return True, new_level
+            
+    conn.close()
+    return False, current_level
 
 def get_top_players(limit=10):
     conn = get_connection()
