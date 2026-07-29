@@ -4,19 +4,12 @@ from telegram.ext import ContextTypes
 import database as db
 
 def format_balance(amount: int) -> str:
-    """
-    فرمت‌سازی موجودی:
-    - زیر ۱,۰۰۰: مثلاً ۸۷۶ دونه
-    - از ۱,۰۰۰ تا ۹۹۹,۹۹۹: مثلاً ۸۷۸۸ کا
-    - ۱,۰۰۰,۰۰۰ به بالا: مثلاً ۱.۵ میلیون یا ۱ میلیون
-    """
     if amount < 1000:
         return f"{amount} دونه"
     elif amount < 1_000_000:
         return f"{amount} کا"
     else:
         millions = amount / 1_000_000
-        # اگر اعشار صفر بود (مثل 1.0) عدد صحیح نشون میده (1 میلیون)، در غیر این صورت اعشار رو نشون میده (1.5 میلیون)
         if millions.is_integer():
             return f"{int(millions)} میلیون"
         else:
@@ -38,20 +31,23 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, user)
     dog_health = db.get_user_field(user_id, "dog_health") or 0
     acc_num = db.get_or_create_account_number(user_id)
 
+    # تبدیل موجودی کیف پول و بانک به فرمت جدید
+    formatted_points = format_balance(points)
+    formatted_bank = format_balance(bank_balance)
+
     msg = (
         f"🐶 **پروفایل و مشخصات هاپو**\n\n"
         f"👤 **کاربر:** `{username}`\n"
         f"🆔 **شناسه:** `{user_id}`\n"
         f"⭐️ **سطح (لول):** {level}\n"
         f"💳 **شماره حساب:** `{acc_num}`\n\n"
-        f"💰 **موجودی کیف پول:** {points:,} هاپ\n"
-        f"🏦 **موجودی بانک:** {bank_balance:,} هاپ\n\n"
+        f"💰 **موجودی کیف پول:** {formatted_points}\n"
+        f"🏦 **موجودی بانک:** {formatted_bank}\n\n"
         f"🐕 **وضعیت سگ:** {dog_status}\n"
         f"❤️ **سلامت سگ:** %{dog_health}\n"
     )
 
     await update.message.reply_text(msg, parse_mode='Markdown')
-
 async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
     username = update.effective_user.first_name
