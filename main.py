@@ -43,7 +43,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "غذا":
         await pet.feed_dog(update, context, user)
 
-    # 🏦 ۲. بانک، اقتصاد، کارخانه و قاچاق
+    # 🏦 ۲. بانک، اقتصاد، کارخانه و قاچاق (اولین شرط باید IF باشد)
     elif text.startswith("بانک"):
         await economy.bank_status(update, context, user)
     elif text == "کارخونه":
@@ -75,7 +75,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await admin.remove_level(update, context)
         elif text.startswith("همگانی"):
             await admin.broadcast(update, context)
-            
+
 async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
@@ -90,14 +90,15 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("select_contra_") or data in ["start_smuggling", "pay_bail"]:
         if hasattr(economy, "handle_smuggle_callback"):
             await economy.handle_smuggle_callback(update, context)
-            elif text in ["فروش", "بازار"]:
-        await economy.show_sell_menu(update, context, user)
+    elif data.startswith("sell_"):
+        if hasattr(economy, "sell_callback"):
+            await economy.sell_callback(update, context)
 
 def main():
     db.init_db()
     app = ApplicationBuilder().token(config.BOT_TOKEN).build()
 
-    # ثبت Error Handler برای لاگ خطاهایی مثل Conflict یا AttributeError
+    # ثبت Error Handler برای جلوگیری از کرش
     app.add_error_handler(error_handler)
 
     app.add_handler(CommandHandler("start", start))
