@@ -246,3 +246,55 @@ async def handle_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, use
 
 async def handle_smuggle(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     return await show_contraband(update, context)
+# ----------------- ۵. بخش فروش محصولات انبار -----------------
+
+async def show_sell_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    user_id = update.effective_user.id
+    
+    keyboard = [
+        [InlineKeyboardButton("👕 فروش لباس (هر عدد ۴۰ میو/هاپ)", callback_data="sell_clothes")],
+        [InlineKeyboardButton("🦴 فروش غذا (هر عدد ۸۰ میو/هاپ)", callback_data="sell_food")],
+        [InlineKeyboardButton("🎾 فروش توپ (هر عدد ۲۵ میو/هاپ)", callback_data="sell_toy")],
+        [InlineKeyboardButton("🏠 فروش لانه (هر عدد ۸۰۰ میو/هاپ)", callback_data="sell_house")],
+        [InlineKeyboardButton("🚬 فروش سیگار قاچاق (هر عدد ۱,۲۰۰)", callback_data="sell_cig")],
+        [InlineKeyboardButton("💎 فروش الماس سیاه (هر عدد ۵,۰۰۰)", callback_data="sell_diamond")],
+    ]
+    
+    await update.message.reply_text(
+        "💰 **بازار سیاه و فروش محصولات**\n"
+        "محصولی که می‌خواهید بفروشید را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+async def sell_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    data = query.data
+    await query.answer()
+    
+    # مپ کردن دکمه‌ها به فیلد دیتابیس و قیمت فروش
+    prices = {
+        "sell_clothes": {"field": "inventory_clothes", "price": 40, "name": "لباس هاپویی"},
+        "sell_food": {"field": "inventory_food", "price": 80, "name": "غذای ویژه"},
+        "sell_toy": {"field": "inventory_toy", "price": 25, "name": "توپ بازی"},
+        "sell_house": {"field": "inventory_house", "price": 800, "name": "لانه شیک"},
+        "sell_cig": {"field": "inventory_cig", "price": 1200, "name": "سیگار قاچاق"},
+        "sell_diamond": {"field": "inventory_diamond", "price": 5000, "name": "الماس سیاه"},
+    }
+    
+    if data in prices:
+        item = prices[data]
+        current_count = db.get_user_field(user_id, item["field"]) or 0
+        
+        if current_count <= 0:
+            await query.message.reply_text(f"❌ شما هیچ عددی از **{item['name']}** در انبار ندارید که بفروشید!")
+            return
+            
+        # کم کردن ۱ عدد از انبار و اضافه کردن پول به کاربر
+        db.update_field(user_id, item["field"], -1, relative=True)
+        db.update_field(user_id, "points", item["price"], relative=True)
+        
+        await query.message.reply_text(
+            f"✅ ۱ عدد **{item['name']}** با موفقیت فروخته شد!\n"
+            f"💵 مبلغ **{item['price']}** به کیف پول شما اضافه شد."
+        )
