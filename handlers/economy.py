@@ -35,13 +35,6 @@ active_gambles = {}
 
 # ----------------- ۰. بخش بانک -----------------
 
-def format_balance(value: int) -> str:
-    """فرمت‌دهی اعداد به صورت سه‌رقمی سه‌رقمی"""
-    try:
-        return f"{int(value):,}"
-    except (ValueError, TypeError):
-        return "0"
-
 def _ensure_user_dict(user, user_id: int) -> dict:
     """تبدیل ورودی کاربر به دیکشنری مستقل از نوع تاپل یا لیست"""
     if isinstance(user, dict):
@@ -122,7 +115,7 @@ async def handle_bank_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     """مدیریت دکمه‌های مربوط به بانک"""
     query = update.callback_query
     user_id = query.from_user.id
-    data = query.data
+    data = query.data.split(":")[0]  # استخراج دستور اصلی
     await query.answer()
 
     if data == "bank_deposit":
@@ -148,6 +141,7 @@ async def handle_bank_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     elif data == "bank_change_account":
         context.user_data['state'] = "WAITING_FOR_NEW_ACCOUNT_NUM"
         await query.message.reply_text("💳 لطفاً شماره حساب جدید خود را وارد کنید:")
+
 # ----------------- ۱. بخش کارخانه -----------------
 
 async def show_factory(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -160,7 +154,8 @@ async def show_factory(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = []
     for code, item in FACTORY_PRODUCTS.items():
         price_str = format_balance(item['price'])
-        keyboard.append([InlineKeyboardButton(f"{item['name']} - {price_str}", callback_data=f"buy_fac_{code}")])
+        # 📌 اتصال user_id به callback_data
+        keyboard.append([InlineKeyboardButton(f"{item['name']} - {price_str}", callback_data=f"buy_fac_{code}:{user_id}")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("🏭 **به کارخانه خوش آمدید!**\nمحصول مورد نظر برای خرید را انتخاب کنید:", reply_markup=reply_markup, parse_mode="Markdown")
@@ -169,7 +164,7 @@ async def factory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    data = query.data
+    data = query.data.split(":")[0]  # استخراج دستور اصلی
     if data.startswith("buy_fac_"):
         product_code = data.replace("buy_fac_", "")
         context.user_data['buy_product'] = product_code
@@ -189,7 +184,8 @@ async def show_contraband(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     in_jail, jail_until = db.is_in_jail(user_id) if hasattr(db, "is_in_jail") else (False, None)
     if in_jail:
-        keyboard = [[InlineKeyboardButton("🔓 آزادی فوری (۲۰,۰۰۰ میو/هاپ)", callback_data="pay_bail")]]
+        # 📌 اتصال user_id به callback_data
+        keyboard = [[InlineKeyboardButton("🔓 آزادی فوری (۲۰,۰۰۰ میو/هاپ)", callback_data=f"pay_bail:{user_id}")]]
         time_str = jail_until.strftime('%H:%M') if jail_until else "۱۵ دقیقه"
         await update.message.reply_text(
             f"🚨 **شما در زندان هستید!**\n"
@@ -203,9 +199,11 @@ async def show_contraband(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for code, item in CONTRABAND_PRODUCTS.items():
         cost_str = format_balance(item['cost'])
         profit_str = format_balance(item['profit'])
-        keyboard.append([InlineKeyboardButton(f"{item['name']} (هزینه: {cost_str} | سود: {profit_str})", callback_data=f"select_contra_{code}")])
+        # 📌 اتصال user_id به callback_data
+        keyboard.append([InlineKeyboardButton(f"{item['name']} (هزینه: {cost_str} | سود: {profit_str})", callback_data=f"select_contra_{code}:{user_id}")])
     
-    keyboard.append([InlineKeyboardButton("🚀 شروع عملیات قاچاق", callback_data="start_smuggling")])
+    # 📌 اتصال user_id به callback_data
+    keyboard.append([InlineKeyboardButton("🚀 شروع عملیات قاچاق", callback_data=f"start_smuggling:{user_id}")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
@@ -219,7 +217,7 @@ async def show_contraband(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_smuggle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    data = query.data
+    data = query.data.split(":")[0]  # استخراج دستور اصلی
     await query.answer()
 
     if data == "pay_bail":
@@ -528,13 +526,15 @@ async def show_my_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, us
 # ----------------- ۶. بخش فروش محصولات انبار -----------------
 
 async def show_sell_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    user_id = update.effective_user.id
+    # 📌 اتصال user_id به callback_data
     keyboard = [
-        [InlineKeyboardButton("👕 فروش لباس (هر عدد ۴۰)", callback_data="sell_clothes")],
-        [InlineKeyboardButton("🦴 فروش غذا (هر عدد ۸۰)", callback_data="sell_food")],
-        [InlineKeyboardButton("🎾 فروش توپ (هر عدد ۲۵)", callback_data="sell_toy")],
-        [InlineKeyboardButton("🏠 فروش لانه (هر عدد ۸۰۰)", callback_data="sell_house")],
-        [InlineKeyboardButton("🚬 فروش سیگار قاچاق (هر عدد ۱,۲۰۰)", callback_data="sell_cig")],
-        [InlineKeyboardButton("💎 فروش الماس سیاه (هر عدد ۵,۰۰۰)", callback_data="sell_diamond")],
+        [InlineKeyboardButton("👕 فروش لباس (هر عدد ۴۰)", callback_data=f"sell_clothes:{user_id}")],
+        [InlineKeyboardButton("🦴 فروش غذا (هر عدد ۸۰)", callback_data=f"sell_food:{user_id}")],
+        [InlineKeyboardButton("🎾 فروش توپ (هر عدد ۲۵)", callback_data=f"sell_toy:{user_id}")],
+        [InlineKeyboardButton("🏠 فروش لانه (هر عدد ۸۰۰)", callback_data=f"sell_house:{user_id}")],
+        [InlineKeyboardButton("🚬 فروش سیگار قاچاق (هر عدد ۱,۲۰۰)", callback_data=f"sell_cig:{user_id}")],
+        [InlineKeyboardButton("💎 فروش الماس سیاه (هر عدد ۵,۰۰۰)", callback_data=f"sell_diamond:{user_id}")],
     ]
     
     await update.message.reply_text(
@@ -546,7 +546,7 @@ async def show_sell_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, use
 async def sell_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    data = query.data
+    data = query.data.split(":")[0]  # استخراج دستور اصلی
     await query.answer()
     
     prices = {
