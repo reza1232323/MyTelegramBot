@@ -337,7 +337,10 @@ async def handle_dog_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         db.update_field(user_id, "dog_level", level + 1, relative=False)
 
         await query.message.reply_text(f"🎉 تبریک! سگ شما به سطح **{level + 1}** ارتقا پیدا کرد!")
-        await show_dog_panel(update, context)
+        # در فایل handlers/pet.py
+async def show_dog_panel(update, context, user=None):
+    # کدهای مربوط به نمایش پنل سگ
+    ...
 
     # 3. انتخاب اسم سگ
     elif data == "dog_rename":
