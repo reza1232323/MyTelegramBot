@@ -1,9 +1,11 @@
 import random
 import time
 import math
+import asyncio
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
+from telegram.error import RetryAfter
 import database as db
 
 # ----------------- تنظیمات و جدول ۳۰ سطحی سگ -----------------
@@ -188,7 +190,7 @@ async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user=Non
 
     await update.message.reply_text(msg, parse_mode='Markdown')
 
-# ----------------- بخش اصلاح‌شده سگ -----------------
+# ----------------- بخش اختصاصی سگ -----------------
 
 async def buy_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     user_id = update.effective_user.id
@@ -218,7 +220,7 @@ async def buy_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None)
     await update.message.reply_text("سگ با موفقیت خریداری شد.")
 
 async def show_dog_panel(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
-    """نمایش پنل اصلی سگ"""
+    """نمایش یا به‌روزرسانی پنل اصلی سگ"""
     user_id = update.effective_user.id
     user_first_name = update.effective_user.first_name
     has_dog = db.get_user_field(user_id, "has_dog")
@@ -263,17 +265,21 @@ async def show_dog_panel(update: Update, context: ContextTypes.DEFAULT_TYPE, use
         [InlineKeyboardButton("❤️ انتخاب اسم سگ", callback_data=f"dog_rename:{user_id}")]
     ])
 
-    if update.callback_query:
-        await update.callback_query.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
-    else:
-        await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
+    try:
+        if update.callback_query:
+            await update.callback_query.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
+        else:
+            await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
+    except RetryAfter:
+        pass
+    except Exception:
+        pass
 
 async def handle_dog_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """مدیریت دکمه‌های پنل سگ"""
+    """مدیریت کلیک روی دکمه‌های پنل سگ"""
     query = update.callback_query
     user_id = query.from_user.id
     data = query.data.split(":")[0]
-    await query.answer()
 
     level = int(db.get_user_field(user_id, "dog_level") or 1)
     last_claim = int(db.get_user_field(user_id, "dog_last_claim") or time.time())
@@ -291,42 +297,57 @@ async def handle_dog_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         total_unclaimed = min(capacity, stored_points + generated)
 
         if total_unclaimed < 1:
-            await query.message.reply_text("❌ هنوز پوینتی برای برداشت آماده نشده است!")
+            await query.answer("❌ هنوز پوینتی برای برداشت آماده نشده است!", show_alert=True)
             return
 
         db.update_field(user_id, "points", int(total_unclaimed), relative=True)
         db.update_field(user_id, "dog_last_claim", int(now), relative=False)
         db.update_field(user_id, "dog_unclaimed_points", 0, relative=False)
 
-        await query.message.reply_text(f"✅ مقدار **{int(total_unclaimed):,}** هاپ پوینت با موفقیت برداشت شد.")
+        await query.answer(f"✅ مقدار {int(total_unclaimed):,} هاپ پوینت با موفقیت برداشت شد.", show_alert=True)
         await show_dog_panel(update, context)
 
-    # 2. ارتقا مقام و لول
+    # 2. ارتقا مقام (با پیام تبریک ۳ ثانیه‌ای)
     elif data == "dog_upgrade":
         if level >= 30:
-            await query.message.reply_text("🏆 سگ شما در حداکثر سطح قرار دارد!")
+            await query.answer("🏆 سگ شما در حداکثر سطح قرار دارد!", show_alert=True)
             return
 
         cost = RANK_UPGRADE_COSTS.get(level, level_data["upgrade_cost"])
         user_points = int(db.get_user_field(user_id, "points") or 0)
 
         if user_points < cost:
-            await query.message.reply_text(f"❌ موجودی کافی نیست! هزینه ارتقا: {cost:,} هاپ پوینت")
+            await query.answer(f"❌ موجودی کافی نیست! هزینه ارتقا: {cost:,} هاپ پوینت", show_alert=True)
             return
 
         db.update_field(user_id, "points", -cost, relative=True)
         db.update_field(user_id, "dog_level", level + 1, relative=False)
 
-        await query.message.reply_text(f"🎉 تبریک! سگ شما به سطح **{level + 1}** ارتقا پیدا کرد!")
+        await query.answer()
+
+        # ۱. ویرایش پیام به تبریک
+        try:
+            await query.message.edit_text(
+                f"🎉 **تبریک! سگ شما به سطح {level + 1} ارتقا پیدا کرد!**", 
+                parse_mode="Markdown"
+            )
+        except Exception:
+            pass
+
+        # ۲. ۳ ثانیه مکث
+        await asyncio.sleep(3)
+
+        # ۳. بازگشت به پنل سگ
         await show_dog_panel(update, context)
 
     # 3. انتخاب اسم سگ
     elif data == "dog_rename":
+        await query.answer()
         context.user_data['state'] = "WAITING_FOR_DOG_NAME"
         await query.message.reply_text("🏷 لطفاً نام جدید سگ خود را تایپ و ارسال کنید:")
 
 async def handle_dog_rename_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ثبت نام جدید سگ و باز کردن مجدد پنل سگ"""
+    """دریافت نام جدید، ذخیره آن و باز کردن مجدد پنل سگ"""
     if context.user_data.get('state') == "WAITING_FOR_DOG_NAME":
         new_name = update.message.text.strip()
         user_id = update.effective_user.id
@@ -335,7 +356,6 @@ async def handle_dog_rename_text(update: Update, context: ContextTypes.DEFAULT_T
         context.user_data['state'] = None
         
         await update.message.reply_text(f"✅ نام سگ با موفقیت به **{new_name}** تغییر یافت.")
-        # باز کردن مجدد پنل سگ بلافاصله بعد از ثبت اسم
         await show_dog_panel(update, context)
         return True
     return False
