@@ -33,6 +33,78 @@ CONTRABAND_PRODUCTS = {
 # ----------------- ذخیره‌سازی قمارهای فعال -----------------
 active_gambles = {}
 
+# ----------------- ۰. بخش بانک -----------------
+
+async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user: dict = None):
+    """نمایش وضعیت بانک هاپی"""
+    user_id = update.effective_user.id
+    if not user:
+        user = {"user_id": user_id}
+        
+    account_number = user.get("account_number") or db.get_user_field(user_id, "account_number") or f"278{user_id}"
+    bank_balance = user.get("bank") if user.get("bank") is not None else (db.get_user_field(user_id, "bank") or 0)
+    wallet_balance = user.get("points") if user.get("points") is not None else (db.get_user_field(user_id, "points") or 0)
+    
+    daily_profit = int(bank_balance * 0.03)
+    profit_ready = user.get("profit_ready", True)
+    profit_text = "✅ سود آماده دریافته!" if profit_ready else "⏳ سود امروز دریافت شده."
+
+    text = (
+        f"🏦 **بانک هاپی**\n\n"
+        f"💳 **شماره حساب:** `{account_number}`\n"
+        f"💰 **موجودی بانک:** {format_balance(bank_balance)} هاپ پوینت\n"
+        f"👛 **موجودی کیف:** {format_balance(wallet_balance)} هاپ پوینت\n\n"
+        f"📈 **سود روزانه (۳%):** {format_balance(daily_profit)}\n"
+        f"{profit_text}"
+    )
+
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("+ واریز", callback_data="bank_deposit"),
+            InlineKeyboardButton("- برداشت", callback_data="bank_withdraw")
+        ],
+        [
+            InlineKeyboardButton("💸 دریافت سود", callback_data="bank_claim_profit")
+        ],
+        [
+            InlineKeyboardButton("🔄 تغییر شماره حساب", callback_data="bank_change_account")
+        ]
+    ])
+
+    if update.callback_query:
+        await update.callback_query.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
+    else:
+        await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
+
+async def handle_bank_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """مدیریت دکمه‌های مربوط به بانک"""
+    query = update.callback_query
+    user_id = query.from_user.id
+    data = query.data
+    await query.answer()
+
+    if data == "bank_deposit":
+        context.user_data['state'] = "WAITING_FOR_BANK_DEPOSIT"
+        await query.message.reply_text("💵 لطفاً مبلغی که می‌خواهید به بانک واریز کنید را وارد کنید:")
+    
+    elif data == "bank_withdraw":
+        context.user_data['state'] = "WAITING_FOR_BANK_WITHDRAW"
+        await query.message.reply_text("🏧 لطفاً مبلغی که می‌خواهید از بانک برداشت کنید را وارد کنید:")
+        
+    elif data == "bank_claim_profit":
+        bank_balance = db.get_user_field(user_id, "bank") or 0
+        if bank_balance <= 0:
+            await query.message.reply_text("❌ موجودی بانک شما صفر است و سودی تعلق نمی‌گیرد.")
+            return
+            
+        profit = int(bank_balance * 0.03)
+        db.update_field(user_id, "points", profit, relative=True)
+        await query.message.reply_text(f"🎉 مبلغ **{format_balance(profit)}** هاپ پوینت به عنوان سود روزانه به کیف پول شما اضافه شد!")
+
+    elif data == "bank_change_account":
+        context.user_data['state'] = "WAITING_FOR_NEW_ACCOUNT_NUM"
+        await query.message.reply_text("💳 لطفاً شماره حساب جدید خود را وارد کنید:")
+
 # ----------------- ۱. بخش کارخانه -----------------
 
 async def show_factory(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -292,16 +364,53 @@ async def join_gamble_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(updated_text, reply_markup=keyboard, parse_mode="Markdown")
         await query.answer("✅ شما با موفقیت وارد قمار شدید!")
 
-# ----------------- ۴. دریافت تعداد از پیام متنی -----------------
+# ----------------- ۴. دریافت ورودی‌های متنی (کارخانه، قاچاق و بانک) -----------------
 
 async def handle_factory_and_smuggle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = context.user_data.get('state')
     
-    if state not in ["WAITING_FOR_FACTORY_QTY", "WAITING_FOR_CONTRA_QTY"]:
+    if not state:
         return False
 
     text = update.message.text
     user_id = update.effective_user.id
+
+    # مدیریت واریز و برداشت بانک
+    if state == "WAITING_FOR_BANK_DEPOSIT":
+        if not text.isdigit() or int(text) <= 0:
+            await update.message.reply_text("❌ لطفاً یک عدد معتبر وارد کنید.")
+            return True
+        amount = int(text)
+        points = db.get_user_field(user_id, "points") or 0
+        if points < amount:
+            await update.message.reply_text("❌ موجودی کیف پول شما کافی نیست!")
+        else:
+            db.update_field(user_id, "points", -amount, relative=True)
+            db.update_field(user_id, "bank", amount, relative=True)
+            await update.message.reply_text(f"✅ مبلغ **{format_balance(amount)}** هاپ به بانک واریز شد.")
+        context.user_data['state'] = None
+        return True
+
+    if state == "WAITING_FOR_BANK_WITHDRAW":
+        if not text.isdigit() or int(text) <= 0:
+            await update.message.reply_text("❌ لطفاً یک عدد معتبر وارد کنید.")
+            return True
+        amount = int(text)
+        bank_bal = db.get_user_field(user_id, "bank") or 0
+        if bank_bal < amount:
+            await update.message.reply_text("❌ موجودی بانک شما کافی نیست!")
+        else:
+            db.update_field(user_id, "bank", -amount, relative=True)
+            db.update_field(user_id, "points", amount, relative=True)
+            await update.message.reply_text(f"✅ مبلغ **{format_balance(amount)}** هاپ از بانک برداشت شد.")
+        context.user_data['state'] = None
+        return True
+
+    if state == "WAITING_FOR_NEW_ACCOUNT_NUM":
+        db.update_field(user_id, "account_number", text)
+        await update.message.reply_text(f"✅ شماره حساب شما با موفقیت به `{text}` تغییر یافت.")
+        context.user_data['state'] = None
+        return True
 
     if state == "WAITING_FOR_FACTORY_QTY":
         if not text.isdigit() or int(text) <= 0:
@@ -449,11 +558,9 @@ def safe_db_call(func_name, *args):
     try:
         return func(*args)
     except TypeError:
-        # اگر تابع پارامتر قبول نکرد، بدون پارامتر فراخوانی می‌شود
         try:
             return func()
         except TypeError:
-            # اگر آرگومان‌های کمتری نیاز داشت
             if len(args) > 1:
                 return func(args[0])
             return None
@@ -463,7 +570,6 @@ async def city_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user=N
     chat_id = chat.id if chat else None
     chat_title = chat.title if chat and chat.title else "شهر هاپویی"
     
-    # دریافت آمار وابسته به گروه/شهر به صورت ایمن
     treasury = safe_db_call("get_city_treasury", chat_id) or 0
     total_hops = safe_db_call("get_group_total_hops", chat_id) or safe_db_call("get_total_hops", chat_id) or 0
     total_dogs = safe_db_call("get_group_total_dogs", chat_id) or safe_db_call("get_total_dogs", chat_id) or 0
@@ -471,7 +577,6 @@ async def city_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user=N
 
     next_req = CITY_LEVEL_REQUIREMENTS.get(current_level, CITY_LEVEL_REQUIREMENTS[5])
     
-    # بررسی شرایط ارتقاء سطح شهر
     if (treasury >= next_req["treasury"] and 
         total_hops >= next_req["hops"] and 
         total_dogs >= next_req["dogs"] and current_level < 5):
@@ -531,7 +636,6 @@ async def donate_city(update: Update, context: ContextTypes.DEFAULT_TYPE, user=N
         await update.message.reply_text("❌ شما سکه کافی در کیف پول خود ندارید!")
         return
 
-    # کسر از کاربر و اضافه کردن به خزانه
     db.update_field(user_id, "points", -amount, relative=True)
     
     if hasattr(db, "add_city_donation"):
