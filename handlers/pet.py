@@ -50,7 +50,7 @@ RANK_UPGRADE_COSTS = {
 
 RANK_NAMES = {
     1: "هاپوی تازه‌کار",
-    5: "سوپر میو",
+    5: "هاپوی زبل",
     10: "هاپوی زرنگ",
     15: "هاپوی آلفا",
     20: "امپراتور هاپو",
@@ -188,7 +188,7 @@ async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user=Non
 
     await update.message.reply_text(msg, parse_mode='Markdown')
 
-# ----------------- بخش جدید و اصلاح‌شده سگ -----------------
+# ----------------- بخش اصلاح‌شده سگ -----------------
 
 async def buy_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     user_id = update.effective_user.id
@@ -209,7 +209,7 @@ async def buy_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None)
 
     db.update_field(user_id, "points", -cost, relative=True)
     db.update_field(user_id, "has_dog", True, relative=False)
-    db.update_field(user_id, "dog_name", "آها", relative=False)
+    db.update_field(user_id, "dog_name", "انتخاب نشده ❌", relative=False)
     db.update_field(user_id, "dog_level", 1, relative=False)
     db.update_field(user_id, "dog_hunger", 2, relative=False)
     db.update_field(user_id, "dog_last_claim", int(time.time()), relative=False)
@@ -218,15 +218,16 @@ async def buy_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None)
     await update.message.reply_text("سگ با موفقیت خریداری شد.")
 
 async def show_dog_panel(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
-    """نمایش پنل اصلی سگ با پشتیبانی از آرگومان سوم برای جلوگیری از TypeError"""
+    """نمایش پنل اصلی سگ"""
     user_id = update.effective_user.id
+    user_first_name = update.effective_user.first_name
     has_dog = db.get_user_field(user_id, "has_dog")
 
     if not has_dog:
         await update.message.reply_text("❌ شما هنوز سگ ندارید! با ارسال دستور `خرید سگ` یک سگ بخرید.")
         return
 
-    dog_name = db.get_user_field(user_id, "dog_name") or "آها"
+    dog_name = db.get_user_field(user_id, "dog_name") or "انتخاب نشده ❌"
     level = int(db.get_user_field(user_id, "dog_level") or 1)
     hunger = int(db.get_user_field(user_id, "dog_hunger") or 2)
     last_claim = int(db.get_user_field(user_id, "dog_last_claim") or time.time())
@@ -245,19 +246,19 @@ async def show_dog_panel(update: Update, context: ContextTypes.DEFAULT_TYPE, use
     rank_title = get_rank_name(level)
 
     text = (
-        f"🐕 **پیشی STRANGER THINGS** 🐱\n\n"
+        f"🐕 **هاپوی {user_first_name}** 🐕\n\n"
         f"💖 **نام :** {dog_name}\n"
-        f"🍖 **شکم :** 😿 من گشنمیووو.. ({hunger} / 10)\n\n"
+        f"🍖 **شکم :** 😿 من گشنمه.. ({hunger} / 10)\n\n"
         f"⭐️ **مقام :** {rank_title} ({level // 5 + 1})\n"
         f"⭐ **سطح :** {level} / 30\n\n"
-        f"🪙 **میو پوینت های تولید شده :** {int(total_unclaimed):,}\n\n"
-        f"💫 **تولید میو پوینت در ثانیه :** {rate}\n"
+        f"🪙 **هاپ پوینت‌های تولید شده :** {int(total_unclaimed):,}\n\n"
+        f"💫 **تولید هاپ پوینت در ثانیه :** {rate}\n"
         f"💼 **ظرفیت سگ :** {capacity:,}\n\n"
         f"💰 **هزینه ارتقا مقام :** {rank_cost:,}"
     )
 
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🌀 برداشت میو پوینت ها", callback_data=f"dog_claim:{user_id}")],
+        [InlineKeyboardButton("🌀 برداشت هاپ پوینت‌ها", callback_data=f"dog_claim:{user_id}")],
         [InlineKeyboardButton("⭐ ارتقا مقام", callback_data=f"dog_upgrade:{user_id}")],
         [InlineKeyboardButton("❤️ انتخاب اسم سگ", callback_data=f"dog_rename:{user_id}")]
     ])
@@ -268,7 +269,7 @@ async def show_dog_panel(update: Update, context: ContextTypes.DEFAULT_TYPE, use
         await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 async def handle_dog_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """مدیریت دکمه‌های پنل شیشه‌ای سگ"""
+    """مدیریت دکمه‌های پنل سگ"""
     query = update.callback_query
     user_id = query.from_user.id
     data = query.data.split(":")[0]
@@ -297,7 +298,7 @@ async def handle_dog_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         db.update_field(user_id, "dog_last_claim", int(now), relative=False)
         db.update_field(user_id, "dog_unclaimed_points", 0, relative=False)
 
-        await query.message.reply_text(f"✅ مقدار **{int(total_unclaimed):,}** پوینت با موفقیت برداشت شد.")
+        await query.message.reply_text(f"✅ مقدار **{int(total_unclaimed):,}** هاپ پوینت با موفقیت برداشت شد.")
         await show_dog_panel(update, context)
 
     # 2. ارتقا مقام و لول
@@ -310,7 +311,7 @@ async def handle_dog_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         user_points = int(db.get_user_field(user_id, "points") or 0)
 
         if user_points < cost:
-            await query.message.reply_text(f"❌ موجودی کافی نیست! هزینه ارتقا: {cost:,} پوینت")
+            await query.message.reply_text(f"❌ موجودی کافی نیست! هزینه ارتقا: {cost:,} هاپ پوینت")
             return
 
         db.update_field(user_id, "points", -cost, relative=True)
@@ -325,7 +326,7 @@ async def handle_dog_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.message.reply_text("🏷 لطفاً نام جدید سگ خود را تایپ و ارسال کنید:")
 
 async def handle_dog_rename_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ثبت نام جدید سگ پس از ارسال متن"""
+    """ثبت نام جدید سگ و باز کردن مجدد پنل سگ"""
     if context.user_data.get('state') == "WAITING_FOR_DOG_NAME":
         new_name = update.message.text.strip()
         user_id = update.effective_user.id
@@ -334,10 +335,12 @@ async def handle_dog_rename_text(update: Update, context: ContextTypes.DEFAULT_T
         context.user_data['state'] = None
         
         await update.message.reply_text(f"✅ نام سگ با موفقیت به **{new_name}** تغییر یافت.")
+        # باز کردن مجدد پنل سگ بلافاصله بعد از ثبت اسم
+        await show_dog_panel(update, context)
         return True
     return False
 
-# ----------------- سایر دستورات قبلی -----------------
+# ----------------- سایر دستورات -----------------
 
 async def feed_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     user_id = update.effective_user.id if not user else user[0]
