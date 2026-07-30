@@ -92,13 +92,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
 
-    # 📌 ساخت کیبورد متنی اصلی ربات (بدون بانک)
+    # 📌 ساخت کیبورد متنی اصلی ربات
     main_keyboard = ReplyKeyboardMarkup(
         [
             ["پروفایل", "هاپ"],
             ["خرید سگ", "غذا"],
             ["کارخونه", "شهر"],
-            ["👥 زیرمجموعه‌گیری", "راهنما"],
+            ["🏦 بانک", "👥 زیرمجموعه‌گیری"],
+            ["راهنما"],
         ],
         resize_keyboard=True,
     )
@@ -143,7 +144,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 📌 استخراج آرگومان‌ها از متن برای جلوگیری از خطای NoneType در توابع
     context.args = text.split()[1:]
 
-    # بررسی اینکه آیا کاربر در حال ارسال تعداد برای خرید یا قاچاق است
+    # بررسی اینکه آیا کاربر در حال ارسال تعداد برای خرید، قاچاق یا واریز/برداشت بانک است
     if hasattr(economy, "handle_factory_and_smuggle_text"):
         handled = await economy.handle_factory_and_smuggle_text(
             update, context
@@ -157,42 +158,50 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     user = db.get_user(user_id, username)
 
+    # پاک‌سازی دستورات گروه‌ها (مثلاً تبدیل /bank@bot_name به bank)
+    clean_text = text.split('@')[0].lower()
+
     # 📌 ۱. عمومی، سگ و زیرمجموعه‌گیری
-    if text in ["پروفایل", "هاپوهام", "هاپوهاش"]:
+    if clean_text in ["پروفایل", "هاپوهام", "هاپوهاش", "/profile"]:
         await pet.show_profile(update, context, user)
-    elif text in ["هاپ", "hop"]:
+    elif clean_text in ["هاپ", "hop", "/hop"]:
         await pet.claim_hop(update, context, user)
-    elif text in ["راهنما", "help"]:
+    elif clean_text in ["راهنما", "help", "/help"]:
         await pet.show_help(update, context)
-    elif text == "خرید سگ":
+    elif clean_text in ["خرید سگ", "/buydog"]:
         await pet.buy_dog(update, context, user)
-    elif text == "غذا":
+    elif clean_text in ["غذا", "/feed"]:
         await pet.feed_dog(update, context, user)
-    elif text in [
+    elif clean_text in [
         "👥 زیرمجموعه‌گیری",
         "زیرمجموعه‌گیری",
         "زیرمجموعه",
         "دعوت",
         "رفرال",
+        "/referral",
     ]:
         await referral_command(update, context)
 
-    # 🏦 ۲. اقتصاد، کارخانه، قاچاق و شهر (بدون بانک)
-    elif text == "کارخونه":
+    # 🏦 ۲. اقتصاد، بانک، کارخانه، قاچاق و شهر
+    elif clean_text in ["🏦 بانک", "بانک", "bank", "/bank"]:
+        if hasattr(economy, "bank_status"):
+            await economy.bank_status(update, context, user)
+    elif clean_text in ["کارخونه", "/factory"]:
         await economy.show_factory(update, context)
-    elif text == "کارخونه من":
+    elif clean_text in ["کارخونه من", "/myfactory"]:
         await economy.show_my_factory(update, context, user)
-    elif text in ["فروش", "بازار"]:
+    elif clean_text in ["فروش", "بازار", "/sell"]:
         await economy.show_sell_menu(update, context, user)
-    elif text in ["قاچاق", "قاچاقچی"]:
+    elif clean_text in ["قاچاق", "قاچاقچی", "/smuggle"]:
         await economy.show_contraband(update, context)
-    elif text.startswith("زندان"):
-        await economy.jail_status(update, context, user)
-    elif text.startswith("قمار"):
+    elif clean_text.startswith("زندان") or clean_text.startswith("/jail"):
+        if hasattr(economy, "jail_status"):
+            await economy.jail_status(update, context, user)
+    elif clean_text.startswith("قمار") or clean_text.startswith("/gamble"):
         await economy.start_gamble(update, context)
-    elif text == "شهر":
+    elif clean_text in ["شهر", "/city"]:
         await economy.city_status(update, context, user)
-    elif text.startswith("اهدا"):
+    elif clean_text.startswith("اهدا") or clean_text.startswith("/donate"):
         await economy.donate_city(update, context, user)
 
     # 👑 ۳. دستورات ادمین (روی ریپلای)
@@ -220,20 +229,35 @@ async def callback_router(
         await referral_command(update, context)
         await query.answer()
 
+    # مدیریت دکمه‌های شیشه‌ای بانک
+    elif data.startswith("bank_"):
+        if hasattr(economy, "handle_bank_callback"):
+            await economy.handle_bank_callback(update, context)
+
+    # مدیریت دکمه‌های کارخانه
     elif data.startswith("buy_fac_") or data.startswith("fac_"):
         if hasattr(economy, "factory_callback"):
             await economy.factory_callback(update, context)
         elif hasattr(economy, "handle_factory_callback"):
             await economy.handle_factory_callback(update, context)
+
+    # مدیریت دکمه‌های قاچاق
     elif data.startswith("select_contra_") or data in [
         "start_smuggling",
         "pay_bail",
     ]:
         if hasattr(economy, "handle_smuggle_callback"):
             await economy.handle_smuggle_callback(update, context)
+
+    # مدیریت فروش محصولات
     elif data.startswith("sell_"):
         if hasattr(economy, "sell_callback"):
             await economy.sell_callback(update, context)
+
+    # مدیریت شرکت در قمار
+    elif data.startswith("join_gamble:"):
+        if hasattr(economy, "join_gamble_callback"):
+            await economy.join_gamble_callback(update, context)
 
 
 def main():
@@ -254,9 +278,12 @@ def main():
     # ثبت Error Handler برای جلوگیری از کرش
     app.add_error_handler(error_handler)
 
-    # ثبت دستگیره‌های ربات
+    # ثبت دستگیره‌های اصلی دستورات
     app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler(["bank", "بانک"], economy.bank_status if hasattr(economy, "bank_status") else start_command))
     app.add_handler(CommandHandler(["referral", "sub"], referral_command))
+    
+    # ثبت Router اصلی برای پیام‌های متنی و Callback
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, router))
     app.add_handler(CallbackQueryHandler(callback_router))
 
