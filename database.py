@@ -333,3 +333,43 @@ def get_referral_stats(user_id):
         return 0
     finally:
         conn.close()
+
+
+
+# ----------------- متدهای مربوط به زیرمجموعه‌گیری -----------------
+
+def set_inviter(user_id, inviter_id):
+    """ثبت معرف برای کاربر جدید (در صورتی که قبلاً معرف نداشته باشد)"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        # بررسی اینکه آیا کاربر قبلاً ثبت شده یا معرف دارد
+        cursor.execute("SELECT inviter_id FROM users WHERE user_id = ?", (user_id,))
+        res = cursor.fetchone()
+        
+        # اگر کاربر معرف ندارد و خودشم خودش رو دعوت نکرده
+        if res and (res[0] is None or res[0] == 0) and user_id != inviter_id:
+            cursor.execute("UPDATE users SET inviter_id = ? WHERE user_id = ?", (inviter_id, user_id))
+            # اضافه کردن ۱ واحد به تعداد زیرمجموعه‌های معرف
+            cursor.execute("UPDATE users SET referral_count = COALESCE(referral_count, 0) + 1 WHERE user_id = ?", (inviter_id,))
+            conn.commit()
+            return True
+        return False
+    except Exception as e:
+        print(f"Error setting inviter: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_referral_stats(user_id):
+    """دریافت آمار زیرمجموعه‌های کاربر"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT COALESCE(referral_count, 0) FROM users WHERE user_id = ?", (user_id,))
+        res = cursor.fetchone()
+        return res[0] if res else 0
+    except:
+        return 0
+    finally:
+        conn.close()
