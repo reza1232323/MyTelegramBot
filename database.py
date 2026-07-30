@@ -12,7 +12,7 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # جدول کاربران
+    # جدول کاربران (افزوده شدن ستون last_interest_time)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -28,6 +28,7 @@ def init_db():
             bank_balance INTEGER DEFAULT 0,
             account_number TEXT,
             last_hop TEXT,
+            last_interest_time TEXT DEFAULT NULL,
             factory_count INTEGER DEFAULT 0,
             in_jail INTEGER DEFAULT 0,
             jail_until TEXT DEFAULT NULL,
@@ -44,6 +45,14 @@ def init_db():
             inventory_house INTEGER DEFAULT 0
         )
     """)
+
+    # برطرف کردن خطای دیتابیس‌های قدیمی در صورت عدم وجود ستون سود
+    try:
+        cursor.execute(
+            "ALTER TABLE users ADD COLUMN last_interest_time TEXT DEFAULT NULL"
+        )
+    except sqlite3.OperationalError:
+        pass
 
     # جدول متغیرهای عمومی
     cursor.execute("""
@@ -95,7 +104,6 @@ def get_user(user_id, username="کاربر"):
 
 
 def get_user_field(user_id, field):
-    # نگاشت نام‌های مستعار برای بانک
     if field == "bank":
         field = "bank_balance"
 
@@ -114,14 +122,12 @@ def get_user_field(user_id, field):
 
 
 def update_field(user_id, field, value, relative=False):
-    # نگاشت نام‌های مستعار برای بانک
     if field == "bank":
         field = "bank_balance"
 
     conn = get_connection()
     cursor = conn.cursor()
 
-    # اطمینان از وجود کاربر در دیتابیس
     get_user(user_id)
 
     try:
@@ -178,6 +184,51 @@ def update_global_field(key, amount):
         print(f"Error updating global field {key}: {e}")
     finally:
         conn.close()
+
+
+# ----------------- متدهای مربوط به سود بانک -----------------
+
+
+def claim_daily_interest(user_id, interest_rate=0.05):
+    """محاسبه و دریافت سود بانک برای هر ۲۴ ساعت"""
+    bank_balance = get_user_field(user_id, "bank_balance")
+
+    if not bank_balance or bank_balance <= 0:
+        return False, "موجودی بانک شما برای دریافت سود کافی نیست.", 0
+
+    last_time_str = get_user_field(user_id, "last_interest_time")
+    now = datetime.now()
+
+    if last_time_str and isinstance(last_time_str, str):
+        try:
+            last_time = datetime.strptime(last_time_str, "%Y-%m-%d %H:%M:%S")
+            next_claim = last_time + timedelta(hours=24)
+
+            if now < next_claim:
+                remaining_time = next_claim - now
+                hours, remainder = divmod(int(remaining_time.total_seconds()), 3600)
+                minutes, _ = divmod(remainder, 60)
+                return (
+                    False,
+                    f"هنوز زمان دریافت سود نرسیده است. زمان باقی‌مانده: {hours} ساعت و {minutes} دقیقه",
+                    0,
+                )
+        except ValueError:
+            pass
+
+    profit = int(bank_balance * interest_rate)
+    if profit < 1:
+        profit = 1
+
+    update_field(user_id, "bank_balance", profit, relative=True)
+    update_field(
+        user_id,
+        "last_interest_time",
+        now.strftime("%Y-%m-%d %H:%M:%S"),
+        relative=False,
+    )
+
+    return True, f"سود ۲۴ ساعته شما به مبلغ {profit:,} با موفقیت به حساب شما اضافه شد.", profit
 
 
 # ----------------- متدهای مربوط به زندان -----------------
@@ -332,7 +383,6 @@ get_group_total_dogs = get_total_dogs
 
 
 def set_inviter(user_id, inviter_id):
-    """ثبت معرف برای کاربر جدید (در صورتی که قبلاً معرف نداشته باشد)"""
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -361,7 +411,6 @@ def set_inviter(user_id, inviter_id):
 
 
 def get_referral_stats(user_id):
-    """دریافت آمار زیرمجموعه‌های کاربر"""
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -377,5 +426,5 @@ def get_referral_stats(user_id):
         conn.close()
 
 
-# ساخت خودکار جداول هنگام اجرای برنامه
+# ساخت ساختار پایگاه داده در زمان اجرا
 init_db()
