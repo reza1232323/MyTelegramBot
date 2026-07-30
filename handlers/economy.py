@@ -59,19 +59,23 @@ def _ensure_user_dict(user, user_id: int) -> dict:
         "points": points or 0,
     }
 
-async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+async def bank_status(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, user=None
+):
     """نمایش وضعیت بانک هاپی"""
     user_id = update.effective_user.id
     user_data = _ensure_user_dict(user, user_id)
-    
+
     # استخراج مقادیر با ایمنی کامل
     account_number = user_data.get("account_number") or f"278{user_id}"
     bank_balance = user_data.get("bank", 0)
     wallet_balance = user_data.get("points", 0)
-    
+
     daily_profit = int(bank_balance * 0.03)
     profit_ready = user_data.get("profit_ready", True)
-    profit_text = "✅ سود آماده دریافته!" if profit_ready else "⏳ سود امروز دریافت شده."
+    profit_text = (
+        "✅ سود آماده دریافته!" if profit_ready else "⏳ سود امروز دریافت شده."
+    )
 
     text = (
         f"🏦 **بانک هاپی**\n\n"
@@ -82,24 +86,37 @@ async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user=N
         f"{profit_text}"
     )
 
+    # 📌 اتصال user_id به انتهای callback_data جهت اختصاصی‌سازی پنل
     keyboard = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("+ واریز", callback_data="bank_deposit"),
-            InlineKeyboardButton("- برداشت", callback_data="bank_withdraw")
+            InlineKeyboardButton(
+                "+ واریز", callback_data=f"bank_deposit:{user_id}"
+            ),
+            InlineKeyboardButton(
+                "- برداشت", callback_data=f"bank_withdraw:{user_id}"
+            ),
         ],
         [
-            InlineKeyboardButton("💸 دریافت سود", callback_data="bank_claim_profit")
+            InlineKeyboardButton(
+                "💸 دریافت سود", callback_data=f"bank_claim_profit:{user_id}"
+            )
         ],
         [
-            InlineKeyboardButton("🔄 تغییر شماره حساب", callback_data="bank_change_account")
-        ]
+            InlineKeyboardButton(
+                "🔄 تغییر شماره حساب",
+                callback_data=f"bank_change_account:{user_id}",
+            )
+        ],
     ])
 
     if update.callback_query:
-        await update.callback_query.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
+        await update.callback_query.message.edit_text(
+            text, parse_mode="Markdown", reply_markup=keyboard
+        )
     else:
-        await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
-
+        await update.message.reply_text(
+            text, parse_mode="Markdown", reply_markup=keyboard
+        )
 
 async def handle_bank_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """مدیریت دکمه‌های مربوط به بانک"""
