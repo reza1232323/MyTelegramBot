@@ -222,44 +222,59 @@ async def callback_router(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
     query = update.callback_query
+    user_id = query.from_user.id
     data = query.data
 
-    # مدیریت دکمه شیشه‌ای زیرمجموعه‌گیری
-    if data == "get_referral_link":
+    # 📌 بررسی مالکیت پنل (جلوگیری از کلیک سایر کاربران در گروه)
+    if ":" in data:
+        # فرمت دیتا: action:owner_id (مثلاً bank_deposit:12345678)
+        parts = data.split(":")
+        action = parts[0]
+        owner_id = int(parts[1]) if parts[1].isdigit() else None
+
+        if owner_id and user_id != owner_id:
+            await query.answer(
+                "❌ این پنل برای شما نیست! لطفا خودتان دستور را ارسال کنید.",
+                show_alert=True,
+            )
+            return
+    else:
+        action = data
+
+    # 📌 مدیریت دکمه شیشه‌ای زیرمجموعه‌گیری
+    if action == "get_referral_link":
         await referral_command(update, context)
         await query.answer()
 
-    # مدیریت دکمه‌های شیشه‌ای بانک
-    elif data.startswith("bank_"):
+    # 📌 مدیریت دکمه‌های بانک
+    elif action.startswith("bank_"):
         if hasattr(economy, "handle_bank_callback"):
             await economy.handle_bank_callback(update, context)
 
-    # مدیریت دکمه‌های کارخانه
-    elif data.startswith("buy_fac_") or data.startswith("fac_"):
+    # 📌 مدیریت دکمه‌های کارخانه
+    elif action.startswith("buy_fac_") or action.startswith("fac_"):
         if hasattr(economy, "factory_callback"):
             await economy.factory_callback(update, context)
         elif hasattr(economy, "handle_factory_callback"):
             await economy.handle_factory_callback(update, context)
 
-    # مدیریت دکمه‌های قاچاق
-    elif data.startswith("select_contra_") or data in [
+    # 📌 مدیریت دکمه‌های قاچاق
+    elif action.startswith("select_contra_") or action in [
         "start_smuggling",
         "pay_bail",
     ]:
         if hasattr(economy, "handle_smuggle_callback"):
             await economy.handle_smuggle_callback(update, context)
 
-    # مدیریت فروش محصولات
-    elif data.startswith("sell_"):
+    # 📌 مدیریت فروش محصولات
+    elif action.startswith("sell_"):
         if hasattr(economy, "sell_callback"):
             await economy.sell_callback(update, context)
 
-    # مدیریت شرکت در قمار
-    elif data.startswith("join_gamble:"):
+    # 📌 مدیریت شرکت در قمار
+    elif action.startswith("join_gamble"):
         if hasattr(economy, "join_gamble_callback"):
             await economy.join_gamble_callback(update, context)
-
-
 def main():
     db.init_db()
 
