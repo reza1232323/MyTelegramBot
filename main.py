@@ -434,6 +434,13 @@ async def callback_router(
         await referral_command(update, context)
         await query.answer()
 
+    # 🎣 مدیریت تصمیم‌گیری صید ماهی (فروش طعمه یا غذادادن)
+    elif action in ["fish_sell", "fish_feed"]:
+        if hasattr(pet, "handle_fish_callback"):
+            await pet.handle_fish_callback(update, context)
+        else:
+            await query.answer()
+
     # 🐶 مدیریت کلیک‌های مربوط به پنل سگ
     elif (
         action.startswith("dog_")
