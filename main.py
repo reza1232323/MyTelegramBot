@@ -1,5 +1,7 @@
 import logging
 from telegram import Update
+from telegram.ext import CommandHandler, CallbackQueryHandler
+from handlers.economy import start_gamble, join_gamble_callback
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 )
@@ -104,6 +106,8 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, router))
     app.add_handler(CallbackQueryHandler(callback_router))
+    app.add_handler(CommandHandler("gamble", start_gamble)) # یا با هندلر پیام‌های متنی فارسی برای عبارت "قمار"
+    app.add_handler(CallbackQueryHandler(join_gamble_callback, pattern="^join_gamble:"))
 
     print("🤖 Bot is active...")
     app.run_polling()
