@@ -12,7 +12,7 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # جدول کاربران
+    # جدول کاربران (با اضافه شدن ستون‌های هاپ و رفرال)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -20,6 +20,8 @@ def init_db():
             points INTEGER DEFAULT 0,
             level INTEGER DEFAULT 1,
             hops INTEGER DEFAULT 0,
+            level_hops_progress INTEGER DEFAULT 0,
+            last_hop_time INTEGER DEFAULT 0,
             dogs INTEGER DEFAULT 0,
             dog_status TEXT DEFAULT 'بدون سگ',
             dog_health INTEGER DEFAULT 0,
@@ -29,6 +31,8 @@ def init_db():
             factory_count INTEGER DEFAULT 0,
             in_jail INTEGER DEFAULT 0,
             jail_until TEXT DEFAULT NULL,
+            inviter_id INTEGER DEFAULT 0,
+            referral_count INTEGER DEFAULT 0,
             inventory_diamond INTEGER DEFAULT 0,
             inventory_cig INTEGER DEFAULT 0,
             inventory_choco INTEGER DEFAULT 0,
@@ -195,7 +199,6 @@ def get_city_treasury(chat_id=None):
 
 
 def add_city_donation(user_id, amount=0):
-    # اگر ورودی اول همان مبلغ اهدا باشد
     if isinstance(user_id, (int, float)) and amount == 0:
         amount = user_id
         user_id = 0
@@ -211,7 +214,6 @@ def add_city_donation(user_id, amount=0):
 
 
 def add_city_treasury(amount, chat_id=None):
-    """تابع جایگزین برای افزودن به خزانه"""
     add_city_donation(0, amount)
 
 
@@ -268,15 +270,8 @@ def get_city_level(chat_id=None):
 
 
 def set_city_level(arg1, arg2=None):
-    """
-    پشتیبانی هم‌زمان از:
-    set_city_level(level)
-    set_city_level(level, chat_id)
-    set_city_level(chat_id, level)
-    """
     level = arg1
     if arg2 is not None:
-        # اگر ورودی اول chat_id منفی تلگرام بود، ورودی دوم level است
         if isinstance(arg1, int) and arg1 < 0:
             level = arg2
         elif isinstance(arg2, int) and arg2 < 100:
@@ -292,26 +287,33 @@ def set_city_level(arg1, arg2=None):
     conn.close()
 
 
-# توابع مستعار (Alias) جهت جلوگیری از تداخل کدها
+# توابع مستعار (Alias)
 get_group_total_hops = get_total_hops
 get_group_total_dogs = get_total_dogs
 
+
 # ----------------- متدهای مربوط به زیرمجموعه‌گیری -----------------
+
 
 def set_inviter(user_id, inviter_id):
     """ثبت معرف برای کاربر جدید (در صورتی که قبلاً معرف نداشته باشد)"""
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        # بررسی اینکه آیا کاربر قبلاً ثبت شده یا معرف دارد
-        cursor.execute("SELECT inviter_id FROM users WHERE user_id = ?", (user_id,))
+        cursor.execute(
+            "SELECT inviter_id FROM users WHERE user_id = ?", (user_id,)
+        )
         res = cursor.fetchone()
-        
-        # اگر کاربر معرف ندارد و خودشم خودش رو دعوت نکرده
+
         if res and (res[0] is None or res[0] == 0) and user_id != inviter_id:
-            cursor.execute("UPDATE users SET inviter_id = ? WHERE user_id = ?", (inviter_id, user_id))
-            # اضافه کردن ۱ واحد به تعداد زیرمجموعه‌های معرف
-            cursor.execute("UPDATE users SET referral_count = COALESCE(referral_count, 0) + 1 WHERE user_id = ?", (inviter_id,))
+            cursor.execute(
+                "UPDATE users SET inviter_id = ? WHERE user_id = ?",
+                (inviter_id, user_id),
+            )
+            cursor.execute(
+                "UPDATE users SET referral_count = COALESCE(referral_count, 0) + 1 WHERE user_id = ?",
+                (inviter_id,),
+            )
             conn.commit()
             return True
         return False
@@ -321,55 +323,19 @@ def set_inviter(user_id, inviter_id):
     finally:
         conn.close()
 
-def get_referral_stats(user_id):
-    """دریافت آمار زیرمجموعه‌های کاربر"""
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
-        cursor.execute("SELECT COALESCE(referral_count, 0) FROM users WHERE user_id = ?", (user_id,))
-        res = cursor.fetchone()
-        return res[0] if res else 0
-    except:
-        return 0
-    finally:
-        conn.close()
-
-
-
-# ----------------- متدهای مربوط به زیرمجموعه‌گیری -----------------
-
-def set_inviter(user_id, inviter_id):
-    """ثبت معرف برای کاربر جدید (در صورتی که قبلاً معرف نداشته باشد)"""
-    conn = get_connection()
-    cursor = conn.cursor()
-    try:
-        # بررسی اینکه آیا کاربر قبلاً ثبت شده یا معرف دارد
-        cursor.execute("SELECT inviter_id FROM users WHERE user_id = ?", (user_id,))
-        res = cursor.fetchone()
-        
-        # اگر کاربر معرف ندارد و خودشم خودش رو دعوت نکرده
-        if res and (res[0] is None or res[0] == 0) and user_id != inviter_id:
-            cursor.execute("UPDATE users SET inviter_id = ? WHERE user_id = ?", (inviter_id, user_id))
-            # اضافه کردن ۱ واحد به تعداد زیرمجموعه‌های معرف
-            cursor.execute("UPDATE users SET referral_count = COALESCE(referral_count, 0) + 1 WHERE user_id = ?", (inviter_id,))
-            conn.commit()
-            return True
-        return False
-    except Exception as e:
-        print(f"Error setting inviter: {e}")
-        return False
-    finally:
-        conn.close()
 
 def get_referral_stats(user_id):
     """دریافت آمار زیرمجموعه‌های کاربر"""
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT COALESCE(referral_count, 0) FROM users WHERE user_id = ?", (user_id,))
+        cursor.execute(
+            "SELECT COALESCE(referral_count, 0) FROM users WHERE user_id = ?",
+            (user_id,),
+        )
         res = cursor.fetchone()
         return res[0] if res else 0
-    except:
+    except Exception:
         return 0
     finally:
         conn.close()
