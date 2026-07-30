@@ -213,7 +213,6 @@ async def buy_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None)
     has_dog = db.get_user_field(user_id, "has_dog")
     if has_dog:
         await update.message.reply_text(
-            "سگ با موفقیت خریداری شد.\n"
             "قبلا سگ خریداری شده برای دیدن سگ دستور سگ را تایپ کنید."
         )
         return
