@@ -12,7 +12,7 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # جدول کاربران (افزوده شدن ستون last_interest_time)
+    # جدول کاربران (همراه با ستون‌های جدید سگ)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -25,6 +25,12 @@ def init_db():
             dogs INTEGER DEFAULT 0,
             dog_status TEXT DEFAULT 'بدون سگ',
             dog_health INTEGER DEFAULT 0,
+            has_dog BOOLEAN DEFAULT 0,
+            dog_name TEXT DEFAULT 'آها',
+            dog_level INTEGER DEFAULT 1,
+            dog_hunger INTEGER DEFAULT 10,
+            dog_last_claim INTEGER DEFAULT 0,
+            dog_unclaimed_points REAL DEFAULT 0,
             bank_balance INTEGER DEFAULT 0,
             account_number TEXT,
             last_hop TEXT,
@@ -46,13 +52,24 @@ def init_db():
         )
     """)
 
-    # برطرف کردن خطای دیتابیس‌های قدیمی در صورت عدم وجود ستون سود
-    try:
-        cursor.execute(
-            "ALTER TABLE users ADD COLUMN last_interest_time TEXT DEFAULT NULL"
-        )
-    except sqlite3.OperationalError:
-        pass
+    # برطرف کردن خطای دیتابیس‌های قدیمی در صورت عدم وجود ستون‌های جدید
+    new_columns = [
+        ("last_interest_time", "TEXT DEFAULT NULL"),
+        ("has_dog", "BOOLEAN DEFAULT 0"),
+        ("dog_name", "TEXT DEFAULT 'آها'"),
+        ("dog_level", "INTEGER DEFAULT 1"),
+        ("dog_hunger", "INTEGER DEFAULT 10"),
+        ("dog_last_claim", "INTEGER DEFAULT 0"),
+        ("dog_unclaimed_points", "REAL DEFAULT 0"),
+    ]
+
+    for col_name, col_type in new_columns:
+        try:
+            cursor.execute(
+                f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"
+            )
+        except sqlite3.OperationalError:
+            pass  # ستون از قبل وجود دارد
 
     # جدول متغیرهای عمومی
     cursor.execute("""
@@ -206,7 +223,9 @@ def claim_daily_interest(user_id, interest_rate=0.05):
 
             if now < next_claim:
                 remaining_time = next_claim - now
-                hours, remainder = divmod(int(remaining_time.total_seconds()), 3600)
+                hours, remainder = divmod(
+                    int(remaining_time.total_seconds()), 3600
+                )
                 minutes, _ = divmod(remainder, 60)
                 return (
                     False,
@@ -228,7 +247,11 @@ def claim_daily_interest(user_id, interest_rate=0.05):
         relative=False,
     )
 
-    return True, f"سود ۲۴ ساعته شما به مبلغ {profit:,} با موفقیت به حساب شما اضافه شد.", profit
+    return (
+        True,
+        f"سود ۲۴ ساعته شما به مبلغ {profit:,} با موفقیت به حساب شما اضافه شد.",
+        profit,
+    )
 
 
 # ----------------- متدهای مربوط به زندان -----------------
