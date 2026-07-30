@@ -1,17 +1,19 @@
-import sqlite3
 from datetime import datetime, timedelta
+import sqlite3
 
-DB_NAME = 'database.db'
+DB_NAME = "database.db"
+
 
 def get_connection():
     return sqlite3.connect(DB_NAME)
 
+
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     # جدول کاربران
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
             username TEXT,
@@ -37,81 +39,97 @@ def init_db():
             inventory_toy INTEGER DEFAULT 0,
             inventory_house INTEGER DEFAULT 0
         )
-    ''')
+    """)
 
     # جدول متغیرهای عمومی
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS global_vars (
             key TEXT PRIMARY KEY,
             value INTEGER DEFAULT 0
         )
-    ''')
+    """)
 
     # جدول اهدایی‌های شهر
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS city_donations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
             amount INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
-    ''')
+    """)
 
     # جدول تنظیمات عمومی و سطح شهر
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT
         )
-    ''')
+    """)
 
     conn.commit()
     conn.close()
+
 
 def get_user(user_id, username="کاربر"):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
     user = cursor.fetchone()
-    
+
     if not user:
-        cursor.execute("INSERT INTO users (user_id, username) VALUES (?, ?)", (user_id, username))
+        cursor.execute(
+            "INSERT INTO users (user_id, username) VALUES (?, ?)",
+            (user_id, username),
+        )
         conn.commit()
         cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
         user = cursor.fetchone()
-        
+
     conn.close()
     return user
+
 
 def get_user_field(user_id, field):
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute(f"SELECT {field} FROM users WHERE user_id = ?", (user_id,))
+        cursor.execute(
+            f"SELECT {field} FROM users WHERE user_id = ?", (user_id,)
+        )
         res = cursor.fetchone()
         return res[0] if res else None
-    except:
+    except Exception:
         return None
     finally:
         conn.close()
+
 
 def update_field(user_id, field, value, relative=True):
     conn = get_connection()
     cursor = conn.cursor()
     if relative and isinstance(value, (int, float)):
-        cursor.execute(f"UPDATE users SET {field} = {field} + ? WHERE user_id = ?", (value, user_id))
+        cursor.execute(
+            f"UPDATE users SET {field} = COALESCE({field}, 0) + ? WHERE user_id = ?",
+            (value, user_id),
+        )
     else:
-        cursor.execute(f"UPDATE users SET {field} = ? WHERE user_id = ?", (value, user_id))
+        cursor.execute(
+            f"UPDATE users SET {field} = ? WHERE user_id = ?", (value, user_id)
+        )
     conn.commit()
     conn.close()
+
 
 def get_or_create_account_number(user_id):
     acc = get_user_field(user_id, "account_number")
     if not acc:
         import random
+
         acc = str(random.randint(1000000000, 9999999999))
         update_field(user_id, "account_number", acc, relative=False)
     return acc
+
 
 def get_global_field(key):
     conn = get_connection()
@@ -121,19 +139,28 @@ def get_global_field(key):
     conn.close()
     return res[0] if res else 0
 
+
 def update_global_field(key, amount):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO global_vars (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = value + ?", (key, amount, amount))
+    cursor.execute(
+        "INSERT INTO global_vars (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = value + ?",
+        (key, amount, amount),
+    )
     conn.commit()
     conn.close()
 
+
 # ----------------- متدهای مربوط به زندان -----------------
 
+
 def set_jail(user_id, minutes=15):
-    jail_until = (datetime.now() + timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
+    jail_until = (datetime.now() + timedelta(minutes=minutes)).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
     update_field(user_id, "in_jail", 1, relative=False)
     update_field(user_id, "jail_until", jail_until, relative=False)
+
 
 def is_in_jail(user_id):
     jail_until_str = get_user_field(user_id, "jail_until")
@@ -145,11 +172,14 @@ def is_in_jail(user_id):
     update_field(user_id, "jail_until", None, relative=False)
     return False, None
 
+
 def release_from_jail(user_id):
     update_field(user_id, "in_jail", 0, relative=False)
     update_field(user_id, "jail_until", None, relative=False)
 
-# ----------------- متدهای مربوط به آمار شهر (اصلاح شده) -----------------
+
+# ----------------- متدهای مربوط به آمار شهر -----------------
+
 
 def get_city_treasury(chat_id=None):
     conn = get_connection()
@@ -157,18 +187,33 @@ def get_city_treasury(chat_id=None):
     try:
         cursor.execute("SELECT SUM(amount) FROM city_donations")
         res = cursor.fetchone()
-        return res[0] if res and res[0] else 0
-    except:
+        return res[0] if res and res[0] is not None else 0
+    except Exception:
         return 0
     finally:
         conn.close()
 
-def add_city_donation(user_id, amount):
+
+def add_city_donation(user_id, amount=0):
+    # اگر ورودی اول همان مبلغ اهدا باشد
+    if isinstance(user_id, (int, float)) and amount == 0:
+        amount = user_id
+        user_id = 0
+
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO city_donations (user_id, amount) VALUES (?, ?)", (user_id, amount))
+    cursor.execute(
+        "INSERT INTO city_donations (user_id, amount) VALUES (?, ?)",
+        (user_id, amount),
+    )
     conn.commit()
     conn.close()
+
+
+def add_city_treasury(amount, chat_id=None):
+    """تابع جایگزین برای افزودن به خزانه"""
+    add_city_donation(0, amount)
+
 
 def get_total_hops(chat_id=None):
     conn = get_connection()
@@ -176,11 +221,12 @@ def get_total_hops(chat_id=None):
     try:
         cursor.execute("SELECT SUM(hops) FROM users")
         res = cursor.fetchone()
-        return res[0] if res and res[0] else 0
-    except:
+        return res[0] if res and res[0] is not None else 0
+    except Exception:
         return 0
     finally:
         conn.close()
+
 
 def get_total_dogs(chat_id=None):
     conn = get_connection()
@@ -188,11 +234,12 @@ def get_total_dogs(chat_id=None):
     try:
         cursor.execute("SELECT SUM(dogs) FROM users")
         res = cursor.fetchone()
-        return res[0] if res and res[0] else 0
-    except:
+        return res[0] if res and res[0] is not None else 0
+    except Exception:
         return 0
     finally:
         conn.close()
+
 
 def get_total_item(column_name, chat_id=None):
     conn = get_connection()
@@ -200,11 +247,12 @@ def get_total_item(column_name, chat_id=None):
     try:
         cursor.execute(f"SELECT SUM({column_name}) FROM users")
         res = cursor.fetchone()
-        return res[0] if res and res[0] else 0
-    except:
+        return res[0] if res and res[0] is not None else 0
+    except Exception:
         return 0
     finally:
         conn.close()
+
 
 def get_city_level(chat_id=None):
     conn = get_connection()
@@ -213,14 +261,37 @@ def get_city_level(chat_id=None):
         cursor.execute("SELECT value FROM settings WHERE key='city_level'")
         res = cursor.fetchone()
         return int(res[0]) if res and res[0] else 1
-    except:
+    except Exception:
         return 1
     finally:
         conn.close()
 
-def set_city_level(level, chat_id=None):
+
+def set_city_level(arg1, arg2=None):
+    """
+    پشتیبانی هم‌زمان از:
+    set_city_level(level)
+    set_city_level(level, chat_id)
+    set_city_level(chat_id, level)
+    """
+    level = arg1
+    if arg2 is not None:
+        # اگر ورودی اول chat_id منفی تلگرام بود، ورودی دوم level است
+        if isinstance(arg1, int) and arg1 < 0:
+            level = arg2
+        elif isinstance(arg2, int) and arg2 < 100:
+            level = arg2
+
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO settings (key, value) VALUES ('city_level', ?) ON CONFLICT(key) DO UPDATE SET value = ?", (str(level), str(level)))
+    cursor.execute(
+        "INSERT INTO settings (key, value) VALUES ('city_level', ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+        (str(level), str(level)),
+    )
     conn.commit()
     conn.close()
+
+
+# توابع مستعار (Alias) جهت جلوگیری از تداخل کدها
+get_group_total_hops = get_total_hops
+get_group_total_dogs = get_total_dogs
