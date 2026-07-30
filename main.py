@@ -16,6 +16,7 @@ from telegram.ext import (
     filters,
 )
 from telegram.request import HTTPXRequest
+from telegram.exceptions import BadRequest
 
 import config
 import database as db
@@ -24,7 +25,59 @@ from handlers import admin, economy, pet
 # مقدار پاداش دعوت (سکه/پوینت)
 REFERRAL_REWARD = 500
 
+# ----------------- تنظیمات کانال‌های عضویت اجباری -----------------
+REQUIRED_CHANNELS = [
+    {"name": "کانال هاپ‌داگ", "username": "@esmok_shop_poy", "url": "https://t.me/esmok_shop_poy"},
+    {"name": "میوپوینت نیوز", "username": "@CODMSAOPZX", "url": "https://t.me/CODMSAOPZX"}
+]
+
 logging.basicConfig(level=logging.INFO)
+
+
+# ----------------- توابع عضویت اجباری -----------------
+async def check_user_membership(bot, user_id: int) -> bool:
+    """بررسی عضویت کاربر در تمامی کانال‌های اجباری"""
+    for ch in REQUIRED_CHANNELS:
+        try:
+            member = await bot.get_chat_member(chat_id=ch["username"], user_id=user_id)
+            if member.status in ['left', 'kicked']:
+                return False
+        except BadRequest:
+            # اگر ربات ادمین کانال نباشد یا آیدی اشتباه باشد، رد می‌شود
+            continue
+        except Exception as e:
+            logging.error(f"خطا در بررسی عضویت کانال {ch['username']}: {e}")
+            return False
+    return True
+
+
+def get_join_keyboard():
+    """ساخت کیبورد شیشه‌ای عضویت اجباری (طراحی شده دقیقاً مشابه تصویر)"""
+    buttons = []
+    for ch in REQUIRED_CHANNELS:
+        buttons.append([InlineKeyboardButton(f"🔔 عضویت در {ch['name']}", url=ch["url"])])
+    
+    buttons.append([InlineKeyboardButton("✅ عضو شدم، بررسی کن!", callback_data="check_join_status")])
+    return InlineKeyboardMarkup(buttons)
+
+
+async def send_must_join_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ارسال بنر و پیام عضویت اجباری مطابق طرح تصویر"""
+    user_first_name = update.effective_user.first_name
+    
+    channels_list = "\n".join([f"• {ch['name']} 🐾" if "هاپ" in ch['name'] else f"• {ch['name']} 📣" for ch in REQUIRED_CHANNELS])
+    
+    text = (
+        f"⛔️ **عزیز {user_first_name}!**\n\n"
+        f"برای استفاده از ربات هاپ‌داگ، ابتدا باید عضو این کانال‌ها بشی:\n\n"
+        f"{channels_list}\n\n"
+        f"👇 روی دکمه‌ها کلیک کن، عضو بشو، بعد «عضو شدم» رو بزن:"
+    )
+    
+    if update.message:
+        await update.message.reply_text(text, parse_mode='Markdown', reply_markup=get_join_keyboard())
+    elif update.callback_query:
+        await update.callback_query.message.reply_text(text, parse_mode='Markdown', reply_markup=get_join_keyboard())
 
 
 # ----------------- سیستم محاسباتی هاپ -----------------
@@ -41,7 +94,6 @@ def calculate_hop_reward(level):
 
 
 # ----------------- دستورات ربات -----------------
-
 
 async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """نمایش لینک و آمار زیرمجموعه‌گیری کاربر"""
@@ -109,6 +161,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             except Exception:
                 pass
+
+    # 🛑 بررسی عضویت اجباری در دستور /start
+    is_joined = await check_user_membership(context.bot, user_id)
+    if not is_joined:
+        await send_must_join_message(update, context)
+        return
 
     # 📌 ساخت کیبورد متنی اصلی ربات
     main_keyboard = ReplyKeyboardMarkup(
@@ -210,6 +268,13 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     text = update.message.text.strip()
+    user_id = update.effective_user.id
+
+    # 🛑 قفل عضویت اجباری (پیوی و تمام گروه‌ها)
+    is_joined = await check_user_membership(context.bot, user_id)
+    if not is_joined:
+        await send_must_join_message(update, context)
+        return
 
     # 📌 استخراج آرگومان‌ها از متن برای جلوگیری از خطای NoneType در توابع
     context.args = text.split()[1:]
@@ -222,7 +287,6 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if handled:
             return
 
-    user_id = update.effective_user.id
     username = (
         update.effective_user.username or update.effective_user.first_name
     )
@@ -298,6 +362,19 @@ async def callback_router(
     user_id = query.from_user.id
     data = query.data
 
+    # 📌 بررسی دکمه «عضو شدم، بررسی کن!»
+    if data == "check_join_status":
+        is_joined = await check_user_membership(context.bot, user_id)
+        if is_joined:
+            await query.answer("✅ عضویت شما تایید شد. از ربات استفاده کنید!", show_alert=True)
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+        else:
+            await query.answer("❌ هنوز در تمامی کانال‌ها عضو نشده‌اید!", show_alert=True)
+        return
+
     # 📌 بررسی مالکیت پنل (جلوگیری از کلیک سایر کاربران در گروه)
     if ":" in data:
         # فرمت دیتا: action:owner_id (مثلاً bank_deposit:12345678)
@@ -313,6 +390,13 @@ async def callback_router(
             return
     else:
         action = data
+
+    # 🛑 بررسی عضویت اجباری قبل از پردازش سایر Callbackها
+    is_joined = await check_user_membership(context.bot, user_id)
+    if not is_joined:
+        await query.answer("❌ ابتدا باید در کانال‌های اجباری عضو شوید!", show_alert=True)
+        await send_must_join_message(update, context)
+        return
 
     # 📌 مدیریت دکمه شیشه‌ای زیرمجموعه‌گیری
     if action == "get_referral_link":
