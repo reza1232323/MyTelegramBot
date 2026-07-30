@@ -1,7 +1,5 @@
 import logging
 from telegram import Update
-from telegram.ext import CommandHandler, CallbackQueryHandler
-from handlers.economy import start_gamble, join_gamble_callback
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 )
@@ -45,7 +43,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "غذا":
         await pet.feed_dog(update, context, user)
 
-    # 🏦 ۲. بانک، اقتصاد، کارخانه و قاچاق (اولین شرط باید IF باشد)
+    # 🏦 ۲. بانک، اقتصاد، کارخانه و قاچاق
     elif text.startswith("بانک"):
         await economy.bank_status(update, context, user)
     elif text == "کارخونه":
@@ -59,7 +57,8 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text.startswith("زندان"):
         await economy.jail_status(update, context, user)
     elif text.startswith("قمار"):
-        await economy.gamble(update, context, user)
+        # 📌 فراخوانی تابع اصلاح شد
+        await economy.start_gamble(update, context)
     elif text == "شهر":
         await economy.city_status(update, context, user)
     elif text.startswith("اهدا"):
@@ -106,8 +105,6 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, router))
     app.add_handler(CallbackQueryHandler(callback_router))
-    app.add_handler(CommandHandler("gamble", start_gamble)) # یا با هندلر پیام‌های متنی فارسی برای عبارت "قمار"
-    app.add_handler(CallbackQueryHandler(join_gamble_callback, pattern="^join_gamble:"))
 
     print("🤖 Bot is active...")
     app.run_polling()
