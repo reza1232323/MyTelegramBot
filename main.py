@@ -50,9 +50,9 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     share_url = f"https://t.me/share/url?url={referral_link}&text=بیا%20تو%20این%20ربات%20باهم%20بازی%20کنیم!"
-    keyboard = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("🔗 اشتراک‌گذاری لینک", url=share_url)]
-    )
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔗 اشتراک‌گذاری لینک", url=share_url)]
+    ])
 
     if update.callback_query:
         await update.callback_query.message.reply_text(
