@@ -149,12 +149,9 @@ def release_from_jail(user_id):
     update_field(user_id, "in_jail", 0, relative=False)
     update_field(user_id, "jail_until", None, relative=False)
 
-# ----------------- متدهای مربوط به آمار شهر -----------------
+# ----------------- متدهای مربوط به آمار شهر (اصلاح شده) -----------------
 
 def get_city_treasury(chat_id=None):
-    """
-    دریافت کل خزانه شهر (پشتیبانی از ورودی chat_id برای جلوگیری از خطای TypeError)
-    """
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -173,7 +170,7 @@ def add_city_donation(user_id, amount):
     conn.commit()
     conn.close()
 
-def get_total_hops():
+def get_total_hops(chat_id=None):
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -185,7 +182,7 @@ def get_total_hops():
     finally:
         conn.close()
 
-def get_total_dogs():
+def get_total_dogs(chat_id=None):
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -197,7 +194,7 @@ def get_total_dogs():
     finally:
         conn.close()
 
-def get_total_item(column_name):
+def get_total_item(column_name, chat_id=None):
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -209,7 +206,7 @@ def get_total_item(column_name):
     finally:
         conn.close()
 
-def get_city_level():
+def get_city_level(chat_id=None):
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -221,7 +218,7 @@ def get_city_level():
     finally:
         conn.close()
 
-def set_city_level(level):
+def set_city_level(level, chat_id=None):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("INSERT INTO settings (key, value) VALUES ('city_level', ?) ON CONFLICT(key) DO UPDATE SET value = ?", (str(level), str(level)))
