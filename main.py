@@ -7,6 +7,7 @@ from telegram import (
     ReplyKeyboardMarkup,
     Update,
 )
+from telegram.error import BadRequest
 from telegram.ext import (
     ApplicationBuilder,
     CallbackQueryHandler,
@@ -16,7 +17,6 @@ from telegram.ext import (
     filters,
 )
 from telegram.request import HTTPXRequest
-from telegram.error import BadRequest
 
 import config
 import database as db
@@ -27,8 +27,16 @@ REFERRAL_REWARD = 500
 
 # ----------------- تنظیمات کانال‌های عضویت اجباری -----------------
 REQUIRED_CHANNELS = [
-    {"name": "کانال اصلی", "username": "@CODMSAOPZX", "url": "https://t.me/CODMSAOPZX"},
-    {"name": "کانال دوم", "username": "@esmok_shop_poy", "url": "https://t.me/esmok_shop_poy"}
+    {
+        "name": "کانال اصلی",
+        "username": "@CODMSAOPZX",
+        "url": "https://t.me/CODMSAOPZX",
+    },
+    {
+        "name": "کانال دوم",
+        "username": "@esmok_shop_poy",
+        "url": "https://t.me/esmok_shop_poy",
+    },
 ]
 
 logging.basicConfig(level=logging.INFO)
@@ -39,8 +47,10 @@ async def check_user_membership(bot, user_id: int) -> bool:
     """بررسی عضویت کاربر در تمامی کانال‌های اجباری"""
     for ch in REQUIRED_CHANNELS:
         try:
-            member = await bot.get_chat_member(chat_id=ch["username"], user_id=user_id)
-            if member.status in ['left', 'kicked']:
+            member = await bot.get_chat_member(
+                chat_id=ch["username"], user_id=user_id
+            )
+            if member.status in ["left", "kicked"]:
                 return False
         except BadRequest:
             # اگر ربات ادمین کانال نباشد یا آیدی اشتباه باشد، رد می‌شود
@@ -52,32 +62,49 @@ async def check_user_membership(bot, user_id: int) -> bool:
 
 
 def get_join_keyboard():
-    """ساخت کیبورد شیشه‌ای عضویت اجباری (طراحی شده دقیقاً مشابه تصویر)"""
+    """ساخت کیبورد شیشه‌ای عضویت اجباری"""
     buttons = []
     for ch in REQUIRED_CHANNELS:
-        buttons.append([InlineKeyboardButton(f"🔔 عضویت در {ch['name']}", url=ch["url"])])
-    
-    buttons.append([InlineKeyboardButton("✅ عضو شدم، بررسی کن!", callback_data="check_join_status")])
+        buttons.append(
+            [InlineKeyboardButton(f"🔔 عضویت در {ch['name']}", url=ch["url"])]
+        )
+
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                "✅ عضو شدم، بررسی کن!", callback_data="check_join_status"
+            )
+        ]
+    )
     return InlineKeyboardMarkup(buttons)
 
 
-async def send_must_join_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ارسال بنر و پیام عضویت اجباری مطابق طرح تصویر"""
+async def send_must_join_message(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    """ارسال بنر و پیام عضویت اجباری"""
     user_first_name = update.effective_user.first_name
-    
-    channels_list = "\n".join([f"• {ch['name']} 🐾" if "هاپ" in ch['name'] else f"• {ch['name']} 📣" for ch in REQUIRED_CHANNELS])
-    
+
+    channels_list = "\n".join([
+        f"• {ch['name']} 🐾" if "هاپ" in ch["name"] else f"• {ch['name']} 📣"
+        for ch in REQUIRED_CHANNELS
+    ])
+
     text = (
         f"⛔️ **عزیز {user_first_name}!**\n\n"
         f"برای استفاده از ربات هاپ‌داگ، ابتدا باید عضو این کانال‌ها بشی:\n\n"
         f"{channels_list}\n\n"
         f"👇 روی دکمه‌ها کلیک کن، عضو بشو، بعد «عضو شدم» رو بزن:"
     )
-    
+
     if update.message:
-        await update.message.reply_text(text, parse_mode='Markdown', reply_markup=get_join_keyboard())
+        await update.message.reply_text(
+            text, parse_mode="Markdown", reply_markup=get_join_keyboard()
+        )
     elif update.callback_query:
-        await update.callback_query.message.reply_text(text, parse_mode='Markdown', reply_markup=get_join_keyboard())
+        await update.callback_query.message.reply_text(
+            text, parse_mode="Markdown", reply_markup=get_join_keyboard()
+        )
 
 
 # ----------------- سیستم محاسباتی هاپ -----------------
@@ -95,12 +122,12 @@ def calculate_hop_reward(level):
 
 # ----------------- دستورات ربات -----------------
 
+
 async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """نمایش لینک و آمار زیرمجموعه‌گیری کاربر"""
     user_id = update.effective_user.id
     bot_username = context.bot.username
 
-    # دریافت آمار زیرمجموعه‌ها از دیتابیس
     ref_count = (
         db.get_referral_stats(user_id)
         if hasattr(db, "get_referral_stats")
@@ -138,21 +165,16 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or "کاربر"
 
-    # دریافت یا ثبت کاربر در دیتابیس
     db.get_user(user_id, username)
 
-    # بررسی اگر کاربر با لینک رفرال آمده باشد
     if context.args and context.args[0].isdigit():
         inviter_id = int(context.args[0])
 
-        # ثبت معرف در دیتابیس (جلوگیری از عضویت تکراری یا خود-دعوتی)
         if hasattr(db, "set_inviter") and db.set_inviter(user_id, inviter_id):
-            # واریز پاداش به حساب معرف
             db.update_field(
                 inviter_id, "points", REFERRAL_REWARD, relative=True
             )
 
-            # اطلاع‌رسانی به معرف
             try:
                 await context.bot.send_message(
                     chat_id=inviter_id,
@@ -162,17 +184,15 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
 
-    # 🛑 بررسی عضویت اجباری در دستور /start
     is_joined = await check_user_membership(context.bot, user_id)
     if not is_joined:
         await send_must_join_message(update, context)
         return
 
-    # 📌 ساخت کیبورد متنی اصلی ربات
     main_keyboard = ReplyKeyboardMarkup(
         [
             ["پروفایل", "هاپ"],
-            ["خرید سگ", "غذا"],
+            ["🐶 پنل سگ", "خرید سگ", "غذا"],
             ["کارخونه", "شهر"],
             ["🏦 بانک", "👥 زیرمجموعه‌گیری"],
             ["راهنما"],
@@ -180,7 +200,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         resize_keyboard=True,
     )
 
-    # 📌 ساخت دکمه شیشه‌ای میان‌بر زیر پیام
     inline_keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
@@ -196,9 +215,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💡 برای گرفتن لینک دعوت می‌توانید از دکمه شیشه‌ای زیر یا دکمه **👥 زیرمجموعه‌گیری** در کیبورد استفاده کنید."
     )
 
-    await update.message.reply_text(
-        start_text, reply_markup=main_keyboard
-    )
+    await update.message.reply_text(start_text, reply_markup=main_keyboard)
     await update.message.reply_text(
         "منوی سریع زیرمجموعه‌گیری:", reply_markup=inline_keyboard
     )
@@ -211,9 +228,8 @@ async def handle_hop_internal(
     user_id = update.effective_user.id
     current_time = int(time.time())
 
-    # دریافت اطلاعات کاربر از دیتابیس
     last_hop_time = db.get_user_field(user_id, "last_hop_time") or 0
-    cooldown = 300  # ۵ دقیقه (۳۰۰ ثانیه)
+    cooldown = 300  # ۵ دقیقه
 
     if current_time - last_hop_time < cooldown:
         remaining = cooldown - (current_time - last_hop_time)
@@ -231,7 +247,6 @@ async def handle_hop_internal(
     needed = hops_needed_for_level(level)
     progress += 1
 
-    # به روزرسانی سکه، تعداد کل هاپ‌ها و زمان آخرین هاپ
     db.update_field(user_id, "points", reward, relative=True)
     db.update_field(user_id, "hops", 1, relative=True)
     db.update_field(user_id, "last_hop_time", current_time, relative=False)
@@ -257,7 +272,7 @@ async def handle_hop_internal(
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    """ثبت دقیق تمام خطارهای ثبت نشده برای جلوگیری از کرش"""
+    """ثبت دقیق تمام خطارهای ثبت نشده"""
     logging.error(
         f"خطایی در پردازش رخ داد: {context.error}", exc_info=context.error
     )
@@ -270,16 +285,13 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     user_id = update.effective_user.id
 
-    # 🛑 قفل عضویت اجباری (پیوی و تمام گروه‌ها)
     is_joined = await check_user_membership(context.bot, user_id)
     if not is_joined:
         await send_must_join_message(update, context)
         return
 
-    # 📌 استخراج آرگومان‌ها از متن برای جلوگیری از خطای NoneType در توابع
     context.args = text.split()[1:]
 
-    # بررسی اینکه آیا کاربر در حال ارسال تعداد برای خرید، قاچاق یا واریز/برداشت بانک است
     if hasattr(economy, "handle_factory_and_smuggle_text"):
         handled = await economy.handle_factory_and_smuggle_text(
             update, context
@@ -292,12 +304,23 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     user = db.get_user(user_id, username)
 
-    # پاک‌سازی دستورات گروه‌ها (مثلاً تبدیل /bank@bot_name به bank)
     clean_text = text.split("@")[0].lower()
 
     # 📌 ۱. عمومی، سگ و زیرمجموعه‌گیری
     if clean_text in ["پروفایل", "هاپوهام", "هاپوهاش", "/profile"]:
         await pet.show_profile(update, context, user)
+    elif clean_text in [
+        "🐶 پنل سگ",
+        "پنل سگ",
+        "سگ من",
+        "سگ",
+        "/dog",
+        "/dogpanel",
+    ]:
+        if hasattr(pet, "show_dog_panel"):
+            await pet.show_dog_panel(update, context, user)
+        elif hasattr(pet, "show_profile"):
+            await pet.show_profile(update, context, user)
     elif clean_text in ["هاپ", "hop", "/hop"]:
         if hasattr(pet, "claim_hop"):
             await pet.claim_hop(update, context, user)
@@ -341,7 +364,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif clean_text.startswith("اهدا") or clean_text.startswith("/donate"):
         await economy.donate_city(update, context, user)
 
-    # 👑 ۳. دستورات ادمین (روی ریپلای)
+    # 👑 ۳. دستورات ادمین
     elif user_id in config.ADMIN_IDS:
         if text.startswith("افزایش پوینت"):
             await admin.add_points(update, context)
@@ -362,22 +385,23 @@ async def callback_router(
     user_id = query.from_user.id
     data = query.data
 
-    # 📌 بررسی دکمه «عضو شدم، بررسی کن!»
     if data == "check_join_status":
         is_joined = await check_user_membership(context.bot, user_id)
         if is_joined:
-            await query.answer("✅ عضویت شما تایید شد. از ربات استفاده کنید!", show_alert=True)
+            await query.answer(
+                "✅ عضویت شما تایید شد. از ربات استفاده کنید!", show_alert=True
+            )
             try:
                 await query.message.delete()
             except Exception:
                 pass
         else:
-            await query.answer("❌ هنوز در تمامی کانال‌ها عضو نشده‌اید!", show_alert=True)
+            await query.answer(
+                "❌ هنوز در تمامی کانال‌ها عضو نشده‌اید!", show_alert=True
+            )
         return
 
-    # 📌 بررسی مالکیت پنل (جلوگیری از کلیک سایر کاربران در گروه)
     if ":" in data:
-        # فرمت دیتا: action:owner_id (مثلاً bank_deposit:12345678)
         parts = data.split(":")
         action = parts[0]
         owner_id = int(parts[1]) if parts[1].isdigit() else None
@@ -391,10 +415,11 @@ async def callback_router(
     else:
         action = data
 
-    # 🛑 بررسی عضویت اجباری قبل از پردازش سایر Callbackها
     is_joined = await check_user_membership(context.bot, user_id)
     if not is_joined:
-        await query.answer("❌ ابتدا باید در کانال‌های اجباری عضو شوید!", show_alert=True)
+        await query.answer(
+            "❌ ابتدا باید در کانال‌های اجباری عضو شوید!", show_alert=True
+        )
         await send_must_join_message(update, context)
         return
 
@@ -403,19 +428,32 @@ async def callback_router(
         await referral_command(update, context)
         await query.answer()
 
-    # 📌 مدیریت دکمه‌های بانک
+    # 🐶 مدیریت کلیک‌های مربوط به پنل سگ
+    elif (
+        action.startswith("dog_")
+        or action.startswith("pet_")
+        or action == "dog_panel"
+    ):
+        if hasattr(pet, "handle_dog_callback"):
+            await pet.handle_dog_callback(update, context)
+        elif hasattr(pet, "dog_callback"):
+            await pet.dog_callback(update, context)
+        else:
+            await query.answer()
+
+    # 🏦 مدیریت دکمه‌های بانک
     elif action.startswith("bank_"):
         if hasattr(economy, "handle_bank_callback"):
             await economy.handle_bank_callback(update, context)
 
-    # 📌 مدیریت دکمه‌های کارخانه
+    # 🏭 مدیریت دکمه‌های کارخانه
     elif action.startswith("buy_fac_") or action.startswith("fac_"):
         if hasattr(economy, "factory_callback"):
             await economy.factory_callback(update, context)
         elif hasattr(economy, "handle_factory_callback"):
             await economy.handle_factory_callback(update, context)
 
-    # 📌 مدیریت دکمه‌های قاچاق
+    # 📦 مدیریت دکمه‌های قاچاق
     elif action.startswith("select_contra_") or action in [
         "start_smuggling",
         "pay_bail",
@@ -423,12 +461,12 @@ async def callback_router(
         if hasattr(economy, "handle_smuggle_callback"):
             await economy.handle_smuggle_callback(update, context)
 
-    # 📌 مدیریت فروش محصولات
+    # 💰 مدیریت فروش محصولات
     elif action.startswith("sell_"):
         if hasattr(economy, "sell_callback"):
             await economy.sell_callback(update, context)
 
-    # 📌 مدیریت شرکت در قمار
+    # 🎲 مدیریت شرکت در قمار
     elif action.startswith("join_gamble"):
         if hasattr(economy, "join_gamble_callback"):
             await economy.join_gamble_callback(update, context)
@@ -437,7 +475,6 @@ async def callback_router(
 def main():
     db.init_db()
 
-    # افزایش مهلت زمانی درخواست‌ها جهت جلوگیری از خطای TimedOut
     request_config = HTTPXRequest(
         connection_pool_size=8, read_timeout=60.0, write_timeout=60.0
     )
@@ -449,16 +486,13 @@ def main():
         .build()
     )
 
-    # ثبت Error Handler برای جلوگیری از کرش
     app.add_error_handler(error_handler)
 
-    # ثبت دستگیره‌های اصلی دستورات
     app.add_handler(CommandHandler("start", start_command))
     if hasattr(economy, "bank_status"):
         app.add_handler(CommandHandler("bank", economy.bank_status))
     app.add_handler(CommandHandler(["referral", "sub"], referral_command))
 
-    # ثبت Router اصلی برای پیام‌های متنی و Callback
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, router))
     app.add_handler(CallbackQueryHandler(callback_router))
 
