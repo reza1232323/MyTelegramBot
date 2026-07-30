@@ -1,5 +1,10 @@
 import logging
-from telegram import Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    Update,
+)
 from telegram.ext import (
     ApplicationBuilder,
     CallbackQueryHandler,
@@ -8,6 +13,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from telegram.request import HTTPXRequest
 
 import config
 import database as db
@@ -43,7 +49,19 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"`{referral_link}`"
     )
 
-    await update.message.reply_text(text, parse_mode="Markdown")
+    share_url = f"https://t.me/share/url?url={referral_link}&text=بیا%20تو%20این%20ربات%20باهم%20بازی%20کنیم!"
+    keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("🔗 اشتراک‌گذاری لینک", url=share_url)]
+    )
+
+    if update.callback_query:
+        await update.callback_query.message.reply_text(
+            text, parse_mode="Markdown", reply_markup=keyboard
+        )
+    else:
+        await update.message.reply_text(
+            text, parse_mode="Markdown", reply_markup=keyboard
+        )
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -74,13 +92,39 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
 
-    # پیام خوش‌آمدگویی استارت
+    # 📌 ساخت کیبورد متنی اصلی ربات (شامل دکمه زیرمجموعه‌گیری)
+    main_keyboard = ReplyKeyboardMarkup(
+        [
+            ["پروفایل", "هاپ"],
+            ["خرید سگ", "غذا"],
+            ["بانک", "کارخونه", "شهر"],
+            ["👥 زیرمجموعه‌گیری", "راهنما"],
+        ],
+        resize_keyboard=True,
+    )
+
+    # 📌 ساخت دکمه شیشه‌ای میان‌بر زیر پیام
+    inline_keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "👥 دریافت لینک زیرمجموعه‌گیری",
+                callback_data="get_referral_link",
+            )
+        ]
+    ])
+
     start_text = (
         f"سلام {update.effective_user.first_name} عزیز! 👋\n"
-        f"به ربات هاپو خوش آمدید.\n\n"
-        f"💡 برای مشاهده راهنما عبارت **راهنما** را ارسال کنید."
+        f"به ربات خوش آمدید.\n\n"
+        f"💡 برای گرفتن لینک دعوت می‌توانید از دکمه شیشه‌ای زیر یا دکمه **👥 زیرمجموعه‌گیری** در کیبورد استفاده کنید."
     )
-    await update.message.reply_text(start_text)
+
+    await update.message.reply_text(
+        start_text, reply_markup=main_keyboard
+    )
+    await update.message.reply_text(
+        "منوی سریع زیرمجموعه‌گیری:", reply_markup=inline_keyboard
+    )
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
@@ -101,7 +145,9 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # بررسی اینکه آیا کاربر در حال ارسال تعداد برای خرید یا قاچاق است
     if hasattr(economy, "handle_factory_and_smuggle_text"):
-        handled = await economy.handle_factory_and_smuggle_text(update, context)
+        handled = await economy.handle_factory_and_smuggle_text(
+            update, context
+        )
         if handled:
             return
 
@@ -122,7 +168,13 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await pet.buy_dog(update, context, user)
     elif text == "غذا":
         await pet.feed_dog(update, context, user)
-    elif text in ["زیرمجموعه‌گیری", "زیرمجموعه", "دعوت", "رفرال"]:
+    elif text in [
+        "👥 زیرمجموعه‌گیری",
+        "زیرمجموعه‌گیری",
+        "زیرمجموعه",
+        "دعوت",
+        "رفرال",
+    ]:
         await referral_command(update, context)
 
     # 🏦 ۲. بانک، اقتصاد، کارخانه، قاچاق و شهر
@@ -165,7 +217,12 @@ async def callback_router(
     query = update.callback_query
     data = query.data
 
-    if data.startswith("bank_"):
+    # مدیریت دکمه شیشه‌ای زیرمجموعه‌گیری
+    if data == "get_referral_link":
+        await referral_command(update, context)
+        await query.answer()
+
+    elif data.startswith("bank_"):
         await economy.handle_bank_callback(update, context)
     elif data.startswith("buy_fac_") or data.startswith("fac_"):
         if hasattr(economy, "factory_callback"):
@@ -185,12 +242,23 @@ async def callback_router(
 
 def main():
     db.init_db()
-    app = ApplicationBuilder().token(config.BOT_TOKEN).build()
+
+    # افزایش مهلت زمانی درخواست‌ها جهت جلوگیری از خطای TimedOut
+    request_config = HTTPXRequest(
+        connection_pool_size=8, read_timeout=60.0, write_timeout=60.0
+    )
+
+    app = (
+        ApplicationBuilder()
+        .token(config.BOT_TOKEN)
+        .request(request_config)
+        .build()
+    )
 
     # ثبت Error Handler برای جلوگیری از کرش
     app.add_error_handler(error_handler)
 
-    # ثبت قیمت/دستورات ربات
+    # ثبت دستگیره‌های ربات
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler(["referral", "sub"], referral_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, router))
