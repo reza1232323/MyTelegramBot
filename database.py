@@ -12,7 +12,7 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # جدول کاربران (با اضافه شدن ستون‌های هاپ و رفرال)
+    # جدول کاربران
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -95,6 +95,10 @@ def get_user(user_id, username="کاربر"):
 
 
 def get_user_field(user_id, field):
+    # نگاشت نام‌های مستعار برای بانک
+    if field == "bank":
+        field = "bank_balance"
+
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -102,32 +106,45 @@ def get_user_field(user_id, field):
             f"SELECT {field} FROM users WHERE user_id = ?", (user_id,)
         )
         res = cursor.fetchone()
-        return res[0] if res else None
+        return res[0] if res and res[0] is not None else 0
     except Exception:
-        return None
+        return 0
     finally:
         conn.close()
 
 
-def update_field(user_id, field, value, relative=True):
+def update_field(user_id, field, value, relative=False):
+    # نگاشت نام‌های مستعار برای بانک
+    if field == "bank":
+        field = "bank_balance"
+
     conn = get_connection()
     cursor = conn.cursor()
-    if relative and isinstance(value, (int, float)):
-        cursor.execute(
-            f"UPDATE users SET {field} = COALESCE({field}, 0) + ? WHERE user_id = ?",
-            (value, user_id),
-        )
-    else:
-        cursor.execute(
-            f"UPDATE users SET {field} = ? WHERE user_id = ?", (value, user_id)
-        )
-    conn.commit()
-    conn.close()
+
+    # اطمینان از وجود کاربر در دیتابیس
+    get_user(user_id)
+
+    try:
+        if relative and isinstance(value, (int, float)):
+            cursor.execute(
+                f"UPDATE users SET {field} = COALESCE({field}, 0) + ? WHERE user_id = ?",
+                (value, user_id),
+            )
+        else:
+            cursor.execute(
+                f"UPDATE users SET {field} = ? WHERE user_id = ?",
+                (value, user_id),
+            )
+        conn.commit()
+    except Exception as e:
+        print(f"Error updating field {field}: {e}")
+    finally:
+        conn.close()
 
 
 def get_or_create_account_number(user_id):
     acc = get_user_field(user_id, "account_number")
-    if not acc:
+    if not acc or acc == 0:
         import random
 
         acc = str(random.randint(1000000000, 9999999999))
@@ -138,21 +155,29 @@ def get_or_create_account_number(user_id):
 def get_global_field(key):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT value FROM global_vars WHERE key = ?", (key,))
-    res = cursor.fetchone()
-    conn.close()
-    return res[0] if res else 0
+    try:
+        cursor.execute("SELECT value FROM global_vars WHERE key = ?", (key,))
+        res = cursor.fetchone()
+        return res[0] if res else 0
+    except Exception:
+        return 0
+    finally:
+        conn.close()
 
 
 def update_global_field(key, amount):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO global_vars (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = value + ?",
-        (key, amount, amount),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        cursor.execute(
+            "INSERT INTO global_vars (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = value + ?",
+            (key, amount, amount),
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"Error updating global field {key}: {e}")
+    finally:
+        conn.close()
 
 
 # ----------------- متدهای مربوط به زندان -----------------
@@ -168,12 +193,15 @@ def set_jail(user_id, minutes=15):
 
 def is_in_jail(user_id):
     jail_until_str = get_user_field(user_id, "jail_until")
-    if jail_until_str:
-        jail_until = datetime.strptime(jail_until_str, "%Y-%m-%d %H:%M:%S")
-        if datetime.now() < jail_until:
-            return True, jail_until
-    update_field(user_id, "in_jail", 0, relative=False)
-    update_field(user_id, "jail_until", None, relative=False)
+    if jail_until_str and isinstance(jail_until_str, str):
+        try:
+            jail_until = datetime.strptime(jail_until_str, "%Y-%m-%d %H:%M:%S")
+            if datetime.now() < jail_until:
+                return True, jail_until
+        except ValueError:
+            pass
+
+    release_from_jail(user_id)
     return False, None
 
 
@@ -205,12 +233,16 @@ def add_city_donation(user_id, amount=0):
 
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO city_donations (user_id, amount) VALUES (?, ?)",
-        (user_id, amount),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        cursor.execute(
+            "INSERT INTO city_donations (user_id, amount) VALUES (?, ?)",
+            (user_id, amount),
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"Error adding city donation: {e}")
+    finally:
+        conn.close()
 
 
 def add_city_treasury(amount, chat_id=None):
@@ -279,12 +311,16 @@ def set_city_level(arg1, arg2=None):
 
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO settings (key, value) VALUES ('city_level', ?) ON CONFLICT(key) DO UPDATE SET value = ?",
-        (str(level), str(level)),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        cursor.execute(
+            "INSERT INTO settings (key, value) VALUES ('city_level', ?) ON CONFLICT(key) DO UPDATE SET value = ?",
+            (str(level), str(level)),
+        )
+        conn.commit()
+    except Exception as e:
+        print(f"Error setting city level: {e}")
+    finally:
+        conn.close()
 
 
 # توابع مستعار (Alias)
@@ -339,3 +375,7 @@ def get_referral_stats(user_id):
         return 0
     finally:
         conn.close()
+
+
+# ساخت خودکار جداول هنگام اجرای برنامه
+init_db()
