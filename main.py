@@ -20,13 +20,17 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
 
+    text = update.message.text.strip()
+    
+    # 📌 استخراج آرگومان‌ها از متن برای جلوگیری از خطای NoneType در توابع
+    context.args = text.split()[1:]
+
     # بررسی اینکه آیا کاربر در حال ارسال تعداد برای خرید یا قاچاق است
     if hasattr(economy, "handle_factory_and_smuggle_text"):
         handled = await economy.handle_factory_and_smuggle_text(update, context)
         if handled:
             return
 
-    text = update.message.text.strip()
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
     user = db.get_user(user_id, username)
@@ -57,7 +61,6 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text.startswith("زندان"):
         await economy.jail_status(update, context, user)
     elif text.startswith("قمار"):
-        # 📌 فراخوانی تابع اصلاح شد
         await economy.start_gamble(update, context)
     elif text == "شهر":
         await economy.city_status(update, context, user)
