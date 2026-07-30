@@ -27,8 +27,8 @@ REFERRAL_REWARD = 500
 
 # ----------------- تنظیمات کانال‌های عضویت اجباری -----------------
 REQUIRED_CHANNELS = [
-    {"name": "کانال هاپ‌داگ", "username": "@esmok_shop_poy", "url": "https://t.me/esmok_shop_poy"},
-    {"name": "میوپوینت نیوز", "username": "@CODMSAOPZX", "url": "https://t.me/CODMSAOPZX"}
+    {"name": "کانال اصلی", "username": "@CODMSAOPZX", "url": "https://t.me/CODMSAOPZX"},
+    {"name": "کانال دوم", "username": "@esmok_shop_poy", "url": "https://t.me/esmok_shop_poy"}
 ]
 
 logging.basicConfig(level=logging.INFO)
