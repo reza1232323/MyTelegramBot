@@ -9,8 +9,33 @@ from handlers import pet, economy, admin
 
 logging.basicConfig(level=logging.INFO)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 ربات هاپو مگا فعال است!")
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    username = update.effective_user.username or "کاربر"
+    
+    # دریافت کاربر از دیتابیس
+    db.get_user(user_id, username)
+
+    # بررسی اگر کاربر با لینک رفرال آمده باشد
+    if context.args and context.args[0].isdigit():
+        inviter_id = int(context.args[0])
+        
+        # ثبت معرف در دیتابیس
+        if hasattr(db, "set_inviter") and db.set_inviter(user_id, inviter_id):
+            # واریز پاداش به حساب معرف
+            db.update_field(inviter_id, "points", REFERRAL_REWARD, relative=True)
+            
+            # اطلاع‌رسانی به معرف
+            try:
+                await context.bot.send_message(
+                    chat_id=inviter_id,
+                    text=f"🎉 یک کاربر جدید با لینک شما وارد ربات شد!\n🎁 مبلغ **{REFERRAL_REWARD:,} سکه** به حساب شما اضافه شد.",
+                    parse_mode="Markdown"
+                )
+            except:
+                pass
+
+    # ادامه کدهای عادی استارت...
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     """ثبت دقیق تمام خطاهای ثبت نشده برای جلوگیری از کرش"""
