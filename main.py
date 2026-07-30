@@ -16,7 +16,7 @@ from telegram.ext import (
     filters,
 )
 from telegram.request import HTTPXRequest
-from telegram.exceptions import BadRequest
+from telegram.error import BadRequest
 
 import config
 import database as db
