@@ -35,18 +35,42 @@ active_gambles = {}
 
 # ----------------- ۰. بخش بانک -----------------
 
-async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user: dict = None):
+def format_balance(value: int) -> str:
+    """فرمت‌دهی اعداد به صورت سه‌رقمی سه‌رقمی"""
+    try:
+        return f"{int(value):,}"
+    except (ValueError, TypeError):
+        return "0"
+
+def _ensure_user_dict(user, user_id: int) -> dict:
+    """تبدیل ورودی کاربر به دیکشنری مستقل از نوع تاپل یا لیست"""
+    if isinstance(user, dict):
+        return user
+    
+    # اگر ورودی تاپل یا None باشد، مقادیر مستقیم از دیتابیس خوانده می‌شوند
+    account_number = db.get_user_field(user_id, "account_number") if hasattr(db, "get_user_field") else None
+    bank = db.get_user_field(user_id, "bank") if hasattr(db, "get_user_field") else 0
+    points = db.get_user_field(user_id, "points") if hasattr(db, "get_user_field") else 0
+    
+    return {
+        "user_id": user_id,
+        "account_number": account_number or f"278{user_id}",
+        "bank": bank or 0,
+        "points": points or 0,
+    }
+
+async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     """نمایش وضعیت بانک هاپی"""
     user_id = update.effective_user.id
-    if not user:
-        user = {"user_id": user_id}
-        
-    account_number = user.get("account_number") or db.get_user_field(user_id, "account_number") or f"278{user_id}"
-    bank_balance = user.get("bank") if user.get("bank") is not None else (db.get_user_field(user_id, "bank") or 0)
-    wallet_balance = user.get("points") if user.get("points") is not None else (db.get_user_field(user_id, "points") or 0)
+    user_data = _ensure_user_dict(user, user_id)
+    
+    # استخراج مقادیر با ایمنی کامل
+    account_number = user_data.get("account_number") or f"278{user_id}"
+    bank_balance = user_data.get("bank", 0)
+    wallet_balance = user_data.get("points", 0)
     
     daily_profit = int(bank_balance * 0.03)
-    profit_ready = user.get("profit_ready", True)
+    profit_ready = user_data.get("profit_ready", True)
     profit_text = "✅ سود آماده دریافته!" if profit_ready else "⏳ سود امروز دریافت شده."
 
     text = (
@@ -54,7 +78,7 @@ async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user: 
         f"💳 **شماره حساب:** `{account_number}`\n"
         f"💰 **موجودی بانک:** {format_balance(bank_balance)} هاپ پوینت\n"
         f"👛 **موجودی کیف:** {format_balance(wallet_balance)} هاپ پوینت\n\n"
-        f"📈 **سود روزانه (۳%):** {format_balance(daily_profit)}\n"
+        f"📈 **سود روزانه (۳%):** {format_balance(daily_profit)} هاپ پوینت\n"
         f"{profit_text}"
     )
 
@@ -76,6 +100,7 @@ async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user: 
     else:
         await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
+
 async def handle_bank_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """مدیریت دکمه‌های مربوط به بانک"""
     query = update.callback_query
@@ -92,19 +117,20 @@ async def handle_bank_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.message.reply_text("🏧 لطفاً مبلغی که می‌خواهید از بانک برداشت کنید را وارد کنید:")
         
     elif data == "bank_claim_profit":
-        bank_balance = db.get_user_field(user_id, "bank") or 0
-        if bank_balance <= 0:
+        bank_balance = db.get_user_field(user_id, "bank") if hasattr(db, "get_user_field") else 0
+        if not bank_balance or bank_balance <= 0:
             await query.message.reply_text("❌ موجودی بانک شما صفر است و سودی تعلق نمی‌گیرد.")
             return
             
         profit = int(bank_balance * 0.03)
-        db.update_field(user_id, "points", profit, relative=True)
+        if hasattr(db, "update_field"):
+            db.update_field(user_id, "points", profit, relative=True)
+        
         await query.message.reply_text(f"🎉 مبلغ **{format_balance(profit)}** هاپ پوینت به عنوان سود روزانه به کیف پول شما اضافه شد!")
 
     elif data == "bank_change_account":
         context.user_data['state'] = "WAITING_FOR_NEW_ACCOUNT_NUM"
         await query.message.reply_text("💳 لطفاً شماره حساب جدید خود را وارد کنید:")
-
 # ----------------- ۱. بخش کارخانه -----------------
 
 async def show_factory(update: Update, context: ContextTypes.DEFAULT_TYPE):
