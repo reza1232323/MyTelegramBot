@@ -151,7 +151,10 @@ def release_from_jail(user_id):
 
 # ----------------- متدهای مربوط به آمار شهر -----------------
 
-def get_city_treasury():
+def get_city_treasury(chat_id=None):
+    """
+    دریافت کل خزانه شهر (پشتیبانی از ورودی chat_id برای جلوگیری از خطای TypeError)
+    """
     conn = get_connection()
     cursor = conn.cursor()
     try:
