@@ -92,12 +92,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
 
-    # 📌 ساخت کیبورد متنی اصلی ربات (شامل دکمه زیرمجموعه‌گیری)
+    # 📌 ساخت کیبورد متنی اصلی ربات (بدون بانک)
     main_keyboard = ReplyKeyboardMarkup(
         [
             ["پروفایل", "هاپ"],
             ["خرید سگ", "غذا"],
-            ["بانک", "کارخونه", "شهر"],
+            ["کارخونه", "شهر"],
             ["👥 زیرمجموعه‌گیری", "راهنما"],
         ],
         resize_keyboard=True,
@@ -177,9 +177,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]:
         await referral_command(update, context)
 
-    # 🏦 ۲. بانک، اقتصاد، کارخانه، قاچاق و شهر
-    elif text.startswith("بانک"):
-        await economy.bank_status(update, context, user)
+    # 🏦 ۲. اقتصاد، کارخانه، قاچاق و شهر (بدون بانک)
     elif text == "کارخونه":
         await economy.show_factory(update, context)
     elif text == "کارخونه من":
@@ -222,8 +220,6 @@ async def callback_router(
         await referral_command(update, context)
         await query.answer()
 
-    elif data.startswith("bank_"):
-        await economy.handle_bank_callback(update, context)
     elif data.startswith("buy_fac_") or data.startswith("fac_"):
         if hasattr(economy, "factory_callback"):
             await economy.factory_callback(update, context)
