@@ -23,6 +23,9 @@ CONTRABAND_PRODUCTS = {
     "car": {"name": "🏎 خودروی قاچاق", "cost": 10000, "profit": 35000, "db_field": "inventory_car"},
 }
 
+# ----------------- ذخیره‌سازی قمارهای فعال -----------------
+active_gambles = {}
+
 # ----------------- ۱. بخش کارخانه -----------------
 
 async def show_factory(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -170,7 +173,127 @@ async def process_smuggling_result(context, user_id, total_cost, cart):
             text=f"🎉 **موفقیت!** عملیات قاچاق انجام شد.\nسود خالص: **{profit_str}** به کیف پول شما اضافه شد!"
         )
 
-# ----------------- ۳. دریافت تعداد از پیام متنی -----------------
+# ----------------- ۳. سیستم قمار چندنفره -----------------
+
+async def start_gamble(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """ایجاد قمار جدید با فرمت: قمار [مبلغ] [تعداد افراد]"""
+    user = update.effective_user
+    chat = update.effective_chat
+    
+    if len(context.args) < 2:
+        await update.message.reply_text("❌ فرمت صحیح: `قمار [مبلغ] [تعداد نفرات]`\nمثال: `قمار 100 3`", parse_mode="Markdown")
+        return
+
+    try:
+        amount = int(context.args[0])
+        max_players = int(context.args[1])
+    except ValueError:
+        await update.message.reply_text("❌ مبلغ و تعداد افراد باید عدد معتبر باشند.")
+        return
+
+    if amount <= 0 or max_players < 2:
+        await update.message.reply_text("❌ حداقل مبلغ ۱ و حداقل تعداد شرکت‌کنندگان ۲ نفر است.")
+        return
+
+    # بررسی موجودی سازنده قمار
+    user_points = db.get_user_field(user.id, "points") or 0
+    if user_points < amount:
+        await update.message.reply_text("❌ کافی نمی‌باشد تعداد هاپ پوینت‌های شما.")
+        return
+
+    # کسر مبلغ ورودی از سازنده
+    db.update_field(user.id, "points", -amount, relative=True)
+
+    gamble_id = f"{chat.id}_{update.message.message_id}"
+    active_gambles[gamble_id] = {
+        "creator_id": user.id,
+        "amount": amount,
+        "max_players": max_players,
+        "players": [(user.id, user.full_name)],
+        "chat_id": chat.id
+    }
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎲 شرکت در قمار", callback_data=f"join_gamble:{gamble_id}")]
+    ])
+
+    text = (
+        f"🎲 **قمار جدید ایجاد شد!**\n\n"
+        f"👤 سازنده: {user.full_name}\n"
+        f"💰 ورودی هر نفر: {format_balance(amount)} هاپ\n"
+        f"👥 ظرفیت: ۱ / {max_players} نفر\n"
+        f"🏆 مجموع جایزه فعلی: {format_balance(amount)} هاپ\n\n"
+        f"برای شرکت روی دکمه زیر کلیک کنید!"
+    )
+
+    await update.message.reply_text(text, reply_markup=keyboard, parse_mode="Markdown")
+
+async def join_gamble_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """مدیریت کلیک روی دکمه شرکت در قمار"""
+    query = update.callback_query
+    user = query.from_user
+    data_parts = query.data.split(":")
+    gamble_id = data_parts[1]
+
+    if gamble_id not in active_gambles:
+        await query.answer("❌ این قمار پایان یافته یا منقضی شده است.", show_alert=True)
+        return
+
+    gamble = active_gambles[gamble_id]
+
+    # بررسی ثبت‌نام تکراری
+    player_ids = [p[0] for p in gamble["players"]]
+    if user.id in player_ids:
+        await query.answer("❌ شما قبلاً در این قمار شرکت کرده‌اید!", show_alert=True)
+        return
+
+    # بررسی موجودی شرکت‌کننده
+    user_points = db.get_user_field(user.id, "points") or 0
+    if user_points < gamble["amount"]:
+        await query.answer("❌ برای شرکت در این قمار موجودی کافی ندارید.", show_alert=True)
+        return
+
+    # کسر ورودی و اضافه کردن به لیست
+    db.update_field(user.id, "points", -gamble["amount"], relative=True)
+    gamble["players"].append((user.id, user.full_name))
+
+    current_count = len(gamble["players"])
+    total_prize = gamble["amount"] * current_count
+
+    # اگر ظرفیت تکمیل شد
+    if current_count >= gamble["max_players"]:
+        winner_id, winner_name = random.choice(gamble["players"])
+        db.update_field(winner_id, "points", total_prize, relative=True)
+
+        players_list = "\n".join([f"▫️ {p[1]}" for p in gamble["players"]])
+        result_text = (
+            f"🎰 **قمار تکمیل شد و به پایان رسید!**\n\n"
+            f"👥 شرکت‌کنندگان:\n{players_list}\n\n"
+            f"💰 مجموع کل جایزه: {format_balance(total_prize)} هاپ\n"
+            f"🎉 **برنده خوش‌شانس:** {winner_name}"
+        )
+        
+        del active_gambles[gamble_id]
+        await query.edit_message_text(result_text, parse_mode="Markdown")
+        await query.answer("🎉 قمار تمام شد! برنده مشخص گردید.")
+    else:
+        # بروزرسانی تعداد افراد در پنل قمار
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎲 شرکت در قمار", callback_data=f"join_gamble:{gamble_id}")]
+        ])
+        
+        updated_text = (
+            f"🎲 **قمار در جریان است...**\n\n"
+            f"💰 ورودی هر نفر: {format_balance(gamble['amount'])} هاپ\n"
+            f"👥 ظرفیت: {current_count} / {gamble['max_players']} نفر\n"
+            f"🏆 مجموع جایزه فعلی: {format_balance(total_prize)} هاپ\n\n"
+            f"برای شرکت روی دکمه زیر کلیک کنید!"
+        )
+        
+        await query.edit_message_text(updated_text, reply_markup=keyboard, parse_mode="Markdown")
+        await query.answer("✅ شما با موفقیت وارد قمار شدید!")
+
+# ----------------- ۴. دریافت تعداد از پیام متنی -----------------
 
 async def handle_factory_and_smuggle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = context.user_data.get('state')
@@ -221,7 +344,7 @@ async def handle_factory_and_smuggle_text(update: Update, context: ContextTypes.
 
     return False
 
-# ----------------- ۴. نمایش کارخونه من (انبار محصولات) -----------------
+# ----------------- ۵. نمایش کارخونه من (انبار محصولات) -----------------
 
 async def show_my_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     user_id = update.effective_user.id
@@ -251,7 +374,7 @@ async def show_my_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, us
     
     await update.message.reply_text(text, parse_mode="Markdown")
 
-# ----------------- ۵. بخش فروش محصولات انبار -----------------
+# ----------------- ۶. بخش فروش محصولات انبار -----------------
 
 async def show_sell_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     keyboard = [
@@ -299,11 +422,9 @@ async def sell_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✅ ۱ عدد **{item['name']}** با موفقیت فروخته شد!\n"
             f"💵 مبلغ **{item['price']}** به کیف پول شما اضافه شد."
         )
-        # ----------------- ۶. بخش شهر و اهدا -----------------
 
-# ----------------- سیستم پیشرفته شهر -----------------
+# ----------------- ۷. بخش شهر و اهدا -----------------
 
-# اهداف هر سطح برای ارتقا به سطح بعدی
 CITY_LEVEL_REQUIREMENTS = {
     1: {"treasury": 10000, "hops": 100, "dogs": 5, "bones": 10, "fish": 10},
     2: {"treasury": 50000, "hops": 500, "dogs": 15, "bones": 30, "fish": 30},
@@ -327,17 +448,13 @@ async def city_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user=N
     chat = update.effective_chat
     chat_title = chat.title if chat and chat.title else "شهر هاپویی"
     
-    # آمار کل شهر از دیتابیس
     treasury = db.get_city_treasury() if hasattr(db, "get_city_treasury") else 0
     total_hops = db.get_total_hops() if hasattr(db, "get_total_hops") else 0
     total_dogs = db.get_total_dogs() if hasattr(db, "get_total_dogs") else 0
     total_bones = db.get_total_item("inventory_food") if hasattr(db, "get_total_item") else 0
     total_fish = db.get_total_item("inventory_toy") if hasattr(db, "get_total_item") else 0
     
-    # سطح فعلی شهر
     current_level = db.get_city_level() if hasattr(db, "get_city_level") else 1
-    
-    # بررسی ارتقای اتوماتیک سطح شهر
     next_req = CITY_LEVEL_REQUIREMENTS.get(current_level, CITY_LEVEL_REQUIREMENTS[5])
     
     if (treasury >= next_req["treasury"] and 
@@ -353,14 +470,12 @@ async def city_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user=N
         await update.message.reply_text(f"🎉 **تبریک! شهر هاپویی شما به سطح {current_level} ارتقا یافت!** 🎉")
         next_req = CITY_LEVEL_REQUIREMENTS.get(current_level, CITY_LEVEL_REQUIREMENTS[5])
 
-    # ساخت نوارهای پیشرفت
     bar_treasury = make_progress_bar(treasury, next_req["treasury"])
     bar_hops = make_progress_bar(total_hops, next_req["hops"])
     bar_dogs = make_progress_bar(total_dogs, next_req["dogs"])
     bar_bones = make_progress_bar(total_bones, next_req["bones"])
     bar_fish = make_progress_bar(total_fish, next_req["fish"])
 
-    # فرمت‌بندی اعداد
     treasury_str = format_balance(treasury)
     target_treasury_str = format_balance(next_req["treasury"])
 
@@ -374,18 +489,12 @@ async def city_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user=N
         f"┐─  خزانه : {treasury_str}\n"
         f"┐─  کل هاپ : {total_hops:,}\n"
         f"┐─  کل سگ : {total_dogs:,}\n"
-        f"┐─  کل استخوان : {total_bones:,}\n"
-        f"└─  کل ماهی : {total_fish:,}\n\n"
         f"  باف‌های فعال (سطح {current_level}):\n"
         f"┐─  کولداون هاپ : {max(300 - current_level * 5, 200)}s (اصلی 300s)\n"
-        f"┐─  کاهش کولداون ماهیگیری : {current_level * 20}s\n"
-        f"└─  کاهش آستانه پیشی خیابونی : {current_level * 3}%\n\n"
         f"  پیشرفت به سطح {current_level + 1}:\n"
         f"┐─  خزانه : {treasury_str} / {target_treasury_str}  {bar_treasury}\n"
         f"┐─  هاپ‌های کل : {total_hops:,} / {next_req['hops']:,}  {bar_hops}\n"
         f"┐─  سگ‌های خریداری شده : {total_dogs:,} / {next_req['dogs']:,}  {bar_dogs}\n"
-        f"┐─  استخوان‌ها : {total_bones:,} / {next_req['bones']:,}  {bar_bones}\n"
-        f"└─  ماهی‌ها : {total_fish:,} / {next_req['fish']:,}  {bar_fish}\n\n"
         f"  برای کمک به خزانه بنویس: اهدا [مقدار]"
     )
     
