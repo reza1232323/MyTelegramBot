@@ -56,8 +56,6 @@ async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user=N
     wallet_balance = user_data.get("points", 0)
 
     daily_profit = int(bank_balance * 0.03)
-    profit_ready = user_data.get("profit_ready", True)
-    profit_text = "✅ سود آماده دریافته!" if profit_ready else "⏳ سود امروز دریافت شده."
 
     text = (
         f"🏦 **بانک هاپی**\n\n"
@@ -65,7 +63,7 @@ async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user=N
         f"💰 **موجودی بانک:** {format_balance(bank_balance)} هاپ پوینت\n"
         f"👛 **موجودی کیف:** {format_balance(wallet_balance)} هاپ پوینت\n\n"
         f"📈 **سود روزانه (۳%):** {format_balance(daily_profit)} هاپ پوینت\n"
-        f"{profit_text}"
+        f"⏱ سود بانک هر ۲۴ ساعت یک‌بار قابل دریافت است."
     )
 
     keyboard = InlineKeyboardMarkup([
@@ -102,14 +100,11 @@ async def handle_bank_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.message.reply_text("🏧 لطفاً مبلغی که می‌خواهید از بانک برداشت کنید را وارد کنید (یا بنویسید `همه`):")
         
     elif data == "bank_claim_profit":
-        bank_balance = int(db.get_user_field(user_id, "bank_balance") or 0)
-        if bank_balance <= 0:
-            await query.message.reply_text("❌ موجودی بانک شما صفر است و سودی تعلق نمی‌گیرد.")
-            return
-            
-        profit = int(bank_balance * 0.03)
-        db.update_field(user_id, "points", profit, relative=True)
-        await query.message.reply_text(f"🎉 مبلغ **{format_balance(profit)}** هاپ پوینت به عنوان سود روزانه به کیف پول شما اضافه شد!")
+        if hasattr(db, "claim_daily_interest"):
+            success, message, profit = db.claim_daily_interest(user_id, interest_rate=0.03)
+            await query.message.reply_text(message)
+        else:
+            await query.message.reply_text("❌ سیستم سود دیتابیس فعال نیست.")
 
     elif data == "bank_change_account":
         context.user_data['state'] = "WAITING_FOR_NEW_ACCOUNT_NUM"
@@ -380,7 +375,6 @@ async def handle_factory_and_smuggle_text(update: Update, context: ContextTypes.
     user_id = update.effective_user.id
     text = update.message.text.strip() if update.message and update.message.text else ""
 
-    # ۵.۱ مدیریت واریز و برداشت بانک
     if state == "WAITING_FOR_BANK_DEPOSIT":
         points = int(db.get_user_field(user_id, "points") or 0)
         
