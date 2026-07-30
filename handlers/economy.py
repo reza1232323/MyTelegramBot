@@ -423,7 +423,6 @@ async def sell_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # ----------------- ۷. بخش شهر و اهدا -----------------
-
 CITY_LEVEL_REQUIREMENTS = {
     1: {"treasury": 10000, "hops": 100, "dogs": 5},
     2: {"treasury": 50000, "hops": 500, "dogs": 15},
@@ -442,28 +441,45 @@ def make_progress_bar(current, target):
     empty = 5 - filled
     return "▰" * filled + "▱" * empty
 
+def safe_db_call(func_name, *args):
+    """تابع کمکی جهت فراخوانی ایمن توابع دیتابیس بدون بروز خطای TypeError"""
+    if not hasattr(db, func_name):
+        return None
+    func = getattr(db, func_name)
+    try:
+        return func(*args)
+    except TypeError:
+        # اگر تابع پارامتر قبول نکرد، بدون پارامتر فراخوانی می‌شود
+        try:
+            return func()
+        except TypeError:
+            # اگر آرگومان‌های کمتری نیاز داشت
+            if len(args) > 1:
+                return func(args[0])
+            return None
+
 async def city_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     chat = update.effective_chat
     chat_id = chat.id if chat else None
     chat_title = chat.title if chat and chat.title else "شهر هاپویی"
     
-    # دریافت آمار وابسته به گروه/شهر
-    treasury = db.get_city_treasury(chat_id) if hasattr(db, "get_city_treasury") else (db.get_city_treasury() if hasattr(db, "get_city_treasury") else 0)
-    total_hops = db.get_group_total_hops(chat_id) if hasattr(db, "get_group_total_hops") else (db.get_total_hops() if hasattr(db, "get_total_hops") else 0)
-    total_dogs = db.get_group_total_dogs(chat_id) if hasattr(db, "get_group_total_dogs") else (db.get_total_dogs() if hasattr(db, "get_total_dogs") else 0)
-    
-    current_level = db.get_city_level(chat_id) if hasattr(db, "get_city_level") else 1
+    # دریافت آمار وابسته به گروه/شهر به صورت ایمن
+    treasury = safe_db_call("get_city_treasury", chat_id) or 0
+    total_hops = safe_db_call("get_group_total_hops", chat_id) or safe_db_call("get_total_hops", chat_id) or 0
+    total_dogs = safe_db_call("get_group_total_dogs", chat_id) or safe_db_call("get_total_dogs", chat_id) or 0
+    current_level = safe_db_call("get_city_level", chat_id) or 1
+
     next_req = CITY_LEVEL_REQUIREMENTS.get(current_level, CITY_LEVEL_REQUIREMENTS[5])
     
+    # بررسی شرایط ارتقاء سطح شهر
     if (treasury >= next_req["treasury"] and 
         total_hops >= next_req["hops"] and 
         total_dogs >= next_req["dogs"] and current_level < 5):
         
         current_level += 1
-        if hasattr(db, "set_city_level"):
-            db.set_city_level(chat_id, current_level)
+        safe_db_call("set_city_level", current_level)
             
-        await update.message.reply_text(f"🎉 **تبریک! شهر هاپویی شما به سطح {current_level} ارتقا یافت!** 🎉")
+        await update.message.reply_text(f"🎉 **تبریک! شهر هاپویی شما به سطح {current_level} ارتقا یافت!** 🎉", parse_mode="Markdown")
         next_req = CITY_LEVEL_REQUIREMENTS.get(current_level, CITY_LEVEL_REQUIREMENTS[5])
 
     bar_treasury = make_progress_bar(treasury, next_req["treasury"])
@@ -472,6 +488,8 @@ async def city_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user=N
 
     treasury_str = format_balance(treasury)
     target_treasury_str = format_balance(next_req["treasury"])
+
+    next_level_text = f"سطح {current_level + 1}" if current_level < 5 else "حداکثر سطح"
 
     text = (
         f"╮──「  شهر هاپو  」\n\n"
@@ -485,7 +503,7 @@ async def city_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user=N
         f"┐─  کل سگ : {total_dogs:,}\n\n"
         f"  باف‌های فعال (سطح {current_level}):\n"
         f"┐─  کولداون هاپ : {max(300 - current_level * 5, 200)}s (اصلی 300s)\n\n"
-        f"  پیشرفت به سطح {current_level + 1}:\n"
+        f"  پیشرفت به {next_level_text}:\n"
         f"┐─  خزانه : {treasury_str} / {target_treasury_str}  {bar_treasury}\n"
         f"┐─  هاپ‌های کل : {total_hops:,} / {next_req['hops']:,}  {bar_hops}\n"
         f"┐─  سگ‌های خریداری شده : {total_dogs:,} / {next_req['dogs']:,}  {bar_dogs}\n\n"
@@ -497,7 +515,6 @@ async def city_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user=N
 async def donate_city(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     """تابع اهدا به خزانه شهر"""
     user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
     args = context.args or update.message.text.split()[1:]
 
     if not args or not args[0].isdigit():
@@ -517,10 +534,12 @@ async def donate_city(update: Update, context: ContextTypes.DEFAULT_TYPE, user=N
     # کسر از کاربر و اضافه کردن به خزانه
     db.update_field(user_id, "points", -amount, relative=True)
     
-    if hasattr(db, "add_city_treasury"):
-        db.add_city_treasury(chat_id, amount)
-    elif hasattr(db, "update_city_treasury"):
-        db.update_city_treasury(amount)
+    if hasattr(db, "add_city_donation"):
+        db.add_city_donation(user_id, amount)
+    elif hasattr(db, "add_city_treasury"):
+        db.add_city_treasury(amount)
+    elif hasattr(db, "update_global_field"):
+        db.update_global_field("city_treasury", amount)
 
     await update.message.reply_text(f"✨ با موفقیت مبلغ **{format_balance(amount)}** به خزانه شهر اهدا شد! 🏛", parse_mode="Markdown")
 
