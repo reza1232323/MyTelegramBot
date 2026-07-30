@@ -290,6 +290,12 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_must_join_message(update, context)
         return
 
+    # 📌 بررسی اولویت اول: آیا کاربر در حالت تغییر نام سگ است؟
+    if hasattr(pet, "handle_dog_rename_text"):
+        is_handled = await pet.handle_dog_rename_text(update, context)
+        if is_handled:
+            return
+
     context.args = text.split()[1:]
 
     if hasattr(economy, "handle_factory_and_smuggle_text"):
