@@ -40,7 +40,6 @@ DOG_LEVELS = {
     30: {"upgrade_cost": 9875000, "rate": 19.25,"capacity": 1345000},
 }
 
-# هزینه‌های اختصاصی ارتقای مقام در سطوح خاص
 RANK_UPGRADE_COSTS = {
     5: 50000,
     10: 250000,
@@ -49,7 +48,6 @@ RANK_UPGRADE_COSTS = {
     25: 10000000
 }
 
-# عناوین مقام سگ بر اساس لول
 RANK_NAMES = {
     1: "هاپوی تازه‌کار",
     5: "سوپر میو",
@@ -69,13 +67,6 @@ def get_rank_name(level: int) -> str:
 # ----------------- توابع کمکی -----------------
 
 def format_balance(amount: int) -> str:
-    """
-    فرمت‌سازی هوشمند موجودی:
-    - زیر ۱,۰۰۰: مثلاً ۸۷۶ دونه
-    - از ۱,۰۰۰ تا ۹۹۹,۹۹۹: مثلاً ۸۷۸۸ کا
-    - از ۱,۰۰۰,۰۰۰ تا ۹۹۹,۹۹۹,۹۹۹: مثلاً ۱.۵ میلیون یا ۱ میلیون
-    - از ۱,۰۰۰,۰۰۰,۰۰۰ به بالا: مثلاً ۲.۵ میلیارد یا ۲ میلیارد
-    """
     if amount < 1000:
         return f"{amount} دونه"
     elif amount < 1_000_000:
@@ -94,18 +85,16 @@ def format_balance(amount: int) -> str:
             return f"{billions:.1f} میلیارد"
 
 def hops_needed_for_level(level: int) -> int:
-    """تعداد هاپ مورد نیاز برای رسیدن به لول بعدی"""
     return 10 + (level - 1) * 5
 
 def calculate_hop_reward(level: int) -> int:
-    """محاسبه سکه پاداش بر اساس لول کاربر"""
     base_min = 10 * (1.5 ** (level - 1))
     base_max = 25 * (1.5 ** (level - 1))
     return random.randint(int(base_min), int(base_max))
 
 # ----------------- توابع اصلی سیستم -----------------
 
-async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
+async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     target_user = user
     if update.message and update.message.reply_to_message:
         reply_user = update.message.reply_to_message.from_user
@@ -122,7 +111,6 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, user)
     dog_health = db.get_user_field(user_id, "dog_hunger") or 0
     acc_num = db.get_or_create_account_number(user_id)
 
-    # تبدیل موجودی کیف پول و بانک به فرمت جدید
     formatted_points = format_balance(points)
     formatted_bank = format_balance(bank_balance)
 
@@ -140,15 +128,14 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, user)
 
     await update.message.reply_text(msg, parse_mode='Markdown')
 
-async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
-    user_id = user[0]
+async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    user_id = update.effective_user.id if not user else user[0]
     username = update.effective_user.first_name
     
     last_hop_str = db.get_user_field(user_id, "last_hop")
     now = datetime.now()
     COOLDOWN_MINUTES = 5
     
-    # ⏱ بررسی تایمر ۵ دقیقه‌ای
     if last_hop_str:
         try:
             last_hop_time = datetime.strptime(last_hop_str, "%Y-%m-%d %H:%M:%S")
@@ -167,7 +154,6 @@ async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
         except Exception:
             pass
 
-    # 📊 دریافت اطلاعات لول و پیشرفت هاپ کاربر
     user_level = db.get_user_field(user_id, "level") or 1
     progress = db.get_user_field(user_id, "level_hops_progress") or 0
 
@@ -175,13 +161,11 @@ async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     needed = hops_needed_for_level(user_level)
     progress += 1
 
-    # 💾 ذخیره اطلاعات در دیتابیس
     db.update_field(user_id, "points", reward, relative=True)
     db.update_field(user_id, "hops", 1, relative=True)
     db.update_field(user_id, "last_hop", now.strftime("%Y-%m-%d %H:%M:%S"), relative=False)
 
     level_up_msg = ""
-    # 🎉 بررسی ارتقای سطح (Level Up)
     if progress >= needed:
         user_level += 1
         progress = 0
@@ -209,7 +193,6 @@ async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
 async def buy_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     user_id = update.effective_user.id
     
-    # ۱. بررسی اینکه کاربر قبلاً سگ خریده است یا خیر
     has_dog = db.get_user_field(user_id, "has_dog")
     if has_dog:
         await update.message.reply_text(
@@ -224,7 +207,6 @@ async def buy_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None)
         await update.message.reply_text(f"❌ برای خرید سگ به **{cost}** هاپ نیاز دارید!")
         return
 
-    # ثبت اولیه سگ
     db.update_field(user_id, "points", -cost, relative=True)
     db.update_field(user_id, "has_dog", True, relative=False)
     db.update_field(user_id, "dog_name", "آها", relative=False)
@@ -235,8 +217,8 @@ async def buy_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None)
 
     await update.message.reply_text("سگ با موفقیت خریداری شد.")
 
-async def show_dog_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش پنل اصلی سگ با ارسال دستور 'سگ'"""
+async def show_dog_panel(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    """نمایش پنل اصلی سگ با پشتیبانی از آرگومان سوم برای جلوگیری از TypeError"""
     user_id = update.effective_user.id
     has_dog = db.get_user_field(user_id, "has_dog")
 
@@ -254,13 +236,11 @@ async def show_dog_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rate = level_data["rate"]
     capacity = level_data["capacity"]
 
-    # محاسبه امتیازات تولید شده بر حسب زمان
     now = time.time()
     elapsed = now - last_claim
     generated = elapsed * rate
     total_unclaimed = min(capacity, stored_points + generated)
 
-    # هزینه ارتقای مقام/سطح
     rank_cost = RANK_UPGRADE_COSTS.get(level, level_data["upgrade_cost"])
     rank_title = get_rank_name(level)
 
@@ -337,10 +317,7 @@ async def handle_dog_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         db.update_field(user_id, "dog_level", level + 1, relative=False)
 
         await query.message.reply_text(f"🎉 تبریک! سگ شما به سطح **{level + 1}** ارتقا پیدا کرد!")
-        # در فایل handlers/pet.py
-async def show_dog_panel(update, context, user=None):
-    # کدهای مربوط به نمایش پنل سگ
-    ...
+        await show_dog_panel(update, context)
 
     # 3. انتخاب اسم سگ
     elif data == "dog_rename":
@@ -362,8 +339,8 @@ async def handle_dog_rename_text(update: Update, context: ContextTypes.DEFAULT_T
 
 # ----------------- سایر دستورات قبلی -----------------
 
-async def feed_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
-    user_id = user[0]
+async def feed_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    user_id = update.effective_user.id if not user else user[0]
     has_dog = db.get_user_field(user_id, "has_dog")
     if not has_dog:
         await update.message.reply_text("❌ شما سگ ندارید! اول با دستور `خرید سگ` یک سگ بخرید.")
