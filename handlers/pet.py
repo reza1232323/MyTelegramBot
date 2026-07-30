@@ -1,3 +1,4 @@
+import random
 from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -27,6 +28,16 @@ def format_balance(amount: int) -> str:
             return f"{int(billions)} میلیارد"
         else:
             return f"{billions:.1f} میلیارد"
+
+def hops_needed_for_level(level: int) -> int:
+    """تعداد هاپ مورد نیاز برای رسیدن به لول بعدی"""
+    return 10 + (level - 1) * 5
+
+def calculate_hop_reward(level: int) -> int:
+    """محاسبه سکه پاداش بر اساس لول کاربر"""
+    base_min = 10 * (1.5 ** (level - 1))
+    base_max = 25 * (1.5 ** (level - 1))
+    return random.randint(int(base_min), int(base_max))
 
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     target_user = user
@@ -61,6 +72,7 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, user)
     )
 
     await update.message.reply_text(msg, parse_mode='Markdown')
+
 async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     user_id = user[0]
     username = update.effective_user.first_name
@@ -69,6 +81,7 @@ async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
     now = datetime.now()
     COOLDOWN_MINUTES = 5
     
+    # ⏱ بررسی تایمر ۵ دقیقه‌ای
     if last_hop_str:
         try:
             last_hop_time = datetime.strptime(last_hop_str, "%Y-%m-%d %H:%M:%S")
@@ -87,21 +100,38 @@ async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
         except Exception:
             pass
 
+    # 📊 دریافت اطلاعات لول و پیشرفت هاپ کاربر
     user_level = db.get_user_field(user_id, "level") or 1
-    base_reward = 50
-    reward = user_level * base_reward
+    progress = db.get_user_field(user_id, "level_hops_progress") or 0
 
-    db.update_field(user_id, "points", reward)
+    reward = calculate_hop_reward(user_level)
+    needed = hops_needed_for_level(user_level)
+    progress += 1
+
+    # 💾 ذخیره اطلاعات در دیتابیس
+    db.update_field(user_id, "points", reward, relative=True)
+    db.update_field(user_id, "hops", 1, relative=True)
     db.update_field(user_id, "last_hop", now.strftime("%Y-%m-%d %H:%M:%S"), relative=False)
+
+    level_up_msg = ""
+    # 🎉 بررسی ارتقای سطح (Level Up)
+    if progress >= needed:
+        user_level += 1
+        progress = 0
+        db.update_field(user_id, "level", 1, relative=True)
+        db.update_field(user_id, "level_hops_progress", 0, relative=False)
+        level_up_msg = f"\n\n🎉 **تبریک! شما به سطح {user_level} ارتقا یافتید!** 🚀"
+    else:
+        db.update_field(user_id, "level_hops_progress", progress, relative=False)
 
     current_points = db.get_user_field(user_id, "points") or 0
 
     msg = (
-        f"🎉 **هاپ با موفقیت انجام شد!**\n\n"
+        f"🐕 **هاپ با موفقیت انجام شد!**\n\n"
         f"👤 کاربر: {update.effective_user.mention_markdown()}\n"
-        f"⭐️ **سطح (لول) شما:** {user_level}\n"
-        f"🎁 **پاداش سطح:** +{reward:,} هاپ\n"
-        f"💰 **موجودی کل:** {current_points:,} هاپ\n\n"
+        f"💰 **پاداش دریافتی:** +{format_balance(reward)}\n"
+        f"💳 **موجودی کل:** {format_balance(current_points)}\n"
+        f"📊 **پیشرفت سطح {user_level}:** [{progress}/{needed}] هاپ{level_up_msg}\n\n"
         f"⏱ _۵ دقیقه دیگر می‌توانید دوباره هاپ بزنید._"
     )
 
@@ -116,7 +146,7 @@ async def buy_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
         await update.message.reply_text(f"❌ برای خرید سگ به **{cost}** هاپ نیاز دارید!")
         return
 
-    db.update_field(user_id, "points", -cost)
+    db.update_field(user_id, "points", -cost, relative=True)
     db.update_field(user_id, "dog_status", "هاپو اصیل 🐕", relative=False)
     db.update_field(user_id, "dog_health", 100, relative=False)
     await update.message.reply_text("🎉 مبارکه! سگ جدید خریدی.")
@@ -128,7 +158,7 @@ async def feed_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user):
         await update.message.reply_text("❌ شما سگ ندارید! اول با دستور `خرید سگ` یک سگ بخرید.")
         return
 
-    db.update_field(user_id, "dog_health", 20)
+    db.update_field(user_id, "dog_health", 20, relative=True)
     await update.message.reply_text("🍖 به سگت غذا دادی و سلامتش افزایش پیدا کرد!")
 
 async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
