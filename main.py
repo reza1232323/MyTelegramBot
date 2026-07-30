@@ -1,4 +1,6 @@
 import logging
+import random
+import time
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -23,6 +25,22 @@ from handlers import admin, economy, pet
 REFERRAL_REWARD = 500
 
 logging.basicConfig(level=logging.INFO)
+
+
+# ----------------- سیستم محاسباتی هاپ -----------------
+def hops_needed_for_level(level):
+    """تعداد هاپ مورد نیاز برای رسیدن به لول بعدی"""
+    return 10 + (level - 1) * 5
+
+
+def calculate_hop_reward(level):
+    """محاسبه سکه پاداش بر اساس لول کاربر"""
+    base_min = 10 * (1.5 ** (level - 1))
+    base_max = 25 * (1.5 ** (level - 1))
+    return random.randint(int(base_min), int(base_max))
+
+
+# ----------------- دستورات ربات -----------------
 
 
 async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -128,6 +146,58 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def handle_hop_internal(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, user=None
+):
+    """مدیریت فرایند هاپ در صورتی که در فایل pet.py تابع claim_hop تعریف نشده باشد"""
+    user_id = update.effective_user.id
+    current_time = int(time.time())
+
+    # دریافت اطلاعات کاربر از دیتابیس
+    last_hop_time = db.get_user_field(user_id, "last_hop_time") or 0
+    cooldown = 300  # ۵ دقیقه (۳۰۰ ثانیه)
+
+    if current_time - last_hop_time < cooldown:
+        remaining = cooldown - (current_time - last_hop_time)
+        minutes = remaining // 60
+        seconds = remaining % 60
+        await update.message.reply_text(
+            f"⏳ سگ شما خسته است! لطفا **{minutes} دقیقه و {seconds} ثانیه** صبر کنید."
+        )
+        return
+
+    level = db.get_user_field(user_id, "level") or 1
+    progress = db.get_user_field(user_id, "level_hops_progress") or 0
+
+    reward = calculate_hop_reward(level)
+    needed = hops_needed_for_level(level)
+    progress += 1
+
+    # به روزرسانی سکه، تعداد کل هاپ‌ها و زمان آخرین هاپ
+    db.update_field(user_id, "points", reward, relative=True)
+    db.update_field(user_id, "hops", 1, relative=True)
+    db.update_field(user_id, "last_hop_time", current_time, relative=False)
+
+    level_up_msg = ""
+    if progress >= needed:
+        level += 1
+        progress = 0
+        db.update_field(user_id, "level", 1, relative=True)
+        db.update_field(user_id, "level_hops_progress", 0, relative=False)
+        level_up_msg = f"\n🎉 **تبریک! شما به سطح {level} ارتقا یافتید!** 🚀"
+    else:
+        db.update_field(
+            user_id, "level_hops_progress", progress, relative=False
+        )
+
+    await update.message.reply_text(
+        f"🐕 **هاپ! هاپ!**\n\n"
+        f"💰 پاداش دریافتی: **{reward:,} سکه**\n"
+        f"📊 پیشرفت سطح {level}: **[{progress}/{needed}]** هاپ{level_up_msg}",
+        parse_mode="Markdown",
+    )
+
+
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     """ثبت دقیق تمام خطارهای ثبت نشده برای جلوگیری از کرش"""
     logging.error(
@@ -159,13 +229,16 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = db.get_user(user_id, username)
 
     # پاک‌سازی دستورات گروه‌ها (مثلاً تبدیل /bank@bot_name به bank)
-    clean_text = text.split('@')[0].lower()
+    clean_text = text.split("@")[0].lower()
 
     # 📌 ۱. عمومی، سگ و زیرمجموعه‌گیری
     if clean_text in ["پروفایل", "هاپوهام", "هاپوهاش", "/profile"]:
         await pet.show_profile(update, context, user)
     elif clean_text in ["هاپ", "hop", "/hop"]:
-        await pet.claim_hop(update, context, user)
+        if hasattr(pet, "claim_hop"):
+            await pet.claim_hop(update, context, user)
+        else:
+            await handle_hop_internal(update, context, user)
     elif clean_text in ["راهنما", "help", "/help"]:
         await pet.show_help(update, context)
     elif clean_text in ["خرید سگ", "/buydog"]:
@@ -275,6 +348,8 @@ async def callback_router(
     elif action.startswith("join_gamble"):
         if hasattr(economy, "join_gamble_callback"):
             await economy.join_gamble_callback(update, context)
+
+
 def main():
     db.init_db()
 
@@ -305,6 +380,7 @@ def main():
 
     print("🤖 Bot is active...")
     app.run_polling()
-    
+
+
 if __name__ == "__main__":
     main()
