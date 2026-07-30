@@ -8,6 +8,33 @@ from telegram.ext import ContextTypes
 from telegram.error import RetryAfter
 import database as db
 
+# ----------------- لیست استیکرهای ماهیگیری -----------------
+# استیکرهایی که موقع فرستادن "غذا" انتخاب و ارسال/ریپلای می‌شوند
+FISHING_STICKERS = [
+    "CAACAgIAAxkBAAE1231...",  # شناسه استیکر ۱
+    "CAACAgIAAxkBAAE1232...",  # شناسه استیکر ۲
+]
+
+# ----------------- جدول اطلاعات ماهی‌ها -----------------
+FISH_TYPES = [
+    # معمولی
+    {"rarity": "معمولی", "min_w": 0.25, "max_w": 0.50, "mult": 1.10, "food": 1, "chance": 30},
+    {"rarity": "معمولی", "min_w": 0.50, "max_w": 0.99, "mult": 1.15, "food": 1, "chance": 25},
+    # کمیاب
+    {"rarity": "کمیاب", "min_w": 0.10, "max_w": 0.20, "mult": 7.50, "food": 2, "chance": 12},
+    {"rarity": "کمیاب", "min_w": 0.75, "max_w": 1.45, "mult": 1.30, "food": 2, "chance": 10},
+    {"rarity": "کمیاب", "min_w": 1.00, "max_w": 1.99, "mult": 1.50, "food": 2, "chance": 8},
+    # حماسی
+    {"rarity": "حماسی", "min_w": 1.50, "max_w": 2.50, "mult": 1.75, "food": 3, "chance": 5},
+    {"rarity": "حماسی", "min_w": 2.00, "max_w": 2.99, "mult": 1.95, "food": 3, "chance": 4},
+    {"rarity": "حماسی", "min_w": 3.00, "max_w": 4.99, "mult": 1.95, "food": 3, "chance": 3},
+    # افسانه‌ای
+    {"rarity": "افسانه‌ای", "min_w": 5.00, "max_w": 7.99, "mult": 2.10, "food": 5, "chance": 1.5},
+    {"rarity": "افسانه‌ای", "min_w": 8.00, "max_w": 11.99, "mult": 2.10, "food": 5, "chance": 1.0},
+    {"rarity": "افسانه‌ای", "min_w": 12.00, "max_w": 17.99, "mult": 2.20, "food": 5, "chance": 0.3},
+    {"rarity": "افسانه‌ای (ویژه)", "min_w": 5.00, "max_w": 7.99, "mult": 5.30, "food": 5, "chance": 0.2},
+]
+
 # ----------------- تنظیمات و جدول ۳۰ سطحی سگ -----------------
 DOG_LEVELS = {
     1:  {"upgrade_cost": 0,       "rate": 0.1,  "capacity": 50},
@@ -94,6 +121,22 @@ def calculate_hop_reward(level: int) -> int:
     base_max = 25 * (1.5 ** (level - 1))
     return random.randint(int(base_min), int(base_max))
 
+def catch_random_fish():
+    """انتخاب تصادفی ماهی بر اساس شانس و محاسبه وزن و ارزش قیمت"""
+    weights_list = [f["chance"] for f in FISH_TYPES]
+    selected = random.choices(FISH_TYPES, weights=weights_list, k=1)[0]
+
+    weight = round(random.uniform(selected["min_w"], selected["max_w"]), 2)
+    # محاسبه قیمت: (وزن * ضریب) * ۱۰۰۰ سکه
+    base_price = int(weight * selected["mult"] * 1000)
+
+    return {
+        "rarity": selected["rarity"],
+        "weight": weight,
+        "value": base_price,
+        "food": selected["food"]
+    }
+
 # ----------------- توابع اصلی سیستم -----------------
 
 async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
@@ -102,20 +145,20 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, user=
         reply_user = update.message.reply_to_message.from_user
         target_user = db.get_user(reply_user.id, reply_user.username or reply_user.first_name)
 
-    user_id = target_user[0]
-    username = target_user[1] or "کاربر"
+    user_id = target_user[0] if target_user else update.effective_user.id
+    username = (target_user[1] if target_user else update.effective_user.username) or "کاربر"
     points = db.get_user_field(user_id, "points") or 0
     level = db.get_user_field(user_id, "level") or 1
     bank_balance = db.get_user_field(user_id, "bank_balance") or 0
 
     has_dog = db.get_user_field(user_id, "has_dog")
     dog_status = "دارای سگ 🐕" if has_dog else "بدون سگ"
-    dog_health = db.get_user_field(user_id, "dog_hunger") or 0
     acc_num = db.get_or_create_account_number(user_id)
 
     formatted_points = format_balance(points)
     formatted_bank = format_balance(bank_balance)
 
+    # سلامت سگ بر اساس درخواست شما کلا حذف گردید
     msg = (
         f"🐶 **پروفایل و مشخصات هاپو**\n\n"
         f"👤 **کاربر:** `{username}`\n"
@@ -125,7 +168,6 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, user=
         f"💰 **موجودی کیف پول:** {formatted_points}\n"
         f"🏦 **موجودی بانک:** {formatted_bank}\n\n"
         f"🐕 **وضعیت سگ:** {dog_status}\n"
-        f"❤️ **سلامت سگ:** %{dog_health * 10}\n"
     )
 
     await update.message.reply_text(msg, parse_mode='Markdown')
@@ -213,7 +255,7 @@ async def buy_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None)
     db.update_field(user_id, "has_dog", True, relative=False)
     db.update_field(user_id, "dog_name", "انتخاب نشده ❌", relative=False)
     db.update_field(user_id, "dog_level", 1, relative=False)
-    db.update_field(user_id, "dog_hunger", 2, relative=False)
+    db.update_field(user_id, "dog_hunger", 0, relative=False)
     db.update_field(user_id, "dog_last_claim", int(time.time()), relative=False)
     db.update_field(user_id, "dog_unclaimed_points", 0, relative=False)
 
@@ -231,7 +273,7 @@ async def show_dog_panel(update: Update, context: ContextTypes.DEFAULT_TYPE, use
 
     dog_name = db.get_user_field(user_id, "dog_name") or "انتخاب نشده ❌"
     level = int(db.get_user_field(user_id, "dog_level") or 1)
-    hunger = int(db.get_user_field(user_id, "dog_hunger") or 2)
+    hunger = int(db.get_user_field(user_id, "dog_hunger") or 0)
     last_claim = int(db.get_user_field(user_id, "dog_last_claim") or time.time())
     stored_points = float(db.get_user_field(user_id, "dog_unclaimed_points") or 0)
 
@@ -241,7 +283,15 @@ async def show_dog_panel(update: Update, context: ContextTypes.DEFAULT_TYPE, use
 
     now = time.time()
     elapsed = now - last_claim
-    generated = elapsed * rate
+    
+    # اگر شکم سگ صفر باشد، تولید متوقف می‌شود
+    if hunger <= 0:
+        generated = 0
+        hunger_status = "😾 گشنمه و دیگه کار نمیکنم!"
+    else:
+        generated = elapsed * rate
+        hunger_status = f"😋 ({hunger} / 10)"
+
     total_unclaimed = min(capacity, stored_points + generated)
 
     rank_cost = RANK_UPGRADE_COSTS.get(level, level_data["upgrade_cost"])
@@ -250,7 +300,7 @@ async def show_dog_panel(update: Update, context: ContextTypes.DEFAULT_TYPE, use
     text = (
         f"🐕 **هاپوی {user_first_name}** 🐕\n\n"
         f"💖 **نام :** {dog_name}\n"
-        f"🍖 **شکم :** 😿 من گشنمه.. ({hunger} / 10)\n\n"
+        f"🍖 **شکم :** {hunger_status}\n\n"
         f"⭐️ **مقام :** {rank_title} ({level // 5 + 1})\n"
         f"⭐ **سطح :** {level} / 30\n\n"
         f"🪙 **هاپ پوینت‌های تولید شده :** {int(total_unclaimed):,}\n\n"
@@ -282,6 +332,7 @@ async def handle_dog_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     data = query.data.split(":")[0]
 
     level = int(db.get_user_field(user_id, "dog_level") or 1)
+    hunger = int(db.get_user_field(user_id, "dog_hunger") or 0)
     last_claim = int(db.get_user_field(user_id, "dog_last_claim") or time.time())
     stored_points = float(db.get_user_field(user_id, "dog_unclaimed_points") or 0)
 
@@ -291,6 +342,10 @@ async def handle_dog_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     # 1. برداشت پوینت‌ها
     if data == "dog_claim":
+        if hunger <= 0:
+            await query.answer("⚠️ سگ شما گشنه است و هاپ پوینتی تولید نکرده! اول بهش غذا بدید.", show_alert=True)
+            return
+
         now = time.time()
         elapsed = now - last_claim
         generated = elapsed * rate
@@ -300,6 +355,10 @@ async def handle_dog_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             await query.answer("❌ هنوز پوینتی برای برداشت آماده نشده است!", show_alert=True)
             return
 
+        # با برداشت پوینت ۱ واحد از شکم سگ کم می‌شود
+        new_hunger = max(0, hunger - 1)
+        db.update_field(user_id, "dog_hunger", new_hunger, relative=False)
+
         db.update_field(user_id, "points", int(total_unclaimed), relative=True)
         db.update_field(user_id, "dog_last_claim", int(now), relative=False)
         db.update_field(user_id, "dog_unclaimed_points", 0, relative=False)
@@ -307,7 +366,7 @@ async def handle_dog_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.answer(f"✅ مقدار {int(total_unclaimed):,} هاپ پوینت با موفقیت برداشت شد.", show_alert=True)
         await show_dog_panel(update, context)
 
-    # 2. ارتقا مقام (با پیام تبریک ۳ ثانیه‌ای)
+    # 2. ارتقا مقام
     elif data == "dog_upgrade":
         if level >= 30:
             await query.answer("🏆 سگ شما در حداکثر سطح قرار دارد!", show_alert=True)
@@ -325,7 +384,6 @@ async def handle_dog_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         await query.answer()
 
-        # ۱. ویرایش پیام به تبریک
         try:
             await query.message.edit_text(
                 f"🎉 **تبریک! سگ شما به سطح {level + 1} ارتقا پیدا کرد!**", 
@@ -334,10 +392,7 @@ async def handle_dog_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception:
             pass
 
-        # ۲. ۳ ثانیه مکث
         await asyncio.sleep(3)
-
-        # ۳. بازگشت به پنل سگ
         await show_dog_panel(update, context)
 
     # 3. انتخاب اسم سگ
@@ -360,19 +415,93 @@ async def handle_dog_rename_text(update: Update, context: ContextTypes.DEFAULT_T
         return True
     return False
 
-# ----------------- سایر دستورات -----------------
+# ----------------- بخش غذا و ماهیگیری جدید -----------------
 
 async def feed_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    """مدیریت کامل دریافت غذا / ماهیگیری بر اساس سناریوی درخواستی"""
     user_id = update.effective_user.id if not user else user[0]
+    
+    # ۱. بررسی داشتن سگ
     has_dog = db.get_user_field(user_id, "has_dog")
     if not has_dog:
-        await update.message.reply_text("❌ شما سگ ندارید! اول با دستور `خرید سگ` یک سگ بخرید.")
+        await update.message.reply_text("❌ شما سگ ندارید! قبل از آن سگ خریداری کنید.")
         return
 
-    current_hunger = int(db.get_user_field(user_id, "dog_hunger") or 0)
-    new_hunger = min(10, current_hunger + 2)
-    db.update_field(user_id, "dog_hunger", new_hunger, relative=False)
-    await update.message.reply_text("🍖 به سگت غذا دادی و سیرتر شد!")
+    # ۲. بررسی محدوده زمانی (۱ ساعت کول‌داون)
+    last_feed = db.get_user_field(user_id, "last_feed_time") or 0
+    current_time = int(time.time())
+    cooldown = 3600  # ۱ ساعت به ثانیه
+
+    if current_time - last_feed < cooldown:
+        remaining = cooldown - (current_time - last_feed)
+        mins = remaining // 60
+        secs = remaining % 60
+        await update.message.reply_text(f"⏳ شما تازه ماهیگیری کرده‌اید! لطفاً **{mins} دقیقه و {secs} ثانیه** صبر کنید.")
+        return
+
+    # ۳. ارسال استیکر و ریپلای روی پیام کاربر
+    try:
+        if FISHING_STICKERS:
+            sticker_id = random.choice(FISHING_STICKERS)
+            await update.message.reply_sticker(sticker=sticker_id, reply_to_message_id=update.message.message_id)
+    except Exception:
+        pass
+
+    # ۴. محاسبه ماهی صید شده
+    fish = catch_random_fish()
+    context.user_data['temp_fish'] = fish
+    db.update_field(user_id, "last_feed_time", current_time, relative=False)
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"🪙 فروش طعمه", callback_data=f"fish_sell:{user_id}")],
+        [InlineKeyboardButton(f"🍖 بده هاپو بخوره", callback_data=f"fish_feed:{user_id}")]
+    ])
+
+    text = (
+        f"🎣 **شما با موفقیت صید کردید...**\n\n"
+        f"⭐ **سطح :** {fish['rarity']}\n"
+        f"⚖️ **وزن :** {fish['weight']} کیلو\n"
+        f"🪙 **ارزش :** {fish['value']:,}\n\n"
+        f"🍖 **ارزش غذایی :** {fish['food']}\n\n"
+        f"⏳ **شما ۶۰ ثانیه فرصت تصمیم‌گیری دارید**"
+    )
+
+    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
+
+async def handle_fish_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """پردازش دکمه‌های فروش طعمه یا دادن غذا به هاپو"""
+    query = update.callback_query
+    user_id = query.from_user.id
+    data = query.data
+
+    action, owner_id = data.split(":")
+    if int(owner_id) != user_id:
+        await query.answer("❌ این پنل متعلق به شما نیست!", show_alert=True)
+        return
+
+    fish = context.user_data.get('temp_fish')
+    if not fish:
+        await query.answer("❌ زمان تصمیم‌گیری منقضی شده است!", show_alert=True)
+        return
+
+    if action == "fish_sell":
+        db.update_field(user_id, "points", fish['value'], relative=True)
+        context.user_data['temp_fish'] = None
+        await query.edit_message_text(f"✅ طعمه شما فروخته شد و مبلغ **{fish['value']:,} سکه** به کیف پول شما واریز شد.")
+
+    elif action == "fish_feed":
+        current_hunger = int(db.get_user_field(user_id, "dog_hunger") or 0)
+        new_hunger = min(10, current_hunger + fish['food'])
+        
+        db.update_field(user_id, "dog_hunger", new_hunger, relative=False)
+        context.user_data['temp_fish'] = None
+        
+        await query.edit_message_text(
+            f"🍖 طعمه به هاپو داده شد!\n"
+            f"📊 میزان شکم سگ: **{new_hunger}/10**"
+        )
+
+# ----------------- سایر دستورات -----------------
 
 async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
@@ -387,7 +516,7 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🐕 **سگ و نگهداری:**\n"
         "• `خرید سگ` : خرید سگ جدید\n"
         "• `سگ` : باز کردن پنل اختصاصی سگ و تولید سود\n"
-        "• `غذا` : غذا دادن و افزایش سلامت سگ\n\n"
+        "• `غذا` : ماهیگیری و افزایش میزان سیر بودن سگ\n\n"
         "💼 **کسب درآمد و اقتصاد:**\n"
         "• `کارخونه` : مشاهده و خرید کارخانه‌ها\n"
         "• `کارخونه من` : مدیریت، برداشت سود و فروش کارخانه\n"
