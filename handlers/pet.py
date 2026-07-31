@@ -487,7 +487,7 @@ async def handle_fish_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             f"📊 میزان شکم سگ: {new_hunger}/10"
         )
 
-# ----------------- راهنما -----------------
+# ==================== راهنما ====================
 
 async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
@@ -508,10 +508,12 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `قاچاق` : کسب سود سریع با ریسک\n"
         "• `قمار [مبلغ]` : قمار آنلاین\n"
         "• `شهر` / `اهدا [مبلغ]` : کمک به شهر\n\n"
+        "🔸 **بازی اسلات:**\n"
+        "• `اسلات` : شروع بازی اسلات (فقط گروه)\n\n"
         "👥 `زیرمجموعه‌گیری` : دریافت لینک دعوت و پاداش"
     )
 
     if update.callback_query:
         await update.callback_query.message.reply_text(help_text, parse_mode="Markdown")
     else:
-        await update.message.reply_text(help_text, parse_Mode="Markdown")
+        await update.message.reply_text(help_text, parse_mode="Markdown")
