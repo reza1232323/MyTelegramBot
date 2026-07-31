@@ -1,5 +1,5 @@
-from datetime import datetime, timedelta
 import sqlite3
+from datetime import datetime, timedelta
 
 DB_NAME = "database.db"
 
@@ -98,6 +98,17 @@ def init_db():
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT
+        )
+    """)
+
+    # جدول مدیریت نشست‌های گردونه شانس و کازینو 🎰
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS casino_games (
+            user_id INTEGER PRIMARY KEY,
+            game_type TEXT DEFAULT 'spin_wheel',
+            amount INTEGER DEFAULT 0,
+            player_count INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'idle'
         )
     """)
 
@@ -449,6 +460,71 @@ def get_referral_stats(user_id):
         return res[0] if res else 0
     except Exception:
         return 0
+    finally:
+        conn.close()
+
+
+# ----------------- متدهای اختصاصی گردونه شانس / کازینو 🎰 -----------------
+
+
+def set_casino_session(
+    user_id, game_type="spin_wheel", amount=0, player_count=0, status="idle"
+):
+    """ذخیره یا به‌روزرسانی نشست بازی گردونه برای کاربر"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            INSERT INTO casino_games (user_id, game_type, amount, player_count, status)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                game_type = EXCLUDED.game_type,
+                amount = EXCLUDED.amount,
+                player_count = EXCLUDED.player_count,
+                status = EXCLUDED.status
+        """,
+            (user_id, game_type, amount, player_count, status),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_casino_session(user_id):
+    """دریافت اطلاعات نشست فعلی گردونه"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT game_type, amount, player_count, status FROM casino_games WHERE user_id = ?",
+            (user_id,),
+        )
+        res = cursor.fetchone()
+        if res:
+            return {
+                "game_type": res[0],
+                "amount": res[1],
+                "player_count": res[2],
+                "status": res[3],
+            }
+        return {
+            "game_type": "spin_wheel",
+            "amount": 0,
+            "player_count": 0,
+            "status": "idle",
+        }
+    finally:
+        conn.close()
+
+
+def clear_casino_session(user_id):
+    """پاکسازی نشست پس از پایان بازی"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM casino_games WHERE user_id = ?", (user_id,))
+        conn.commit()
     finally:
         conn.close()
 
