@@ -509,10 +509,9 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `قمار [مبلغ]` : قمار آنلاین\n"
         "• `شهر` / `اهدا [مبلغ]` : کمک به شهر\n\n"
         "🔸 **بازی اسلات:**\n"
-        "• `اسلات` : شروع بازی اسلات (فقط گروه)\n\n"
+        "• ` قمار` : دستور قمار : قمار مبلغ تعداد نفرات \n\n"
         "👥 `زیرمجموعه‌گیری` : دریافت لینک دعوت و پاداش"
     )
-
     if update.callback_query:
         await update.callback_query.message.reply_text(help_text, parse_mode="Markdown")
     else:
