@@ -61,7 +61,7 @@ async def check_user_membership(bot, user_id: int) -> bool:
 
 
 def get_join_keyboard():
-    """ساخت کیبورد شیشه‌ای عضویت اجباری - دکمه سبز مثل عکس"""
+    """ساخت کیبورد شیشه‌ای عضویت اجباری با دکمه سبز"""
     buttons = []
     
     # دکمه‌های کانال‌ها
@@ -70,12 +70,13 @@ def get_join_keyboard():
             [InlineKeyboardButton(f"📢 عضویت در {ch['name']}", url=ch["url"])]
         )
     
-    # دکمه سبز (همون چیزیه که توی عکس هست)
+    # ===== دکمه سبز با url =====
+    bot_username = "@hopdagz_bot"  # یوزرنیم ربات خودت رو بذار
     buttons.append(
         [
             InlineKeyboardButton(
                 "✅ عضو شدم، بررسی کن!",
-                callback_data="check_join_status"
+                url=f"https://t.me/{@hopdagz_bot}?start=check"
             )
         ]
     )
@@ -386,6 +387,7 @@ async def callback_router(
     user_id = query.from_user.id
     data = query.data
 
+    # ===== بررسی عضویت با start=check =====
     if data == "check_join_status":
         is_joined = await check_user_membership(context.bot, user_id)
         if is_joined:
