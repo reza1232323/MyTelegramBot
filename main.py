@@ -22,6 +22,7 @@ import config
 import database as db
 from handlers import admin, economy, pet
 import slot
+from slot import slot_bets, handle_slot_bet, handle_slot_sticker
 
 # مقدار پاداش دعوت (سکه/پوینت)
 REFERRAL_REWARD = 500
