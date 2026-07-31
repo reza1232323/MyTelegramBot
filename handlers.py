@@ -1545,7 +1545,6 @@ async def handle_slot_bet_input(message: Message):
     if is_private(message):
         return
     
-    # چک کردن اینکه کاربر در حال تنظیم شرط اسلات هست یا نه
     if message.from_user.id not in slot_bets or slot_bets[message.from_user.id] != "waiting":
         return
     
@@ -1566,22 +1565,47 @@ async def handle_slot_bet_input(message: Message):
         await message.reply(f"❌ موجودی کافی نیست! داری {user['hop_point']:,} هاپو پوینت")
         return
     
-    # ذخیره مبلغ شرط
     slot_bets[message.from_user.id] = bet
+    
+    # دکمه ارسال استیکر
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🎰 ارسال استیکر", callback_data=f"slot_send_sticker_{message.from_user.id}")]
+        ]
+    )
     
     await message.reply(
         f"✅ مبلغ شرط: {bet:,} هاپو پوینت\n\n"
-        f"🎰 حالا استیکر **🎰** رو بفرستید تا شانس خود را امتحان کنید!\n"
-        f"⏱️ فقط ۶۰ ثانیه فرصت دارید..."
+        f"🎰 حالا استیکر **🎰** رو بفرستید یا روی دکمه زیر کلیک کنید!\n"
+        f"⏱️ فقط ۱۲۰ ثانیه فرصت دارید...",
+        reply_markup=keyboard
     )
     
-    # تایمر ۶۰ ثانیه
-    await asyncio.sleep(60)
+    # تایمر ۱۲۰ ثانیه
+    await asyncio.sleep(120)
     
-    # اگر کاربر هنوز استیکر نفرستاده، شرط رو لغو کن
     if message.from_user.id in slot_bets and slot_bets[message.from_user.id] != "waiting":
         del slot_bets[message.from_user.id]
         await message.reply("⏱️ زمان شما به پایان رسید! شرط لغو شد.")
+
+# ==================== دکمه ارسال استیکر ====================
+
+@router.callback_query(F.data.startswith("slot_send_sticker_"))
+async def slot_send_sticker(callback: CallbackQuery):
+    """ارسال استیکر 🎰 با دکمه"""
+    user_id = int(callback.data.replace("slot_send_sticker_", ""))
+    
+    if callback.from_user.id != user_id:
+        await callback.answer("❌ این دکمه مال شما نیست!", show_alert=True)
+        return
+    
+    # استیکر 🎰 رو براش بفرست
+    await callback.bot.send_sticker(
+        callback.from_user.id,
+        "CAACAgIAAxkBAAENwWZk4H7YhMZ8eLPlH7nWc3nYpZvK"  # آیدی استیکر 🎰
+    )
+    
+    await callback.answer("✅ استیکر ارسال شد! حالا برای اجرای اسلات، استیکر رو بفرستید.")
 
 # ==================== دریافت استیکر و اجرای اسلات ====================
 
@@ -1590,11 +1614,9 @@ async def handle_slot_sticker(message: Message):
     if is_private(message):
         return
     
-    # چک کردن اینکه کاربر در حال بازی اسلات هست یا نه
     if message.from_user.id not in slot_bets or slot_bets[message.from_user.id] == "waiting":
         return
     
-    # چک کردن اینکه استیکر 🎰 هست یا نه
     if message.sticker.emoji != "🎰":
         await message.reply("❌ لطفا استیکر **🎰** رو بفرستید!")
         return
@@ -1607,17 +1629,14 @@ async def handle_slot_sticker(message: Message):
         await message.reply("❌ ثبت‌نام کن!")
         return
     
-    # تولید اسلات تصادفی
     result = generate_random_slot()
     score = calculate_slot_score(result)
     multiplier = get_prize_multiplier(score)
     slot_number = get_slot_number(result)
     combo = f"{result[0]} {result[1]} {result[2]}"
     
-    # محاسبه جایزه
     win = int(bet * multiplier)
     
-    # ===== فرمت خروجی مثل عکس =====
     text = f"🎰 **گردونه شانس**\n\n"
     text += f"💰 مبلغ ورودی: {bet:,}\n"
     text += f"📊 ({multiplier}x)\n"
