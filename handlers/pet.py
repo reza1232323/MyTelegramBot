@@ -495,7 +495,7 @@ WHEEL_REWARDS = [
     {"type": "jackpot", "value": 10000, "label": "جک‌پات 10000 سکه! 💎🎉", "chance": 2},
 ]
 
-async def spin_wheel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def spin_wheel(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     """مدیریت گردونه شانس با کول‌داون ۵ دقیقه‌ای"""
     user_id = update.effective_user.id
     username = update.effective_user.first_name
