@@ -22,6 +22,9 @@ import config
 import database as db
 from handlers import admin, economy, pet
 
+# ----------------- کاربران مسدود شده (آیدی‌های نادیده گرفته شده) -----------------
+BANNED_USERS = [8486466067]
+
 # مقدار پاداش دعوت (سکه/پوینت)
 REFERRAL_REWARD = 500
 
@@ -157,6 +160,9 @@ async def handle_dice_callback_internal(
 async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """نمایش لینک و آمار زیرمجموعه‌گیری کاربر"""
     user_id = update.effective_user.id
+    if user_id in BANNED_USERS:
+        return
+
     bot_username = context.bot.username
 
     ref_count = (
@@ -194,6 +200,11 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    
+    # بررسی مسدود بودن کاربر
+    if user_id in BANNED_USERS:
+        return
+
     username = update.effective_user.username or "کاربر"
 
     db.get_user(user_id, username)
@@ -313,8 +324,13 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
 
-    text = update.message.text.strip()
     user_id = update.effective_user.id
+
+    # ⛔️ نادیده‌گرفتن کامل آیدی مسدود شده
+    if user_id in BANNED_USERS:
+        return
+
+    text = update.message.text.strip()
 
     is_joined = await check_user_membership(context.bot, user_id)
     if not is_joined:
@@ -489,6 +505,11 @@ async def callback_router(
 ):
     query = update.callback_query
     user_id = query.from_user.id
+
+    # ⛔️ نادیده‌گرفتن کامل آیدی مسدود شده در کلیک روی دکمه‌ها
+    if user_id in BANNED_USERS:
+        return
+
     data = query.data
 
     if data == "check_join_status":
