@@ -1,5 +1,5 @@
 from aiogram import Router, F, types
-from aiogram.types import Message, CallbackQuery, ReplyParameters
+from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 from models import User, Inventory, Shop, GroupMessage
 from utils import *
@@ -28,10 +28,8 @@ def is_group(message: Message) -> bool:
 async def start_command(message: Message, bot):
     """ثبت‌نام و شروع - هم در پیوی هم گروه"""
     
-    # ثبت‌نام کاربر
     user = User.get_or_create(message.from_user)
     
-    # بررسی ریفرال (فقط در پیوی)
     if is_private(message) and " " in message.text:
         ref_code = message.text.split()[1]
         if ref_code.startswith("ref_"):
@@ -46,38 +44,28 @@ async def start_command(message: Message, bot):
                     except:
                         pass
     
-    # پیام خصوصی
-    if is_private(message):
-        await message.reply(
-            f"🎉 **به هاپو خوش اومدی {user['first_name']}!**\n\n"
-            f"🐣 یه تخم هاپو داری که تا ۶ ساعت دیگه باز میشه!\n"
-            f"💡 هر ۵ دقیقه با دستور **هاپ** امتیاز بگیر.\n"
-            f"📖 راهنما: **راهنما**\n\n"
-            f"✨ {user['hop_point']:.1f} هاپ اولیه بهت داده شد!",
-            reply_markup=main_menu()
-        )
-    else:
-        # پیام گروه - منوی ساده بدون دکمه اضافی
-        await message.reply(
-            f"🎉 **{user['first_name']} به هاپو خوش اومدی!**\n"
-            f"برای مشاهده پروفایل: **هاپوهام**\n"
-            f"برای دریافت هاپ: **هاپ**"
-        )
+    await message.reply(
+        f"🎉 **به هاپو خوش اومدی {user['first_name']}!**\n\n"
+        f"🐣 یه تخم هاپو داری که تا ۶ ساعت دیگه باز میشه!\n"
+        f"💡 هر ۵ دقیقه با دستور **هاپ** امتیاز بگیر.\n"
+        f"📖 راهنما: **راهنما**\n\n"
+        f"✨ {user['hop_point']:.1f} هاپ اولیه بهت داده شد!",
+        reply_markup=main_menu() if is_private(message) else None
+    )
 
-# ==================== دکمه خانه (پیوی) ====================
+# ==================== دکمه خانه (فقط پیوی) ====================
 
 @router.message(F.text == "🏠 خانه")
 async def home_command(message: Message, bot):
     if is_private(message):
         await start_command(message, bot)
 
-# ==================== دستور هاپ (بدون اسلش) ====================
+# ==================== دستور هاپ ====================
 
 @router.message(F.text == "هاپ")
 async def get_hop_command(message: Message, bot):
     """دریافت هاپ هر ۵ دقیقه - هم در پیوی هم گروه"""
     
-    # بررسی عضویت در کانال (فقط برای پیوی)
     if is_private(message):
         not_joined = await check_channels(bot, message.from_user.id)
         if not_joined:
@@ -99,7 +87,6 @@ async def get_hop_command(message: Message, bot):
         await message.reply(f"⏳ صبر کن! {minutes} دقیقه و {seconds} ثانیه مونده")
         return
     
-    # محاسبه هاپ
     hop_reward = calculate_hop_reward(user)
     gem_reward = 0
     
@@ -107,12 +94,10 @@ async def get_hop_command(message: Message, bot):
         gem_reward = get_random_gem()
         User.update(message.from_user.id, hop_gem=user["hop_gem"] + gem_reward)
     
-    # پاداش گروهی (اگر در گروه باشد)
     bonus = 0
     if is_group(message):
-        bonus = 5  # پاداش گروهی
+        bonus = 5
         hop_reward += bonus
-        # ثبت پیام گروه
         GroupMessage.add(message.from_user.id, message.chat.id, message.text or "")
     
     User.update(
@@ -137,28 +122,22 @@ async def my_profile(message: Message):
         await message.reply("❌ ابتدا ثبت‌نام کنید: شروع")
         return
     
-    # به‌روزرسانی خودکار وضعیت هاپو
     if user["hopo_stage"] != "egg":
         hunger = max(0, user["hopo_hunger"] - 5)
         happiness = max(0, user["hopo_happiness"] - 2)
         User.update(message.from_user.id, hopo_hunger=hunger, hopo_happiness=happiness)
         user = User.get(message.from_user.id)
     
-    # پیام خصوصی
-    if is_private(message):
-        await message.reply(
-            format_profile(user),
-            reply_markup=inline_home()
-        )
-    else:
-        # پیام گروه (خلاصه)
-        await message.reply(format_profile(user, group_mode=True))
+    await message.reply(
+        format_profile(user, group_mode=is_group(message)),
+        reply_markup=inline_home() if is_private(message) else None
+    )
 
 # ==================== مشاهده پروفایل کاربر دیگر (با ریپلای) ====================
 
 @router.message(F.text == "هاپ هاش")
 async def user_profile_reply(message: Message):
-    """مشاهده پروفایل کاربری که رویش ریپلای شده"""
+    """مشاهده پروفایل کاربری که رویش ریپلای شده - هم در پیوی هم گروه"""
     if not message.reply_to_message:
         await message.reply("❌ روی پیام یک کاربر ریپلای کن!")
         return
@@ -170,7 +149,7 @@ async def user_profile_reply(message: Message):
         await message.reply("❌ کاربر در ربات ثبت‌نام نکرده!")
         return
     
-    await message.reply(format_profile(user, group_mode=True) if is_group(message) else format_profile(user))
+    await message.reply(format_profile(user, group_mode=is_group(message)))
 
 # ==================== لیدربرد ====================
 
@@ -180,7 +159,6 @@ async def leaderboard_command(message: Message):
     """نمایش لیدربرد - هم در پیوی هم گروه"""
     
     if is_group(message):
-        # لیدربرد مخصوص گروه (بر اساس تعداد پیام)
         users = User.get_group_top_users(message.chat.id, 10)
         await message.reply(format_group_leaderboard(users))
     else:
@@ -332,7 +310,7 @@ async def gamble_game(message: Message):
         f"{result}"
     )
 
-# ==================== سگ (هم در پیوی هم گروه) ====================
+# ==================== سگ ====================
 
 @router.message(F.text == "سگ")
 async def dog_command(message: Message):
@@ -342,15 +320,21 @@ async def dog_command(message: Message):
         await message.reply("❌ ثبت‌نام کن!")
         return
     
-    has_dog = getattr(user, 'has_dog', False)
-    dog_level = getattr(user, 'dog_level', 0)
+    from database import get_db
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT has_dog, dog_level FROM users WHERE id = ?", (message.from_user.id,))
+    result = cursor.fetchone()
+    conn.close()
+    
+    has_dog = result[0] if result else 0
+    dog_level = result[1] if result else 0
     
     if not has_dog:
         if user["hop_point"] < 100:
             await message.reply("❌ ۱۰۰ هاپ نیاز داری برای خرید سگ!")
             return
         User.update(message.from_user.id, hop_point=user["hop_point"] - 100)
-        # ذخیره سگ
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute("UPDATE users SET has_dog = 1, dog_level = 1 WHERE id = ?", (message.from_user.id,))
@@ -358,7 +342,6 @@ async def dog_command(message: Message):
         conn.close()
         await message.reply("🐕 سگ خریدی! حالا می‌تونه برات استخوان پیدا کنه.")
     else:
-        # ارتقا سگ
         upgrade_cost = dog_level * 50
         if user["hop_point"] < upgrade_cost:
             await message.reply(f"❌ {upgrade_cost} هاپ نیازه برای ارتقا!")
@@ -371,7 +354,7 @@ async def dog_command(message: Message):
         conn.close()
         await message.reply(f"🐕 سگ به سطح {dog_level + 1} ارتقا یافت!")
 
-# ==================== قلاب (هم در پیوی هم گروه) ====================
+# ==================== قلاب ====================
 
 @router.message(F.text == "قلاب")
 async def fishing_rod_command(message: Message):
@@ -381,6 +364,7 @@ async def fishing_rod_command(message: Message):
         await message.reply("❌ ثبت‌نام کن!")
         return
     
+    from database import get_db
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT fishing_rod_level FROM users WHERE id = ?", (message.from_user.id,))
@@ -412,7 +396,7 @@ async def fishing_rod_command(message: Message):
         conn.close()
         await message.reply(f"🎣 قلاب به سطح {rod_level + 1} ارتقا یافت!")
 
-# ==================== استخوان (هم در پیوی هم گروه) ====================
+# ==================== استخوان ====================
 
 @router.message(F.text == "استخوان")
 async def bone_fishing(message: Message):
@@ -422,19 +406,21 @@ async def bone_fishing(message: Message):
         await message.reply("❌ ثبت‌نام کن!")
         return
     
+    from database import get_db
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT fishing_rod_level FROM users WHERE id = ?", (message.from_user.id,))
+    cursor.execute("SELECT fishing_rod_level, bones FROM users WHERE id = ?", (message.from_user.id,))
     result = cursor.fetchone()
-    rod_level = result[0] if result else 0
     conn.close()
+    
+    rod_level = result[0] if result else 0
+    current_bones = result[1] if result else 0
     
     if rod_level == 0:
         await message.reply("❌ اول قلاب بخر!")
         return
     
-    # شانس صید بر اساس سطح قلاب
-    chance = 20 + (rod_level * 5)  # درصد
+    chance = 20 + (rod_level * 5)
     if random.randint(1, 100) > chance:
         await message.reply("😞 چیزی صید نشد! دوباره امتحان کن.")
         return
@@ -442,9 +428,6 @@ async def bone_fishing(message: Message):
     bone_count = random.randint(1, rod_level)
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT bones FROM users WHERE id = ?", (message.from_user.id,))
-    result = cursor.fetchone()
-    current_bones = result[0] if result else 0
     cursor.execute("UPDATE users SET bones = ? WHERE id = ?", (current_bones + bone_count, message.from_user.id))
     conn.commit()
     conn.close()
@@ -455,6 +438,7 @@ async def bone_fishing(message: Message):
 
 @router.message(F.text.startswith("اسم"))
 async def set_name_command(message: Message):
+    """اسم گذاری هاپو - هم در پیوی هم گروه"""
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
         await message.reply("❌ فرمت: اسم نام")
@@ -469,10 +453,7 @@ async def set_name_command(message: Message):
 @router.message(F.text == "بانک")
 @router.message(F.text == "🏦 بانک")
 async def bank_command(message: Message):
-    if is_group(message):
-        await message.reply("🏦 برای مدیریت بانک به پیوی ربات برو. (سپرده، برداشت)")
-        return
-    
+    """مدیریت بانک - هم در پیوی هم گروه"""
     user = User.get(message.from_user.id)
     if not user:
         await message.reply("❌ ثبت‌نام کن!")
@@ -489,10 +470,7 @@ async def bank_command(message: Message):
 
 @router.message(F.text.startswith("سپرده"))
 async def deposit_command(message: Message):
-    if is_group(message):
-        await message.reply("🏦 این دستور فقط در پیوی قابل استفاده است.")
-        return
-    
+    """سپرده‌گذاری - هم در پیوی هم گروه"""
     parts = message.text.split()
     if len(parts) < 2:
         await message.reply("❌ فرمت: سپرده 100")
@@ -523,10 +501,7 @@ async def deposit_command(message: Message):
 
 @router.message(F.text.startswith("برداشت"))
 async def withdraw_command(message: Message):
-    if is_group(message):
-        await message.reply("🏦 این دستور فقط در پیوی قابل استفاده است.")
-        return
-    
+    """برداشت از بانک - هم در پیوی هم گروه"""
     parts = message.text.split()
     if len(parts) < 2:
         await message.reply("❌ فرمت: برداشت 100")
@@ -560,10 +535,7 @@ async def withdraw_command(message: Message):
 @router.message(F.text == "کارخونه")
 @router.message(F.text == "🏭 کارخانه")
 async def factory_command(message: Message):
-    if is_group(message):
-        await message.reply("🏭 برای مدیریت کارخانه به پیوی ربات برو. (جمع‌کارخانه، ارتقا‌کارخانه)")
-        return
-    
+    """مدیریت کارخانه - هم در پیوی هم گروه"""
     user = User.get(message.from_user.id)
     if not user:
         await message.reply("❌ ثبت‌نام کن!")
@@ -580,10 +552,7 @@ async def factory_command(message: Message):
 
 @router.message(F.text == "جمع‌کارخانه")
 async def collect_factory_command(message: Message):
-    if is_group(message):
-        await message.reply("🏭 این دستور فقط در پیوی قابل استفاده است.")
-        return
-    
+    """جمع‌آوری تولید کارخانه - هم در پیوی هم گروه"""
     user = User.get(message.from_user.id)
     if not user:
         await message.reply("❌ ثبت‌نام کن!")
@@ -607,10 +576,7 @@ async def collect_factory_command(message: Message):
 
 @router.message(F.text == "ارتقا‌کارخانه")
 async def upgrade_factory_command(message: Message):
-    if is_group(message):
-        await message.reply("🏭 این دستور فقط در پیوی قابل استفاده است.")
-        return
-    
+    """ارتقای کارخانه - هم در پیوی هم گروه"""
     user = User.get(message.from_user.id)
     if not user:
         await message.reply("❌ ثبت‌نام کن!")
@@ -635,19 +601,13 @@ async def upgrade_factory_command(message: Message):
 @router.message(F.text == "فروشگاه")
 @router.message(F.text == "🛒 فروشگاه")
 async def shop_command(message: Message):
-    if is_group(message):
-        await message.reply("🛒 برای خرید به پیوی ربات برو. (خرید [آیدی] [تعداد])")
-        return
-    
+    """مشاهده فروشگاه - هم در پیوی هم گروه"""
     items = Shop.get_items()
     await message.reply(format_shop(items))
 
 @router.message(F.text.startswith("خرید"))
 async def buy_command(message: Message):
-    if is_group(message):
-        await message.reply("🛒 این دستور فقط در پیوی قابل استفاده است.")
-        return
-    
+    """خرید از فروشگاه - هم در پیوی هم گروه"""
     parts = message.text.split()
     if len(parts) < 2:
         await message.reply("❌ فرمت: خرید [آیدی] [تعداد]")
@@ -668,10 +628,7 @@ async def buy_command(message: Message):
 @router.message(F.text == "کیف")
 @router.message(F.text == "🎒 کیف")
 async def inventory_command(message: Message):
-    if is_group(message):
-        await message.reply("🎒 برای مشاهده کیف به پیوی ربات برو.")
-        return
-    
+    """مشاهده انبار - هم در پیوی هم گروه"""
     items = Inventory.get_items(message.from_user.id)
     if not items:
         await message.reply("🎒 انبار خالی است!")
@@ -688,10 +645,7 @@ async def inventory_command(message: Message):
 @router.message(F.text == "ماموریت")
 @router.message(F.text == "🎯 مأموریت‌ها")
 async def mission_command(message: Message):
-    if is_group(message):
-        await message.reply("🎯 برای مشاهده مأموریت‌ها به پیوی ربات برو. (دریافت‌ماموریت)")
-        return
-    
+    """مشاهده مأموریت‌ها - هم در پیوی هم گروه"""
     user = User.get(message.from_user.id)
     if not user:
         await message.reply("❌ ثبت‌نام کن!")
@@ -719,10 +673,7 @@ async def mission_command(message: Message):
 
 @router.message(F.text == "دریافت‌ماموریت")
 async def claim_mission_command(message: Message):
-    if is_group(message):
-        await message.reply("🎯 این دستور فقط در پیوی قابل استفاده است.")
-        return
-    
+    """دریافت پاداش مأموریت - هم در پیوی هم گروه"""
     user = User.get(message.from_user.id)
     if not user:
         await message.reply("❌ ثبت‌نام کن!")
@@ -743,10 +694,7 @@ async def claim_mission_command(message: Message):
 @router.message(F.text == "دعوت")
 @router.message(F.text == "🔗 دعوت دوستان")
 async def invite_command(message: Message):
-    if is_group(message):
-        await message.reply("🔗 برای دریافت لینک دعوت به پیوی ربات برو.")
-        return
-    
+    """دریافت لینک دعوت - هم در پیوی هم گروه"""
     user = User.get(message.from_user.id)
     if not user:
         await message.reply("❌ ثبت‌نام کن!")
@@ -765,6 +713,7 @@ async def invite_command(message: Message):
 @router.message(F.text == "راهنما")
 @router.message(F.text == "📖 راهنما")
 async def help_command(message: Message):
+    """راهنمای کامل - هم در پیوی هم گروه"""
     help_text = """
 📖 **راهنمای کامل ربات هاپو**
 
@@ -780,7 +729,7 @@ async def help_command(message: Message):
 **قلاب** ➜ خرید و ارتقای قلاب
 **استخوان** ➜ صید استخوان
 
-🏦 **اقتصاد (فقط پیوی)**
+🏦 **اقتصاد (همه جا)**
 **بانک** ➜ مدیریت بانک
 **سپرده** [مبلغ] ➜ واریز به بانک
 **برداشت** [مبلغ] ➜ برداشت از بانک
@@ -788,7 +737,7 @@ async def help_command(message: Message):
 **جمع‌کارخانه** ➜ جمع‌آوری تولید
 **ارتقا‌کارخانه** ➜ ارتقای کارخانه
 
-🛒 **فروشگاه (فقط پیوی)**
+🛒 **فروشگاه (همه جا)**
 **فروشگاه** ➜ مشاهده آیتم‌ها
 **خرید** [آیدی] [تعداد] ➜ خرید آیتم
 **کیف** ➜ مشاهده انبار
@@ -799,11 +748,11 @@ async def help_command(message: Message):
 **گردونه** ➜ گردونه شانس
 **قمار** [مبلغ] ➜ بازی قمار
 
-🎯 **مأموریت‌ها (فقط پیوی)**
+🎯 **مأموریت‌ها (همه جا)**
 **ماموریت** ➜ مشاهده مأموریت‌ها
 **دریافت‌ماموریت** ➜ دریافت پاداش
 
-🔗 **دعوت (فقط پیوی)**
+🔗 **دعوت (همه جا)**
 **دعوت** ➜ دریافت لینک دعوت
 
 🐣 **هاپو (همه جا)**
@@ -826,6 +775,7 @@ async def help_command(message: Message):
 @router.message(F.text == "پنل")
 @router.message(F.text == "🔐 پنل مدیریت")
 async def admin_panel(message: Message):
+    """پنل مدیریت - هم در پیوی هم گروه"""
     if not is_admin(message.from_user.id):
         await message.reply("⛔ دسترسی ندارید!")
         return
@@ -841,10 +791,10 @@ async def admin_panel(message: Message):
         "**افزودن ادمین** ➜ ادمین کردن کاربر\n"
         "**حذف ادمین** ➜ حذف ادمین\n"
         "**حذف کاربر** ➜ حذف کاربر",
-        reply_markup=admin_menu()
+        reply_markup=admin_menu() if is_private(message) else None
     )
 
-# ==================== دستورات ادمین (بدون اسلش - همه جا) ====================
+# ==================== دستورات ادمین ====================
 
 @router.message(F.text.startswith("افزایش پوینت"))
 async def add_points_admin(message: Message):
@@ -1029,7 +979,6 @@ async def broadcast_command(message: Message, bot):
     
     broadcast_text = parts[1]
     
-    # گرفتن همه کاربران
     from database import get_db
     conn = get_db()
     cursor = conn.cursor()
@@ -1052,12 +1001,12 @@ async def broadcast_command(message: Message, bot):
     
     await message.reply(f"✅ پیام به {sent} کاربر ارسال شد!\n❌ {failed} کاربر دریافت نکردند.")
 
-# ==================== تغذیه هاپو (با دکمه - فقط پیوی) ====================
+# ==================== دکمه‌های هاپو (فقط پیوی) ====================
 
 @router.callback_query(F.data == "feed_hopo")
 async def feed_hopo_callback(callback: CallbackQuery):
     if is_group(callback.message):
-        await callback.answer("این دکمه فقط در پیوی کار میکنه!", show_alert=True)
+        await callback.answer("❌ این دکمه فقط در پیوی کار میکنه!", show_alert=True)
         return
     
     user = User.get(callback.from_user.id)
@@ -1094,7 +1043,7 @@ async def feed_hopo_callback(callback: CallbackQuery):
 @router.callback_query(F.data == "sleep_hopo")
 async def sleep_hopo_callback(callback: CallbackQuery):
     if is_group(callback.message):
-        await callback.answer("این دکمه فقط در پیوی کار میکنه!", show_alert=True)
+        await callback.answer("❌ این دکمه فقط در پیوی کار میکنه!", show_alert=True)
         return
     
     user = User.get(callback.from_user.id)
@@ -1111,7 +1060,7 @@ async def sleep_hopo_callback(callback: CallbackQuery):
 @router.callback_query(F.data == "play_hopo")
 async def play_hopo_callback(callback: CallbackQuery):
     if is_group(callback.message):
-        await callback.answer("این دکمه فقط در پیوی کار میکنه!", show_alert=True)
+        await callback.answer("❌ این دکمه فقط در پیوی کار میکنه!", show_alert=True)
         return
     
     user = User.get(callback.from_user.id)
@@ -1135,7 +1084,7 @@ async def play_hopo_callback(callback: CallbackQuery):
 @router.callback_query(F.data == "hatch_hopo")
 async def hatch_hopo_callback(callback: CallbackQuery):
     if is_group(callback.message):
-        await callback.answer("این دکمه فقط در پیوی کار میکنه!", show_alert=True)
+        await callback.answer("❌ این دکمه فقط در پیوی کار میکنه!", show_alert=True)
         return
     
     user = User.get(callback.from_user.id)
@@ -1195,16 +1144,13 @@ async def check_channels_callback(callback: CallbackQuery, bot):
 
 @router.message()
 async def handle_group_messages(message: Message, bot):
-    """هندلر پیام‌های معمولی در گروه"""
+    """هندلر پیام‌های معمولی در گروه - فقط برای ثبت آمار"""
     
-    # فقط در گروه اجرا کن
     if not is_group(message):
         return
     
-    # ثبت پیام گروه
     GroupMessage.add(message.from_user.id, message.chat.id, message.text or "")
     
-    # هر ۱۰ پیام ۱ هاپ پاداش
     user = User.get(message.from_user.id)
     if user:
         msg_count = GroupMessage.get_user_count(message.from_user.id, message.chat.id)
