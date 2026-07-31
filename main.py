@@ -61,29 +61,24 @@ async def check_user_membership(bot, user_id: int) -> bool:
 
 
 def get_join_keyboard():
-    """ساخت کیبورد شیشه‌ای عضویت اجباری با دکمه سبز"""
     buttons = []
-    
-    # دکمه‌های کانال‌ها
     for ch in REQUIRED_CHANNELS:
         buttons.append(
             [InlineKeyboardButton(f"📢 عضویت در {ch['name']}", url=ch["url"])]
         )
     
-    # ===== دکمه سبز با url =====
-    bot_username = "hopdagz_bot"  # یوزرنیم ربات خودت رو بذار
+    # دکمه سبز با style="success"
     buttons.append(
         [
             InlineKeyboardButton(
-                "✅ عضو شدم، بررسی کن!",
-                url=f"https://t.me/{bot_username}?start=check"
+                text="✅ عضو شدم، بررسی کن!",
+                callback_data="check_join_status",
+                style="success"  # <--- اینجا!
             )
         ]
     )
-    
     return InlineKeyboardMarkup(buttons)
-
-
+    
 async def send_must_join_message(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
