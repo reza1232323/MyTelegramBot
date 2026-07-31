@@ -71,7 +71,7 @@ def get_join_keyboard():
         )
     
     # ===== دکمه سبز با url =====
-    bot_username = "@hopdagz_bot"  # یوزرنیم ربات خودت رو بذار
+    bot_username = "hopdagz_bot"  # یوزرنیم ربات خودت رو بذار
     buttons.append(
         [
             InlineKeyboardButton(
