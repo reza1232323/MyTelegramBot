@@ -25,7 +25,6 @@ from handlers import admin, economy, pet
 # مقدار پاداش دعوت (سکه/پوینت)
 REFERRAL_REWARD = 500
 
-# ----------------- تنظیمات کانال‌های عضویت اجباری -----------------
 REQUIRED_CHANNELS = [
     {
         "name": "کانال اصلی",
@@ -39,44 +38,31 @@ REQUIRED_CHANNELS = [
     },
 ]
 
-logging.basicConfig(level=logging.INFO)
-
-
-# ----------------- توابع عضویت اجباری -----------------
-async def check_user_membership(bot, user_id: int) -> bool:
-    """بررسی عضویت کاربر در تمامی کانال‌های اجباری"""
-    for ch in REQUIRED_CHANNELS:
-        try:
-            member = await bot.get_chat_member(
-                chat_id=ch["username"], user_id=user_id
-            )
-            if member.status in ["left", "kicked"]:
-                return False
-        except BadRequest:
-            continue
-        except Exception as e:
-            logging.error(f"خطا در بررسی عضویت کانال {ch['username']}: {e}")
-            return False
-    return True
-
-
 def get_join_keyboard():
     buttons = []
+    
+    # ===== دکمه‌های کانال (آبی - بدون style) =====
     for ch in REQUIRED_CHANNELS:
         buttons.append(
-            [InlineKeyboardButton(f"📢 عضویت در {ch['name']}", url=ch["url"])]
+            [
+                InlineKeyboardButton(
+                    f"📢 عضویت در {ch['name']}",
+                    url=ch["url"]  # با url همیشه سبزه
+                )
+            ]
         )
     
-    # دکمه سبز با style="success"
+    # ===== دکمه سبز بررسی عضویت =====
     buttons.append(
         [
             InlineKeyboardButton(
-                text="✅ عضو شدم، بررسی کن!",
+                "✅ عضو شدم، بررسی کن!",
                 callback_data="check_join_status",
-                style="success"  # <--- اینجا!
+                style="success"
             )
         ]
     )
+    
     return InlineKeyboardMarkup(buttons)
     
 async def send_must_join_message(
