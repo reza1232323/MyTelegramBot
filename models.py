@@ -2,6 +2,7 @@ from database import get_db
 from datetime import datetime
 import random
 import hashlib
+import time
 
 class User:
     @staticmethod
@@ -13,18 +14,15 @@ class User:
         user = cursor.fetchone()
         
         if not user:
-            # ثبت‌نام جدید
             invite_code = hashlib.md5(str(telegram_user.id).encode()).hexdigest()[:8]
+            hatch_time = (datetime.now().timestamp() + 21600)  # 6 ساعت بعد
             cursor.execute('''
-                INSERT INTO users (id, username, first_name, invite_code)
-                VALUES (?, ?, ?, ?)
-            ''', (telegram_user.id, telegram_user.username, telegram_user.first_name, invite_code))
+                INSERT INTO users (id, username, first_name, invite_code, hopo_hatch_time)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (telegram_user.id, telegram_user.username, telegram_user.first_name, invite_code, hatch_time))
             conn.commit()
             cursor.execute("SELECT * FROM users WHERE id = ?", (telegram_user.id,))
             user = cursor.fetchone()
-            
-            # چک کردن ریفرال
-            # (در start با پارامتر مدیریت میشه)
         
         conn.close()
         return dict(user)
@@ -60,21 +58,40 @@ class User:
         return [dict(u) for u in users]
     
     @staticmethod
-    def get_hopo(user_id):
-        user = User.get(user_id)
-        if not user:
-            return None
-        return {
-            "name": user["hopo_name"],
-            "breed": user["hopo_breed"],
-            "stage": user["hopo_stage"],
-            "health": user["hopo_health"],
-            "happiness": user["hopo_happiness"],
-            "energy": user["hopo_energy"],
-            "hunger": user["hopo_hunger"],
-            "power": user["hopo_power"],
-            "hatch_time": user["hopo_hatch_time"]
-        }
+    def get_group_top_users(group_id=None, limit=10):
+        """برترین کاربران گروه (بر اساس تعداد پیام)"""
+        conn = get_db()
+        cursor = conn.cursor()
+        if group_id:
+            cursor.execute('''
+                SELECT user_id, COUNT(*) as msg_count 
+                FROM group_messages 
+                WHERE group_id = ? 
+                GROUP BY user_id 
+                ORDER BY msg_count DESC 
+                LIMIT ?
+            ''', (group_id, limit))
+        else:
+            cursor.execute('''
+                SELECT user_id, COUNT(*) as msg_count 
+                FROM group_messages 
+                GROUP BY user_id 
+                ORDER BY msg_count DESC 
+                LIMIT ?
+            ''', (limit,))
+        users = cursor.fetchall()
+        conn.close()
+        
+        result = []
+        for u in users:
+            user = User.get(u["user_id"])
+            if user:
+                result.append({
+                    "first_name": user["first_name"],
+                    "msg_count": u["msg_count"],
+                    "hop_point": user["hop_point"]
+                })
+        return result
 
 class Inventory:
     @staticmethod
@@ -90,10 +107,22 @@ class Inventory:
     def add_item(user_id, item_name, quantity=1):
         conn = get_db()
         cursor = conn.cursor()
+        # چک کن که قبلاً داره یا نه
         cursor.execute(
-            "INSERT INTO inventory (user_id, item_name, quantity) VALUES (?, ?, ?)",
-            (user_id, item_name, quantity)
+            "SELECT * FROM inventory WHERE user_id = ? AND item_name = ?",
+            (user_id, item_name)
         )
+        existing = cursor.fetchone()
+        if existing:
+            cursor.execute(
+                "UPDATE inventory SET quantity = quantity + ? WHERE user_id = ? AND item_name = ?",
+                (quantity, user_id, item_name)
+            )
+        else:
+            cursor.execute(
+                "INSERT INTO inventory (user_id, item_name, quantity) VALUES (?, ?, ?)",
+                (user_id, item_name, quantity)
+            )
         conn.commit()
         conn.close()
     
@@ -125,6 +154,36 @@ class Inventory:
         conn.commit()
         conn.close()
         return True
+
+class GroupMessage:
+    @staticmethod
+    def add(user_id, group_id, message_text):
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO group_messages (user_id, group_id, message_text) VALUES (?, ?, ?)",
+            (user_id, group_id, message_text[:500])
+        )
+        conn.commit()
+        conn.close()
+    
+    @staticmethod
+    def get_user_count(user_id, group_id=None):
+        conn = get_db()
+        cursor = conn.cursor()
+        if group_id:
+            cursor.execute(
+                "SELECT COUNT(*) as count FROM group_messages WHERE user_id = ? AND group_id = ?",
+                (user_id, group_id)
+            )
+        else:
+            cursor.execute(
+                "SELECT COUNT(*) as count FROM group_messages WHERE user_id = ?",
+                (user_id,)
+            )
+        result = cursor.fetchone()
+        conn.close()
+        return result["count"] if result else 0
 
 class Shop:
     @staticmethod
@@ -164,10 +223,7 @@ class Shop:
         if total_gem > 0 and user["hop_gem"] < total_gem:
             return {"success": False, "message": f"{total_gem:.1f} جم نیاز داری!"}
         
-        # کاهش پول
         User.update(user_id, hop_point=user["hop_point"] - total_hop, hop_gem=user["hop_gem"] - total_gem)
-        
-        # اضافه به انبار
         Inventory.add_item(user_id, item["name"], quantity)
         
         return {"success": True, "message": f"{quantity} عدد {item['name']} خریداری شد!"}
