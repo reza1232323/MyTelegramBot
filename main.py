@@ -61,16 +61,17 @@ async def check_user_membership(bot, user_id: int) -> bool:
 
 
 def get_join_keyboard():
-    """ساخت کیبورد شیشه‌ای عضویت اجباری"""
+    """ساخت کیبورد شیشه‌ای عضویت اجباری با دکمه‌های قرمز"""
     buttons = []
     
-    # ===== دکمه‌های کانال (آبی با callback_data) =====
+    # ===== دکمه‌های کانال (قرمز با style="danger") =====
     for ch in REQUIRED_CHANNELS:
         buttons.append(
             [
                 InlineKeyboardButton(
                     f"📢 عضویت در {ch['name']}",
-                    callback_data=f"channel_{ch['username']}"  # آبی
+                    callback_data=f"channel_{ch['username']}",
+                    style="danger"  # 🔴 قرمز
                 )
             ]
         )
@@ -81,7 +82,7 @@ def get_join_keyboard():
             InlineKeyboardButton(
                 "✅ عضو شدم، بررسی کن!",
                 callback_data="check_join_status",
-                style="success"  # سبز
+                style="success"  # 🟢 سبز
             )
         ]
     )
@@ -392,7 +393,7 @@ async def callback_router(
     user_id = query.from_user.id
     data = query.data
 
-    # ===== مدیریت کلیک روی دکمه کانال (آبی) =====
+    # ===== مدیریت کلیک روی دکمه کانال (قرمز) =====
     if data.startswith("channel_"):
         username = data.replace("channel_", "")
         for ch in REQUIRED_CHANNELS:
