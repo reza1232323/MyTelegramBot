@@ -53,7 +53,6 @@ async def check_user_membership(bot, user_id: int) -> bool:
             if member.status in ["left", "kicked"]:
                 return False
         except BadRequest:
-            # اگر ربات ادمین کانال نباشد یا آیدی اشتباه باشد، رد می‌شود
             continue
         except Exception as e:
             logging.error(f"خطا در بررسی عضویت کانال {ch['username']}: {e}")
@@ -221,7 +220,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_must_join_message(update, context)
         return
 
-    # 📌 اضافه شدن دکمه 🎲 تاس به منوی اصلی
     main_keyboard = ReplyKeyboardMarkup(
         [
             ["پروفایل", "هاپ"],
@@ -257,7 +255,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_hop_internal(
     update: Update, context: ContextTypes.DEFAULT_TYPE, user=None
 ):
-    """مدیریت فرایند هاپ در صورتی که در فایل pet.py تابع claim_hop تعریف نشده باشد"""
+    """مدیریت فرایند هاپ"""
     user_id = update.effective_user.id
     current_time = int(time.time())
 
@@ -321,6 +319,48 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_joined = await check_user_membership(context.bot, user_id)
     if not is_joined:
         await send_must_join_message(update, context)
+        return
+
+    # 🎲 پردازش دستور متنی تاس ۲ نفره (مثال: تاس 2 زوج 100)
+    parts = text.split()
+    if len(parts) == 4 and parts[0] in ["تاس", "dice"] and parts[1].isdigit():
+        max_players = int(parts[1])
+        creator_choice = parts[2]
+        bet_amount = int(parts[3]) if parts[3].isdigit() else 0
+
+        if max_players != 2:
+            await update.message.reply_text("❌ در حال حاضر فقط چالش ۲ نفره پشتیبانی می‌شود.")
+            return
+
+        if creator_choice not in ["زوج", "فرد"]:
+            await update.message.reply_text("❌ انتخاب باید «زوج» یا «فرد» باشد.")
+            return
+
+        creator_points = db.get_user_field(user_id, "points") or 0
+        if creator_points < bet_amount:
+            await update.message.reply_text("❌ موجودی سکه شما برای ایجاد این چالش کافی نیست!")
+            return
+
+        game_id = f"dice_{user_id}_{int(time.time())}"
+        context.bot_data[game_id] = {
+            "creator_id": user_id,
+            "creator_choice": creator_choice,
+            "bet_amount": bet_amount,
+        }
+
+        opposite_choice = "فرد" if creator_choice == "زوج" else "زوج"
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("🎲 شرکت در بازی", callback_data=f"join_dice:{game_id}")
+        ]])
+
+        text_msg = (
+            f"🎲 **چالش تاس ۲ نفره!**\n\n"
+            f"👤 سازنده: {update.effective_user.first_name}\n"
+            f"🎯 انتخاب سازنده: **{creator_choice}**\n"
+            f"💰 مبلغ ورودی: **{bet_amount:,} سکه**\n\n"
+            f"👇 نفر دوم با ورود به بازی، انتخابش **{opposite_choice}** خواهد بود."
+        )
+        await update.message.reply_text(text_msg, parse_mode="Markdown", reply_markup=keyboard)
         return
 
     # 📌 بررسی اولویت اول: آیا کاربر در حالت تغییر نام سگ است؟
@@ -465,6 +505,61 @@ async def callback_router(
             await query.answer(
                 "❌ هنوز در تمامی کانال‌ها عضو نشده‌اید!", show_alert=True
             )
+        return
+
+    # 🎲 مدیریت شرکت در چالش تاس متنی
+    if data.startswith("join_dice:"):
+        game_id = data.split(":")[1]
+        game = context.bot_data.get(game_id)
+
+        if not game:
+            await query.answer("❌ این چالش منقضی یا تمام شده است.", show_alert=True)
+            return
+
+        creator_id = game["creator_id"]
+        bet_amount = game["bet_amount"]
+
+        if user_id == creator_id:
+            await query.answer("❌ شما خودتان سازنده این چالش هستید!", show_alert=True)
+            return
+
+        joiner_points = db.get_user_field(user_id, "points") or 0
+        if joiner_points < bet_amount:
+            await query.answer("❌ سکه کافی برای شرکت در این چالش ندارید!", show_alert=True)
+            return
+
+        creator_points = db.get_user_field(creator_id, "points") or 0
+        if creator_points < bet_amount:
+            await query.answer("❌ سکه سازنده بازی دیگر کافی نیست!", show_alert=True)
+            return
+
+        # کسر سکه ورودی از هر دو نفر
+        db.update_field(creator_id, "points", -bet_amount, relative=True)
+        db.update_field(user_id, "points", -bet_amount, relative=True)
+
+        await query.answer("🎲 در حال پرتاب تاس...")
+        dice_msg = await context.bot.send_dice(chat_id=query.message.chat_id, emoji="🎲")
+        dice_value = dice_msg.dice.value
+
+        result_type = "زوج" if dice_value % 2 == 0 else "فرد"
+        total_prize = bet_amount * 2
+
+        if result_type == game["creator_choice"]:
+            winner_id = creator_id
+            winner_name = "سازنده بازی"
+        else:
+            winner_id = user_id
+            winner_name = query.from_user.first_name
+
+        # واریز مجموع کل جایزه به برنده
+        db.update_field(winner_id, "points", total_prize, relative=True)
+
+        await query.message.reply_text(
+            f"🎲 عدد تاس آمد: **{dice_value}** ({result_type})\n\n"
+            f"🏆 کاربر **{winner_name}** برنده **{total_prize:,} سکه** شد!",
+            parse_mode="Markdown"
+        )
+        del context.bot_data[game_id]
         return
 
     if ":" in data:
