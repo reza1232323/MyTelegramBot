@@ -61,7 +61,7 @@ async def check_user_membership(bot, user_id: int) -> bool:
 
 
 def get_join_keyboard():
-    """ساخت کیبورد شیشه‌ای عضویت اجباری با دکمه سبز"""
+    """ساخت کیبورد شیشه‌ای عضویت اجباری - دکمه سبز مثل عکس"""
     buttons = []
     
     # دکمه‌های کانال‌ها
@@ -70,11 +70,11 @@ def get_join_keyboard():
             [InlineKeyboardButton(f"📢 عضویت در {ch['name']}", url=ch["url"])]
         )
     
-    # دکمه سبز رنگ برای بررسی عضویت
+    # دکمه سبز (همون چیزیه که توی عکس هست)
     buttons.append(
         [
             InlineKeyboardButton(
-                "✅ عضو شدم، بررسی کن! 🟢",
+                "✅ عضو شدم، بررسی کن!",
                 callback_data="check_join_status"
             )
         ]
@@ -291,7 +291,6 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_must_join_message(update, context)
         return
 
-    # بررسی اولویت اول: آیا کاربر در حالت تغییر نام سگ است؟
     if hasattr(pet, "handle_dog_rename_text"):
         is_handled = await pet.handle_dog_rename_text(update, context)
         if is_handled:
@@ -313,7 +312,6 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     clean_text = text.split("@")[0].lower()
 
-    # ۱. عمومی، سگ و زیرمجموعه‌گیری
     if clean_text in ["پروفایل", "هاپوهام", "هاپوهاش", "/profile"]:
         await pet.show_profile(update, context, user)
     elif clean_text in [
@@ -348,8 +346,6 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/referral",
     ]:
         await referral_command(update, context)
-
-    # ۲. اقتصاد، بانک، کارخانه، قاچاق و شهر
     elif clean_text in ["🏦 بانک", "بانک", "bank", "/bank"]:
         if hasattr(economy, "bank_status"):
             await economy.bank_status(update, context, user)
@@ -370,8 +366,6 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await economy.city_status(update, context, user)
     elif clean_text.startswith("اهدا") or clean_text.startswith("/donate"):
         await economy.donate_city(update, context, user)
-
-    # ۳. دستورات ادمین
     elif user_id in config.ADMIN_IDS:
         if text.startswith("افزایش پوینت"):
             await admin.add_points(update, context)
@@ -430,19 +424,14 @@ async def callback_router(
         await send_must_join_message(update, context)
         return
 
-    # مدیریت دکمه شیشه‌ای زیرمجموعه‌گیری
     if action == "get_referral_link":
         await referral_command(update, context)
         await query.answer()
-
-    # مدیریت تصمیم‌گیری صید ماهی (فروش طعمه یا غذادادن)
     elif action in ["fish_sell", "fish_feed"]:
         if hasattr(pet, "handle_fish_callback"):
             await pet.handle_fish_callback(update, context)
         else:
             await query.answer()
-
-    # مدیریت کلیک‌های مربوط به پنل سگ
     elif (
         action.startswith("dog_")
         or action.startswith("pet_")
@@ -454,33 +443,23 @@ async def callback_router(
             await pet.dog_callback(update, context)
         else:
             await query.answer()
-
-    # مدیریت دکمه‌های بانک
     elif action.startswith("bank_"):
         if hasattr(economy, "handle_bank_callback"):
             await economy.handle_bank_callback(update, context)
-
-    # مدیریت دکمه‌های کارخانه
     elif action.startswith("buy_fac_") or action.startswith("fac_"):
         if hasattr(economy, "factory_callback"):
             await economy.factory_callback(update, context)
         elif hasattr(economy, "handle_factory_callback"):
             await economy.handle_factory_callback(update, context)
-
-    # مدیریت دکمه‌های قاچاق
     elif action.startswith("select_contra_") or action in [
         "start_smuggling",
         "pay_bail",
     ]:
         if hasattr(economy, "handle_smuggle_callback"):
             await economy.handle_smuggle_callback(update, context)
-
-    # مدیریت فروش محصولات
     elif action.startswith("sell_"):
         if hasattr(economy, "sell_callback"):
             await economy.sell_callback(update, context)
-
-    # مدیریت شرکت در قمار
     elif action.startswith("join_gamble"):
         if hasattr(economy, "join_gamble_callback"):
             await economy.join_gamble_callback(update, context)
