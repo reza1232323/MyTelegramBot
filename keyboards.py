@@ -14,6 +14,17 @@ def main_menu():
         resize_keyboard=True
     )
 
+def group_menu():
+    """منوی مخصوص گروه (با دکمه‌های محدودتر)"""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🐣 هایوی من"), KeyboardButton(text="📊 لیدربرد")],
+            [KeyboardButton(text="🎡 گردونه شانس"), KeyboardButton(text="📖 راهنما")],
+            [KeyboardButton(text="🏠 خانه")]
+        ],
+        resize_keyboard=True
+    )
+
 def admin_menu():
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -32,6 +43,16 @@ def inline_home():
             [InlineKeyboardButton(text="😴 خواب هاپو", callback_data="sleep_hopo")],
             [InlineKeyboardButton(text="🎮 بازی با هاپو", callback_data="play_hopo")],
             [InlineKeyboardButton(text="🥚 باز کردن تخم", callback_data="hatch_hopo")]
+        ]
+    )
+
+def inline_group_actions():
+    """دکمه‌های مخصوص گروه"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🐣 پروفایل من", callback_data="group_profile")],
+            [InlineKeyboardButton(text="🎡 گردونه", callback_data="group_spin")],
+            [InlineKeyboardButton(text="📊 لیدربرد گروه", callback_data="group_leaderboard")]
         ]
     )
 
@@ -54,3 +75,11 @@ def channel_check_kb(channels):
         ))
     keyboard.add(InlineKeyboardButton(text="✅ عضویت رو تأیید کن", callback_data="check_channels"))
     return keyboard
+
+def inline_reply_profile(target_id):
+    """دکمه برای مشاهده پروفایل با ریپلای"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🐣 مشاهده پروفایل", callback_data=f"profile_{target_id}")]
+        ]
+    )
