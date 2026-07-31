@@ -12,7 +12,7 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # جدول کاربران (همراه با ستون‌های جدید سگ)
+    # جدول کاربران (همراه با ستون‌های جدید سگ و گردونه)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
@@ -48,7 +48,9 @@ def init_db():
             inventory_clothes INTEGER DEFAULT 0,
             inventory_food INTEGER DEFAULT 0,
             inventory_toy INTEGER DEFAULT 0,
-            inventory_house INTEGER DEFAULT 0
+            inventory_house INTEGER DEFAULT 0,
+            last_spin_time INTEGER DEFAULT 0,
+            spin_count INTEGER DEFAULT 0
         )
     """)
 
@@ -61,6 +63,8 @@ def init_db():
         ("dog_hunger", "INTEGER DEFAULT 10"),
         ("dog_last_claim", "INTEGER DEFAULT 0"),
         ("dog_unclaimed_points", "REAL DEFAULT 0"),
+        ("last_spin_time", "INTEGER DEFAULT 0"),
+        ("spin_count", "INTEGER DEFAULT 0"),
     ]
 
     for col_name, col_type in new_columns:
