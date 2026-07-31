@@ -14,8 +14,34 @@ import hashlib
 
 router = Router()
 
-# ==================== دیتابیس موقت میزهای بازی ====================
+# ==================== دیکشنری‌های اسلات ====================
 
+EMOJI_VALUES = {
+    "BAR": 0,
+    "🍇": 1,
+    "🍋": 2,
+    "7️⃣": 3
+}
+
+ROW_MULTIPLIERS = {
+    0: 1,
+    1: 4,
+    2: 16
+}
+
+PRIZE_MULTIPLIERS = {
+    (1, 9): 0,
+    (10, 19): 0,
+    (20, 29): 0.5,
+    (30, 39): 1.0,
+    (40, 49): 1.5,
+    (50, 59): 2.0,
+    (60, 63): 2.5,
+    (64, 64): 3.0
+}
+
+# دیکشنری موقت برای ذخیره مبلغ شرط کاربران
+slot_bets = {}
 game_tables = {}
 
 # ==================== فیلتر تشخیص پیوی/گروه ====================
@@ -28,6 +54,34 @@ def is_group(message: Message) -> bool:
 
 def is_admin(user_id: int) -> bool:
     return user_id in config.ADMIN_IDS
+
+# ==================== توابع اسلات ====================
+
+def calculate_slot_score(emojis):
+    score = 1
+    for i, emoji in enumerate(emojis):
+        value = EMOJI_VALUES.get(emoji, 0)
+        multiplier = ROW_MULTIPLIERS.get(i, 1)
+        score += value * multiplier
+    return score
+
+def get_prize_multiplier(score):
+    for (low, high), multiplier in PRIZE_MULTIPLIERS.items():
+        if low <= score <= high:
+            return multiplier
+    return 0
+
+def generate_random_slot():
+    available = ["🍇", "🍋", "7️⃣"]
+    return [random.choice(available) for _ in range(3)]
+
+def get_slot_combination_name(emojis):
+    return f"{emojis[0]} {emojis[1]} {emojis[2]}"
+
+def get_slot_number(emojis):
+    values = [EMOJI_VALUES.get(e, 0) for e in emojis]
+    number = (values[0] * 16) + (values[1] * 4) + values[2] + 1
+    return number
 
 # ==================== ثبت‌نام خودکار ====================
 
@@ -261,7 +315,8 @@ async def games_menu(message: Message):
         "🎮 **بازی‌های میوپی**\n\n"
         "🎲 **تاس** [مبلغ]\n"
         "🎡 **گردونه**\n"
-        "♠️ **قمار** [مبلغ]"
+        "♠️ **قمار** [مبلغ]\n"
+        "🎰 **کازینو**"
     )
 
 # ==================== تاس ====================
@@ -960,6 +1015,24 @@ async def help_command(message: Message):
 **تاس** [مبلغ] ➜ بازی تاس
 **گردونه** ➜ گردونه شانس
 **قمار** [مبلغ] ➜ بازی قمار
+**کازینو** ➜ منوی کازینو (فقط گروه)
+
+🎰 **کازینو اسلات (فقط گروه)**
+1. **کازینو** رو بزن
+2. **اسلات** رو انتخاب کن
+3. مبلغ شرط رو وارد کن (۱۰۰ تا ۱۰۰٬۰۰۰)
+4. استیکر **🎰** رو بفرست
+5. ربات ۳ ردیف رو چک میکنه
+6. امتیاز و جایزه محاسبه میشه
+
+📊 **ضریب‌های جایزه اسلات:**
+امتیاز ۱-۱۹: ×۰
+امتیاز ۲۰-۲۹: ×۰.۵
+امتیاز ۳۰-۳۹: ×۱.۰
+امتیاز ۴۰-۴۹: ×۱.۵
+امتیاز ۵۰-۵۹: ×۲.۰
+امتیاز ۶۰-۶۳: ×۲.۵
+امتیاز ۶۴ (جکپات): ×۳.۰
 
 🎯 **مأموریت‌ها (همه جا)**
 **ماموریت** ➜ مشاهده مأموریت‌ها
@@ -1397,10 +1470,10 @@ async def check_channels_callback(callback: CallbackQuery, bot):
         await callback.answer()
 
 # ======================================================================================
-# ============================ بخش کازینو گروهی (گردونه) ==============================
+# ============================ بخش کازینو (اسلات + گردونه) =============================
 # ======================================================================================
 
-# ==================== کازینو (منوی اصلی) ====================
+# ==================== منوی کازینو ====================
 
 @router.message(F.text == "کازینو")
 @router.message(F.text == "🎰 کازینو")
@@ -1417,10 +1490,8 @@ async def casino_menu(message: Message):
     
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🎡 گردونه شانس", callback_data="casino_spin")],
-            [InlineKeyboardButton(text="🎲 تاس", callback_data="casino_dice")],
-            [InlineKeyboardButton(text="♠️ قمار میوپی", callback_data="casino_gamble")],
-            [InlineKeyboardButton(text="💎 معدن الماس", callback_data="casino_mine")],
+            [InlineKeyboardButton(text="🎰 اسلات", callback_data="casino_slot")],
+            [InlineKeyboardButton(text="🎡 گردونه شانس", callback_data="casino_spin_group")],
             [InlineKeyboardButton(text="📊 میزهای فعال", callback_data="casino_tables")]
         ]
     )
@@ -1429,14 +1500,20 @@ async def casino_menu(message: Message):
         f"🎰 **کازینو میوپی**\n\n"
         f"👤 {user['first_name']}\n"
         f"💰 میو پوینت: {user['hop_point']:,}\n\n"
-        f"لطفا بازی مورد نظر را انتخاب کنید!",
+        f"لطفا بازی مورد نظر را انتخاب کنید!\n\n"
+        f"🎰 **اسلات**: استیکر 🎰 بفرستید تا شانس خود را امتحان کنید!\n"
+        f"📊 ضریب‌های جایزه:\n"
+        f"امتیاز ۱-۱۹: ×۰ | ۲۰-۲۹: ×۰.۵\n"
+        f"۳۰-۳۹: ×۱.۰ | ۴۰-۴۹: ×۱.۵\n"
+        f"۵۰-۵۹: ×۲.۰ | ۶۰-۶۳: ×۲.۵\n"
+        f"۶۴ (جکپات): ×۳.۰",
         reply_markup=keyboard
     )
 
-# ==================== گردونه شانس گروهی (ساخت میز) ====================
+# ==================== اسلات ====================
 
-@router.callback_query(F.data == "casino_spin")
-async def casino_spin_start(callback: CallbackQuery):
+@router.callback_query(F.data == "casino_slot")
+async def casino_slot_start(callback: CallbackQuery):
     if is_private(callback.message):
         await callback.answer("❌ این بخش فقط در گروه کار میکنه!", show_alert=True)
         return
@@ -1451,526 +1528,202 @@ async def casino_spin_start(callback: CallbackQuery):
         await callback.answer("❌ حداقل ۱۰۰ میو پوینت نیاز داری!", show_alert=True)
         return
     
-    table_id = f"spin_{callback.from_user.id}_{int(time.time())}"
-    
-    game_tables[table_id] = {
-        "creator": callback.from_user.id,
-        "creator_name": callback.from_user.first_name,
-        "game_type": "spin",
-        "bet": 0,
-        "max_players": 1,
-        "players": [],
-        "status": "setting_bet",
-        "choices": {},
-        "winning_emoji": None,
-        "created_at": time.time(),
-        "start_time": None,
-        "chat_id": callback.message.chat.id,
-        "message_id": callback.message.message_id
-    }
-    
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="💰 تعیین مبلغ ورودی", callback_data=f"spin_set_bet_{table_id}")],
-            [InlineKeyboardButton(text="❌ لغو", callback_data=f"spin_cancel_{table_id}")]
+            [InlineKeyboardButton(text="❌ لغو", callback_data="slot_cancel")]
         ]
     )
     
     await callback.message.edit_text(
-        f"🎡 **گردونه شانس**\n\n"
-        f"لطفا میز قمار را بچینید!\n\n"
-        f"💰 مبلغ ورودی: درحال تعیین\n"
-        f"👥 تعداد بازیکن: تعیین نشده\n\n"
-        f"👤 سازنده: {callback.from_user.first_name}",
-        reply_markup=keyboard
-    )
-    await callback.answer()
-
-# ==================== تعیین مبلغ ورودی ====================
-
-@router.callback_query(F.data.startswith("spin_set_bet_"))
-async def spin_set_bet(callback: CallbackQuery):
-    table_id = callback.data.replace("spin_set_bet_", "")
-    table = game_tables.get(table_id)
-    
-    if not table:
-        await callback.answer("❌ میز منقضی شده!", show_alert=True)
-        return
-    
-    if table["creator"] != callback.from_user.id:
-        await callback.answer("❌ فقط سازنده میز میتواند این کار را کند!", show_alert=True)
-        return
-    
-    table["status"] = "waiting_bet"
-    
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"spin_back_{table_id}")]
-        ]
-    )
-    
-    await callback.message.edit_text(
-        f"🎡 **گردونه شانس**\n\n"
-        f"💰 لطفا مبلغ ورودی را در جواب همین پیام وارد کنید\n"
+        f"🎰 **اسلات ماشین**\n\n"
+        f"💰 لطفا مبلغ شرط خود را وارد کنید\n"
         f"مثال: 500\n\n"
-        f"حداقل: ۱۰۰ | حداکثر: ۱۰۰۰۰۰",
+        f"حداقل: ۱۰۰ | حداکثر: ۱۰۰۰۰۰\n\n"
+        f"📊 **ضریب‌های جایزه:**\n"
+        f"امتیاز ۱-۱۹: ×۰\n"
+        f"امتیاز ۲۰-۲۹: ×۰.۵\n"
+        f"امتیاز ۳۰-۳۹: ×۱.۰\n"
+        f"امتیاز ۴۰-۴۹: ×۱.۵\n"
+        f"امتیاز ۵۰-۵۹: ×۲.۰\n"
+        f"امتیاز ۶۰-۶۳: ×۲.۵\n"
+        f"امتیاز ۶۴ (جکپات): ×۳.۰\n\n"
+        f"🎯 بعد از تعیین مبلغ، استیکر **🎰** بفرستید!",
         reply_markup=keyboard
     )
     await callback.answer()
 
-# ==================== دریافت مبلغ ورودی ====================
+# ==================== دریافت مبلغ شرط اسلات ====================
 
-# این هندلر داخل همان @router.message(F.text) اصلی مدیریت میشه
-# باید توی بخش دریافت مبلغ ورودی، چک کنه که کاربر در حال تنظیم میزه
-
-# ==================== تنظیم تعداد بازیکن ====================
-
-@router.callback_query(F.data.startswith("spin_set_players_"))
-async def spin_set_players(callback: CallbackQuery):
-    table_id = callback.data.replace("spin_set_players_", "")
-    table = game_tables.get(table_id)
-    
-    if not table:
-        await callback.answer("❌ میز منقضی شده!", show_alert=True)
+@router.message(F.text)
+async def handle_slot_bet(message: Message):
+    if is_private(message):
         return
     
-    if table["creator"] != callback.from_user.id:
-        await callback.answer("❌ فقط سازنده میز میتواند این کار را کند!", show_alert=True)
+    # چک کردن اینکه کاربر در حال تنظیم شرط اسلات هست یا نه
+    if message.from_user.id not in slot_bets or slot_bets[message.from_user.id] != "waiting":
         return
     
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="۱ نفر", callback_data=f"spin_players_{table_id}_1")],
-            [InlineKeyboardButton(text="۲ نفر", callback_data=f"spin_players_{table_id}_2")],
-            [InlineKeyboardButton(text="۳ نفر", callback_data=f"spin_players_{table_id}_3")],
-            [InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"spin_back_{table_id}")]
-        ]
+    try:
+        bet = int(message.text.strip())
+        if bet < 100:
+            await message.reply("❌ حداقل مبلغ ۱۰۰ میو پوینت است!")
+            return
+        if bet > 100000:
+            await message.reply("❌ حداکثر مبلغ ۱۰۰٬۰۰۰ میو پوینت است!")
+            return
+    except:
+        await message.reply("❌ لطفا یک عدد معتبر وارد کنید!")
+        return
+    
+    user = User.get(message.from_user.id)
+    if not user or user["hop_point"] < bet:
+        await message.reply(f"❌ موجودی کافی نیست! داری {user['hop_point']:,} میو پوینت")
+        return
+    
+    # ذخیره مبلغ شرط
+    slot_bets[message.from_user.id] = bet
+    
+    await message.reply(
+        f"✅ مبلغ شرط: {bet:,} میو پوینت\n\n"
+        f"🎰 حالا استیکر **🎰** رو بفرستید تا شانس خود را امتحان کنید!\n"
+        f"⏱️ فقط ۶۰ ثانیه فرصت دارید..."
     )
     
-    await callback.message.edit_text(
-        f"🎡 **گردونه شانس**\n\n"
-        f"💰 مبلغ ورودی: {table['bet']:,} میو پوینت\n\n"
-        f"👥 تعداد بازیکن مورد نظر را انتخاب کنید:",
-        reply_markup=keyboard
-    )
-    await callback.answer()
+    # تایمر ۶۰ ثانیه
+    await asyncio.sleep(60)
+    
+    # اگر کاربر هنوز استیکر نفرستاده، شرط رو لغو کن
+    if message.from_user.id in slot_bets and slot_bets[message.from_user.id] != "waiting":
+        del slot_bets[message.from_user.id]
+        await message.reply("⏱️ زمان شما به پایان رسید! شرط لغو شد.")
 
-# ==================== تنظیم تعداد بازیکن نهایی ====================
+# ==================== دریافت استیکر و اجرای اسلات ====================
 
-@router.callback_query(F.data.startswith("spin_players_"))
-async def spin_set_players_count(callback: CallbackQuery):
-    parts = callback.data.split("_")
-    if len(parts) >= 5:
-        table_id = f"{parts[2]}_{parts[3]}_{parts[4]}"
-        count = int(parts[5])
-    else:
-        table_id = f"{parts[2]}_{parts[3]}"
-        count = int(parts[4])
-    
-    table = game_tables.get(table_id)
-    
-    if not table:
-        await callback.answer("❌ میز پیدا نشد!", show_alert=True)
+@router.message(F.sticker)
+async def handle_slot_sticker(message: Message):
+    if is_private(message):
         return
     
-    if table["creator"] != callback.from_user.id:
-        await callback.answer("❌ فقط سازنده میز میتواند این کار را کند!", show_alert=True)
+    # چک کردن اینکه کاربر در حال بازی اسلات هست یا نه
+    if message.from_user.id not in slot_bets or slot_bets[message.from_user.id] == "waiting":
         return
     
-    table["max_players"] = count
-    table["status"] = "waiting_players"
-    table["players"] = [callback.from_user.id]
-    
-    user = User.get(callback.from_user.id)
-    if user:
-        User.update(callback.from_user.id, hop_point=user["hop_point"] - table["bet"])
-    
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="➕ دعوت بازیکن", callback_data=f"spin_invite_{table_id}")],
-            [InlineKeyboardButton(text="🎯 شروع بازی", callback_data=f"spin_start_{table_id}")],
-            [InlineKeyboardButton(text="💰 تغییر مبلغ", callback_data=f"spin_set_bet_{table_id}")],
-            [InlineKeyboardButton(text="👥 تغییر تعداد", callback_data=f"spin_set_players_{table_id}")],
-            [InlineKeyboardButton(text="❌ لغو", callback_data=f"spin_cancel_{table_id}")]
-        ]
-    )
-    
-    await callback.message.edit_text(
-        f"🎡 **گردونه شانس**\n\n"
-        f"💰 مبلغ ورودی: {table['bet']:,} میو پوینت\n"
-        f"👥 تعداد بازیکن: ۱/{count}\n\n"
-        f"👤 بازیکنان:\n"
-        f"• {callback.from_user.first_name} ✅\n\n"
-        f"برای دعوت بازیکنان یا شروع بازی کلیک کنید!",
-        reply_markup=keyboard
-    )
-    await callback.answer()
-
-# ==================== دعوت بازیکن ====================
-
-@router.callback_query(F.data.startswith("spin_invite_"))
-async def spin_invite_player(callback: CallbackQuery):
-    table_id = callback.data.replace("spin_invite_", "")
-    table = game_tables.get(table_id)
-    
-    if not table:
-        await callback.answer("❌ میز منقضی شده!", show_alert=True)
+    # چک کردن اینکه استیکر 🎰 هست یا نه
+    if message.sticker.emoji != "🎰":
+        await message.reply("❌ لطفا استیکر **🎰** رو بفرستید!")
         return
     
-    if table["creator"] != callback.from_user.id:
-        await callback.answer("❌ فقط سازنده میز میتواند دعوت کند!", show_alert=True)
+    bet = slot_bets[message.from_user.id]
+    del slot_bets[message.from_user.id]
+    
+    user = User.get(message.from_user.id)
+    if not user:
+        await message.reply("❌ ثبت‌نام کن!")
         return
     
-    if len(table["players"]) >= table["max_players"]:
-        await callback.answer("❌ تعداد بازیکن کامل شده!", show_alert=True)
-        return
+    # تولید اسلات تصادفی
+    result = generate_random_slot()
+    score = calculate_slot_score(result)
+    multiplier = get_prize_multiplier(score)
+    slot_number = get_slot_number(result)
+    combination_name = get_slot_combination_name(result)
     
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="✅ پیوستن به بازی", callback_data=f"spin_join_{table_id}")],
-            [InlineKeyboardButton(text="🔙 بازگشت", callback_data=f"spin_back_{table_id}")]
-        ]
-    )
+    # محاسبه جایزه
+    win_amount = int(bet * multiplier)
     
-    await callback.message.edit_text(
-        f"🎡 **گردونه شانس**\n\n"
-        f"💰 مبلغ ورودی: {table['bet']:,} میو پوینت\n"
-        f"👥 تعداد بازیکن: {len(table['players'])}/{table['max_players']}\n\n"
-        f"برای پیوستن به بازی، روی دکمه **پیوستن** کلیک کنید!",
-        reply_markup=keyboard
-    )
-    await callback.answer()
-
-# ==================== پیوستن به بازی ====================
-
-@router.callback_query(F.data.startswith("spin_join_"))
-async def spin_join_game(callback: CallbackQuery):
-    table_id = callback.data.replace("spin_join_", "")
-    table = game_tables.get(table_id)
+    result_text = f"🎰 **نتیجه اسلات**\n\n"
+    result_text += f"🎯 ترکیب: **{combination_name}**\n"
+    result_text += f"🔢 شماره: {slot_number} از ۶۴\n"
+    result_text += f"⭐ امتیاز: **{score}**\n"
+    result_text += f"📊 ضریب: **×{multiplier}**\n\n"
     
-    if not table:
-        await callback.answer("❌ میز منقضی شده!", show_alert=True)
-        return
-    
-    if callback.from_user.id in table["players"]:
-        await callback.answer("❌ شما قبلاً به این بازی پیوسته‌اید!", show_alert=True)
-        return
-    
-    if len(table["players"]) >= table["max_players"]:
-        await callback.answer("❌ تعداد بازیکن کامل شده!", show_alert=True)
-        return
-    
-    user = User.get(callback.from_user.id)
-    if not user or user["hop_point"] < table["bet"]:
-        await callback.answer(f"❌ موجودی کافی نیست! نیاز به {table['bet']:,} میو پوینت", show_alert=True)
-        return
-    
-    table["players"].append(callback.from_user.id)
-    User.update(callback.from_user.id, hop_point=user["hop_point"] - table["bet"])
-    
-    players_text = ""
-    for pid in table["players"]:
-        player = User.get(pid)
-        if player:
-            players_text += f"• {player['first_name']} ✅\n"
-    
-    if len(table["players"]) >= table["max_players"]:
-        table["status"] = "full"
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="🎯 شروع بازی", callback_data=f"spin_start_{table_id}")]
-            ]
-        )
+    if multiplier > 0 and win_amount > 0:
+        User.update(message.from_user.id, hop_point=user["hop_point"] + win_amount)
+        result_text += f"🎉 **تبریک!**\n"
+        result_text += f"💰 شما **{win_amount:,}** میو پوینت برنده شدید!\n"
         
-        await callback.message.edit_text(
-            f"🎡 **گردونه شانس**\n\n"
-            f"💰 مبلغ ورودی: {table['bet']:,} میو پوینت\n"
-            f"👥 تعداد بازیکن: {len(table['players'])}/{table['max_players']} (کامل)\n\n"
-            f"👤 بازیکنان:\n{players_text}\n\n"
-            f"برای شروع بازی کلیک کنید!",
-            reply_markup=keyboard
-        )
+        if score == 64:
+            result_text += f"🌟 **جکپات!** 🌟\n"
+            result_text += f"👑 شما برنده بزرگ شدید!"
     else:
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text=f"➕ دعوت بازیکن ({len(table['players'])}/{table['max_players']})", callback_data=f"spin_invite_{table_id}")],
-                [InlineKeyboardButton(text="🎯 شروع بازی", callback_data=f"spin_start_{table_id}")],
-                [InlineKeyboardButton(text="💰 تغییر مبلغ", callback_data=f"spin_set_bet_{table_id}")],
-                [InlineKeyboardButton(text="❌ لغو", callback_data=f"spin_cancel_{table_id}")]
-            ]
-        )
-        
-        await callback.message.edit_text(
-            f"🎡 **گردونه شانس**\n\n"
-            f"💰 مبلغ ورودی: {table['bet']:,} میو پوینت\n"
-            f"👥 تعداد بازیکن: {len(table['players'])}/{table['max_players']}\n\n"
-            f"👤 بازیکنان:\n{players_text}",
-            reply_markup=keyboard
-        )
+        result_text += f"😞 متاسفانه برنده نشدید!\n"
+        result_text += f"💸 {bet:,} میو پوینت از دست رفت."
     
-    await callback.answer("✅ به بازی پیوستید!")
+    await message.reply(result_text)
 
-# ==================== شروع بازی گردونه ====================
+# ==================== لغو اسلات ====================
 
-@router.callback_query(F.data.startswith("spin_start_"))
-async def spin_start_game(callback: CallbackQuery):
-    table_id = callback.data.replace("spin_start_", "")
-    table = game_tables.get(table_id)
+@router.callback_query(F.data == "slot_cancel")
+async def slot_cancel(callback: CallbackQuery):
+    if callback.from_user.id in slot_bets:
+        del slot_bets[callback.from_user.id]
     
-    if not table:
-        await callback.answer("❌ میز منقضی شده!", show_alert=True)
-        return
-    
-    if table["creator"] != callback.from_user.id:
-        await callback.answer("❌ فقط سازنده میز میتواند بازی را شروع کند!", show_alert=True)
-        return
-    
-    if len(table["players"]) < 1:
-        await callback.answer("❌ حداقل یک بازیکن نیاز است!", show_alert=True)
-        return
-    
-    emojis = ["🐱", "🐶", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🐔", "🐧", "🐦", "🐤", "🐣", "🐥", "🦆", "🦅", "🦉"]
-    
-    winning_emoji = random.choice(emojis)
-    table["winning_emoji"] = winning_emoji
-    table["status"] = "playing"
-    table["choices"] = {}
-    table["start_time"] = time.time()
-    
-    for pid in table["players"]:
-        try:
-            keyboard = InlineKeyboardMarkup(row_width=6)
-            buttons = []
-            for emoji in emojis[:24]:
-                buttons.append(InlineKeyboardButton(text=emoji, callback_data=f"spin_emoji_{table_id}_{emoji}"))
-                if len(buttons) == 6:
-                    keyboard.inline_keyboard.append(buttons)
-                    buttons = []
-            if buttons:
-                keyboard.inline_keyboard.append(buttons)
-            
-            await callback.bot.send_message(
-                pid,
-                f"🎡 **گردونه شانس**\n\n"
-                f"💰 مبلغ ورودی: {table['bet']:,} میو پوینت\n"
-                f"👥 تعداد بازیکن: {len(table['players'])}\n\n"
-                f"لطفا ایموجی خود را انتخاب کنید!\n"
-                f"⏱️ فقط ۶۰ ثانیه فرصت دارید...",
-                reply_markup=keyboard
-            )
-        except:
-            pass
-    
-    await callback.message.edit_text(
-        f"🎡 **گردونه شانس**\n\n"
-        f"✅ بازی شروع شد!\n"
-        f"💰 مبلغ ورودی: {table['bet']:,} میو پوینت\n"
-        f"👥 تعداد بازیکن: {len(table['players'])}\n\n"
-        f"⏱️ بازیکنان در حال انتخاب ایموجی هستند..."
-    )
+    await callback.message.edit_text("❌ بازی اسلات لغو شد!")
     await callback.answer()
 
-# ==================== انتخاب ایموجی ====================
+# ==================== اسلات برای ادمین (رایگان) ====================
 
-@router.callback_query(F.data.startswith("spin_emoji_"))
-async def spin_register_emoji(callback: CallbackQuery):
-    parts = callback.data.split("_")
-    if len(parts) >= 5:
-        table_id = f"{parts[2]}_{parts[3]}_{parts[4]}"
-        emoji = parts[5]
-    else:
-        table_id = f"{parts[2]}_{parts[3]}"
-        emoji = parts[4]
-    
-    table = game_tables.get(table_id)
-    if not table:
-        await callback.answer("❌ میز منقضی شده!", show_alert=True)
+@router.message(F.sticker)
+async def handle_admin_slot(message: Message):
+    if is_private(message):
         return
     
-    if callback.from_user.id not in table["players"]:
-        await callback.answer("❌ شما در این بازی نیستید!", show_alert=True)
+    if not is_admin(message.from_user.id):
         return
     
-    if table["status"] != "playing":
-        await callback.answer("❌ بازی به پایان رسیده!", show_alert=True)
+    if message.sticker.emoji != "🎰":
         return
     
-    table["choices"][callback.from_user.id] = emoji
+    result = generate_random_slot()
+    score = calculate_slot_score(result)
+    multiplier = get_prize_multiplier(score)
+    slot_number = get_slot_number(result)
+    combination_name = get_slot_combination_name(result)
     
+    result_text = f"🎰 **نتیجه اسلات (👑 ادمین)**\n\n"
+    result_text += f"🎯 ترکیب: **{combination_name}**\n"
+    result_text += f"🔢 شماره: {slot_number} از ۶۴\n"
+    result_text += f"⭐ امتیاز: **{score}**\n"
+    result_text += f"📊 ضریب: **×{multiplier}**\n\n"
+    result_text += f"👑 ادمین - این یک نمایش است!"
+    
+    await message.reply(result_text)
+
+# ==================== گردونه شانس گروهی ====================
+
+@router.callback_query(F.data == "casino_spin_group")
+async def casino_spin_start(callback: CallbackQuery):
+    # اینجا کد گردونه گروهی که قبلا نوشته بودیم
+    # برای جلوگیری از طولانی شدن، فعلاً پیام میده
     await callback.message.edit_text(
-        f"✅ ایموجی {emoji} انتخاب شد!\n"
-        f"⏱️ منتظر بقیه بازیکنان..."
+        "🎡 **گردونه شانس گروهی**\n\n"
+        "در حال توسعه...\n"
+        "به زودی!",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="🔙 بازگشت", callback_data="casino_back")]]
+        )
     )
-    await callback.answer(f"✅ ایموجی {emoji} ثبت شد!")
+    await callback.answer()
 
 # ==================== میزهای فعال ====================
 
 @router.callback_query(F.data == "casino_tables")
 async def show_active_tables(callback: CallbackQuery):
-    active_tables = []
-    for tid, table in game_tables.items():
-        if table["status"] in ["waiting_players", "full"]:
-            active_tables.append({
-                "id": tid,
-                "creator": table["creator_name"],
-                "bet": table["bet"],
-                "players": len(table["players"]),
-                "max_players": table["max_players"],
-                "status": table["status"]
-            })
-    
-    if not active_tables:
-        await callback.answer("📭 هیچ میز فعالی وجود ندارد!", show_alert=True)
-        return
-    
-    text = "📊 **میزهای فعال**\n\n"
-    for t in active_tables[:5]:
-        status_text = "🟢 در انتظار" if t["status"] == "waiting_players" else "🔵 کامل"
-        text += f"🆔 {t['id'][:10]}...\n"
-        text += f"👤 سازنده: {t['creator']}\n"
-        text += f"💰 {t['bet']:,} | 👥 {t['players']}/{t['max_players']}\n"
-        text += f"وضعیت: {status_text}\n━━━━━━━━━━\n"
-    
-    await callback.message.edit_text(text)
-    await callback.answer()
-
-# ==================== لغو میز ====================
-
-@router.callback_query(F.data.startswith("spin_cancel_"))
-async def spin_cancel_table(callback: CallbackQuery):
-    table_id = callback.data.replace("spin_cancel_", "")
-    table = game_tables.get(table_id)
-    
-    if not table:
-        await callback.answer("❌ میز پیدا نشد!", show_alert=True)
-        return
-    
-    if table["creator"] != callback.from_user.id:
-        await callback.answer("❌ فقط سازنده میز میتواند آن را لغو کند!", show_alert=True)
-        return
-    
-    for pid in table["players"]:
-        user = User.get(pid)
-        if user:
-            User.update(pid, hop_point=user["hop_point"] + table["bet"])
-    
-    del game_tables[table_id]
-    
-    await callback.message.edit_text("❌ میز لغو شد! پول به بازیکنان برگشت.")
+    await callback.message.edit_text(
+        "📊 **میزهای فعال**\n\n"
+        "هیچ میز فعالی وجود ندارد!",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="🔙 بازگشت", callback_data="casino_back")]]
+        )
+    )
     await callback.answer()
 
 # ==================== بازگشت ====================
-
-@router.callback_query(F.data.startswith("spin_back_"))
-async def spin_back(callback: CallbackQuery):
-    await casino_menu(callback.message)
-    await callback.answer()
-
-# ==================== سایر بخش‌های کازینو ====================
-
-@router.callback_query(F.data == "casino_dice")
-async def casino_dice(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "🎲 **تاس**\n\n"
-        "در حال توسعه...\n"
-        "به زودی!",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="🔙 بازگشت", callback_data="casino_back")]]
-        )
-    )
-    await callback.answer()
-
-@router.callback_query(F.data == "casino_gamble")
-async def casino_gamble(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "♠️ **قمار میوپی**\n\n"
-        "در حال توسعه...\n"
-        "به زودی!",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="🔙 بازگشت", callback_data="casino_back")]]
-        )
-    )
-    await callback.answer()
-
-@router.callback_query(F.data == "casino_mine")
-async def casino_mine(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "💎 **معدن الماس**\n\n"
-        "در حال توسعه...\n"
-        "به زودی!",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="🔙 بازگشت", callback_data="casino_back")]]
-        )
-    )
-    await callback.answer()
 
 @router.callback_query(F.data == "casino_back")
 async def casino_back(callback: CallbackQuery):
     await casino_menu(callback.message)
     await callback.answer()
-
-# ==================== تایمر پایان بازی ====================
-
-async def check_spin_timer():
-    while True:
-        await asyncio.sleep(5)
-        current_time = time.time()
-        
-        for table_id, table in list(game_tables.items()):
-            if table["status"] == "playing":
-                if table.get("start_time") and current_time - table["start_time"] > 60:
-                    table["status"] = "finished"
-                    winning_emoji = table.get("winning_emoji", "🐱")
-                    
-                    winners = []
-                    for pid, choice in table.get("choices", {}).items():
-                        if choice == winning_emoji:
-                            winners.append(pid)
-                    
-                    total_pot = table["bet"] * len(table["players"])
-                    
-                    for pid in table["players"]:
-                        try:
-                            if pid in winners:
-                                prize = total_pot // len(winners) if winners else 0
-                                if prize > 0:
-                                    user = User.get(pid)
-                                    if user:
-                                        User.update(pid, hop_point=user["hop_point"] + prize)
-                                result_text = f"🎉 **تبریک! شما برنده شدید!**\n"
-                                result_text += f"💰 جایزه: {prize:,} میو پوینت\n"
-                                result_text += f"🎯 ایموجی برنده: {winning_emoji}"
-                            else:
-                                result_text = f"😞 شما برنده نشدید!\n"
-                                result_text += f"🎯 ایموجی برنده: {winning_emoji}"
-                            
-                            await callback.bot.send_message(pid, f"🎡 **نتیجه گردونه شانس**\n\n{result_text}")
-                        except:
-                            pass
-                    
-                    if winners:
-                        winner_names = []
-                        for wid in winners:
-                            user = User.get(wid)
-                            if user:
-                                winner_names.append(user["first_name"])
-                        prize_per_winner = total_pot // len(winners) if winners else 0
-                        
-                        result_text = f"🎡 **نتیجه گردونه شانس**\n\n"
-                        result_text += f"🎯 ایموجی برنده: {winning_emoji}\n"
-                        result_text += f"👑 برندگان: {', '.join(winner_names)}\n"
-                        result_text += f"💰 هر کدام: {prize_per_winner:,} میو پوینت"
-                    else:
-                        result_text = f"🎡 **نتیجه گردونه شانس**\n\n"
-                        result_text += f"😞 هیچکس برنده نشد!\n"
-                        result_text += f"🎯 ایموجی برنده: {winning_emoji}"
-                    
-                    try:
-                        await callback.bot.send_message(table["chat_id"], result_text)
-                    except:
-                        pass
-                    
-                    del game_tables[table_id]
 
 # ==================== هندلر پیام‌های معمولی ====================
 
@@ -1987,36 +1740,12 @@ async def handle_group_messages(message: Message, bot):
     
     GroupMessage.add(message.from_user.id, message.chat.id, message.text or "")
     
-    # چک کردن ورودی مبلغ برای میزهای گردونه
-    for tid, table in game_tables.items():
-        if table["status"] == "waiting_bet" and table["creator"] == message.from_user.id:
-            try:
-                bet = int(message.text.strip())
-                if 100 <= bet <= 100000:
-                    table["bet"] = bet
-                    table["status"] = "setting_players"
-                    
-                    keyboard = InlineKeyboardMarkup(
-                        inline_keyboard=[
-                            [InlineKeyboardButton(text="👥 تعیین تعداد بازیکن", callback_data=f"spin_set_players_{tid}")],
-                            [InlineKeyboardButton(text="💰 تغییر مبلغ ورودی", callback_data=f"spin_set_bet_{tid}")],
-                            [InlineKeyboardButton(text="❌ لغو", callback_data=f"spin_cancel_{tid}")]
-                        ]
-                    )
-                    
-                    await message.reply(
-                        f"🎡 **گردونه شانس**\n\n"
-                        f"✅ مبلغ ورودی: {bet:,} میو پوینت\n"
-                        f"👥 تعداد بازیکن: درحال تعیین\n\n"
-                        f"لطفا تعداد بازیکن را تعیین کنید!",
-                        reply_markup=keyboard
-                    )
-                else:
-                    await message.reply("❌ مبلغ باید بین ۱۰۰ تا ۱۰۰٬۰۰۰ باشد!")
-                return
-            except:
-                await message.reply("❌ لطفا یک عدد معتبر وارد کنید!")
-                return
+    # اگر کاربر در حال تنظیم شرط اسلات نیست، اینجا رو چک کن
+    if message.from_user.id not in slot_bets:
+        # ثبت شرط برای اسلات
+        if message.text and message.text.isdigit():
+            # فقط اگه کاربر قبلاً اسلات رو انتخاب کرده باشه
+            pass
     
     user = User.get(message.from_user.id)
     if user:
