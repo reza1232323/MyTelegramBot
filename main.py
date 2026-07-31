@@ -20,7 +20,8 @@ from telegram.request import HTTPXRequest
 
 import config
 import database as db
-from handlers import admin, economy, pet
+from handlers import admin, economy, pet, slot
+from slot import slot_bets, handle_slot_bet, handle_slot_sticker
 
 # مقدار پاداش دعوت (سکه/پوینت)
 REFERRAL_REWARD = 500
@@ -53,7 +54,6 @@ async def check_user_membership(bot, user_id: int) -> bool:
             if member.status in ["left", "kicked"]:
                 return False
         except BadRequest:
-            # اگر ربات ادمین کانال نباشد یا آیدی اشتباه باشد، رد می‌شود
             continue
         except Exception as e:
             logging.error(f"خطا در بررسی عضویت کانال {ch['username']}: {e}")
@@ -193,7 +193,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ["🐶 پنل سگ", "خرید سگ", "غذا"],
             ["کارخونه", "شهر"],
             ["🏦 بانک", "👥 زیرمجموعه‌گیری"],
-            ["راهنما"],
+            ["اسلات", "راهنما"],
         ],
         resize_keyboard=True,
     )
@@ -210,7 +210,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     start_text = (
         f"سلام {update.effective_user.first_name} عزیز! 👋\n"
         f"به ربات خوش آمدید.\n\n"
-        f"💡 برای گرفتن لینک دعوت می‌توانید از دکمه شیشه‌ای زیر یا دکمه 👥 زیرمجموعه‌گیری در کیبورد استفاده کنید."
+        f"💡 برای گرفتن لینک دعوت می‌توانید از دکمه شیشه‌ای زیر یا دکمه 👥 زیرمجموعه‌گیری در کیبورد استفاده کنید.\n\n"
+        f"🎰 برای بازی اسلات از دکمه اسلات استفاده کنید."
     )
 
     await update.message.reply_text(start_text, reply_markup=main_keyboard)
@@ -310,6 +311,11 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     clean_text = text.split("@")[0].lower()
 
+    # ۰. اسلات (اولویت بالا)
+    if clean_text in ["اسلات", "slot"]:
+        await slot.slot_menu(update, context)
+        return
+
     # ۱. عمومی، سگ و زیرمجموعه‌گیری
     if clean_text in ["پروفایل", "هاپوهام", "هاپوهاش", "/profile"]:
         await pet.show_profile(update, context, user)
@@ -403,6 +409,19 @@ async def callback_router(
             await query.answer(
                 "❌ هنوز در تمامی کانال‌ها عضو نشده‌اید!", show_alert=True
             )
+        return
+
+    # ===== بخش اسلات =====
+    if data == "slot_start":
+        await slot.slot_start_callback(update, context)
+        return
+
+    if data.startswith("slot_send_sticker_"):
+        await slot.slot_send_sticker_callback(update, context)
+        return
+
+    if data == "slot_cancel":
+        await slot.slot_cancel_callback(update, context)
         return
 
     if ":" in data:
@@ -503,6 +522,12 @@ def main():
     if hasattr(economy, "bank_status"):
         app.add_handler(CommandHandler("bank", economy.bank_status))
     app.add_handler(CommandHandler(["referral", "sub"], referral_command))
+
+    # هندلر استیکر برای اسلات
+    app.add_handler(MessageHandler(filters.Sticker.ALL, slot.handle_slot_sticker))
+
+    # هندلر متن برای اسلات (دریافت مبلغ شرط)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_slot_bet))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, router))
     app.add_handler(CallbackQueryHandler(callback_router))
