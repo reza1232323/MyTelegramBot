@@ -66,13 +66,13 @@ CONTRABAND_PRODUCTS = {
 }
 
 active_gambles = {}
+active_multi_dices = {}
 
 
 # ----------------- ۰. بخش بانک -----------------
 
 
 def _ensure_user_dict(user, user_id: int) -> dict:
-    """تبدیل ورودی کاربر به دیکشنری و استخراج مقادیر از دیتابیس"""
     account_number = (
         db.get_user_field(user_id, "account_number")
         if hasattr(db, "get_user_field")
@@ -100,7 +100,6 @@ def _ensure_user_dict(user, user_id: int) -> dict:
 async def bank_status(
     update: Update, context: ContextTypes.DEFAULT_TYPE, user=None
 ):
-    """نمایش وضعیت بانک هاپی"""
     user_id = update.effective_user.id
     user_data = _ensure_user_dict(user, user_id)
 
@@ -154,7 +153,6 @@ async def bank_status(
 async def handle_bank_callback(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
-    """مدیریت دکمه‌های مربوط به بانک"""
     query = update.callback_query
     user_id = query.from_user.id
     data = query.data.split(":")[0]
@@ -404,32 +402,34 @@ async def process_smuggling_result(context, user_id, total_cost, cart):
 async def show_casino_menu(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
-    """نمایش منوی شیشه‌ای کازینو"""
+    """نمایش منوی اصلی کازینو"""
     user_id = update.effective_user.id
     keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
-                "🎰 ماشین اسلات", callback_data=f"casino_slots:{user_id}"
+                "🎲 تاس تک‌نفره", callback_data=f"setup_single_dice:{user_id}"
             ),
             InlineKeyboardButton(
-                "🎲 تاس شانس", callback_data=f"casino_dice:{user_id}"
+                "🎰 گردونه شانس", callback_data=f"casino_slots:{user_id}"
             ),
         ],
         [
             InlineKeyboardButton(
-                "🪙 شیر یا خط", callback_data=f"casino_coin:{user_id}"
+                "⚔️ چالش تاس گروهی",
+                callback_data=f"setup_multi_dice:{user_id}",
             ),
             InlineKeyboardButton(
-                "🃏 چالش قمار گروهی", callback_data=f"casino_gamble_info:{user_id}"
+                "🃏 قمار عددی گروهی", callback_data=f"casino_gamble_info:{user_id}"
             ),
         ],
     ])
 
     text = (
-        "🎰 **به کازینو هاپی خوش آمدید!** 🎰\n\n"
-        "یکی از بازی‌های زیر را برای شرط‌بندی انتخاب کنید:\n\n"
-        "💡 *نکته:* برای قمار گروهی می‌توانید از دستور زیر استفاده کنید:\n"
-        "`قمار [مبلغ] [تعداد نفرات]`"
+        "🎰 **کازینو پیشرفته هاپی** 🎰\n\n"
+        "نوع بازی خود را انتخاب کنید:\n\n"
+        "🎲 **تاس تک‌نفره:** پیش‌بینی زوج/فرد (۱.۵ برابر) یا عدد دقیق (۳ برابر)\n"
+        "⚔️ **تاس گروهی:** رقابت انداختن استیکر تاس با سایر بازیکنان\n"
+        "🃏 **قمار چندنفره:** استفاده از دستور `قمار [مبلغ] [تعداد]`"
     )
 
     if update.callback_query:
@@ -445,16 +445,47 @@ async def show_casino_menu(
 async def handle_casino_callback(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
-    """مدیریت دکمه‌های شیشه‌ای بخش کازینو"""
     query = update.callback_query
     user_id = query.from_user.id
-    data = query.data.split(":")[0]
+    data = query.data
+
     await query.answer()
 
-    points = int(db.get_user_field(user_id, "points") or 0)
+    if data.startswith("setup_single_dice"):
+        context.user_data["state"] = "WAITING_FOR_SINGLE_DICE_BET"
+        await query.message.reply_text(
+            "💵 **مبلغ شرط‌بندی تاس تک‌نفره را وارد کنید:**"
+        )
 
-    if data == "casino_slots":
-        cost = 100
+    elif data.startswith("dice_select_"):
+        choice = data.split("_")[2]
+        bet = context.user_data.get("single_dice_bet", 0)
+
+        if bet <= 0:
+            await query.message.reply_text("❌ مبلغ شرط مشخص نشده است.")
+            return
+
+        context.user_data["dice_choice"] = choice
+        context.user_data["state"] = "WAITING_FOR_DICE_STICKER"
+
+        await query.message.reply_text(
+            f"🎲 **شرط ثبت شد!**\n"
+            f"💰 مبلغ: {format_balance(bet)} هاپ\n"
+            f"🎯 انتخاب شما: **{choice}**\n\n"
+            f"👇 **اکنون استیکر انیمیشنی تاس (🎲) را روی همین پیام بفرستید!**"
+        )
+
+    elif data.startswith("setup_multi_dice"):
+        await query.message.reply_text(
+            "⚔️ برای ایجاد چالش تاس چندنفره از دستور زیر استفاده کنید:\n"
+            "`تاس [مبلغ] [تعداد نفرات]`\n\n"
+            "مثال: `تاس 1000 3`",
+            parse_mode="Markdown",
+        )
+
+    elif data.startswith("casino_slots"):
+        cost = 200
+        points = int(db.get_user_field(user_id, "points") or 0)
         if points < cost:
             await query.message.reply_text(
                 f"❌ سکه کافی ندارید! ورودی اسلات: {format_balance(cost)} هاپ"
@@ -463,83 +494,293 @@ async def handle_casino_callback(
 
         db.update_field(user_id, "points", -cost, relative=True)
         emojis = ["🍎", "🍋", "🎰", "💎", "🔔"]
-        slot1, slot2, slot3 = (
+        s1, s2, s3 = (
             random.choice(emojis),
             random.choice(emojis),
             random.choice(emojis),
         )
 
-        if slot1 == slot2 == slot3:
+        if s1 == s2 == s3:
             prize = cost * 5
             db.update_field(user_id, "points", prize, relative=True)
-            msg = f"🎰 **[ {slot1} | {slot2} | {slot3} ]**\n\n🎉 **تبریک! ۳ شکل یکسان آمد!**\n🎁 برنده {format_balance(prize)} هاپ شدید!"
-        elif slot1 == slot2 or slot2 == slot3 or slot1 == slot3:
+            msg = f"🎰 **[ {s1} | {s2} | {s3} ]**\n\n🎉 **جک‌پات! ۳ شکل یکسان!**\n🎁 {format_balance(prize)} هاپ برنده شدید!"
+        elif s1 == s2 or s2 == s3 or s1 == s3:
             prize = int(cost * 1.5)
             db.update_field(user_id, "points", prize, relative=True)
-            msg = f"🎰 **[ {slot1} | {slot2} | {slot3} ]**\n\n✨ **دو شکل یکسان آمد!**\n🎁 برنده {format_balance(prize)} هاپ شدید!"
+            msg = f"🎰 **[ {s1} | {s2} | {s3} ]**\n\n✨ **دو شکل یکسان!**\n🎁 {format_balance(prize)} هاپ برنده شدید!"
         else:
-            msg = f"🎰 **[ {slot1} | {slot2} | {slot3} ]**\n\n❌ متاسفانه برنده نشدید. دوباره شانس خود را امتحان کنید!"
-
-        await query.message.reply_text(msg, parse_mode="Markdown")
-
-    elif data == "casino_dice":
-        cost = 200
-        if points < cost:
-            await query.message.reply_text(
-                f"❌ سکه کافی ندارید! ورودی تاس: {format_balance(cost)} هاپ"
-            )
-            return
-
-        db.update_field(user_id, "points", -cost, relative=True)
-        user_dice = random.randint(1, 6)
-        bot_dice = random.randint(1, 6)
-
-        if user_dice > bot_dice:
-            prize = cost * 2
-            db.update_field(user_id, "points", prize, relative=True)
-            msg = f"🎲 تاس شما: **{user_dice}** | تاس ربات: **{bot_dice}**\n\n🎉 **شما بردید!**\n🎁 مبلغ {format_balance(prize)} هاپ اضافه شد."
-        elif user_dice == bot_dice:
-            db.update_field(user_id, "points", cost, relative=True)
-            msg = f"🎲 تاس شما: **{user_dice}** | تاس ربات: **{bot_dice}**\n\n🤝 **مساوی شدید!** سکه شما بازگردانده شد."
-        else:
-            msg = f"🎲 تاس شما: **{user_dice}** | تاس ربات: **{bot_dice}**\n\n❌ **شما باختید!**"
-
-        await query.message.reply_text(msg, parse_mode="Markdown")
-
-    elif data == "casino_coin":
-        cost = 150
-        if points < cost:
-            await query.message.reply_text(
-                f"❌ سکه کافی ندارید! ورودی شیر یا خط: {format_balance(cost)} هاپ"
-            )
-            return
-
-        db.update_field(user_id, "points", -cost, relative=True)
-        win = random.choice([True, False])
-
-        if win:
-            prize = cost * 2
-            db.update_field(user_id, "points", prize, relative=True)
-            msg = f"🪙 **شیر یا خط**\n\n🎉 حدس شما درست بود!\n🎁 برنده {format_balance(prize)} هاپ شدید."
-        else:
-            msg = f"🪙 **شیر یا خط**\n\n❌ سکه روی دیگر افتاد و باختید!"
+            msg = f"🎰 **[ {s1} | {s2} | {s3} ]**\n\n❌ متاسفانه برنده نشدید."
 
         await query.message.reply_text(msg, parse_mode="Markdown")
 
     elif data == "casino_gamble_info":
         await query.message.reply_text(
-            "🃏 **دستور قمار گروهی:**\n\n"
-            "برای شروع قمار چندنفره عبارت زیر را در گروه بفرستید:\n"
-            "`قمار [مبلغ] [تعداد نفرات]`\n\n"
-            "مثال: `قمار 500 3`",
+            "🃏 **دستور قمار گروهی:**\n`قمار [مبلغ] [تعداد نفرات]`",
             parse_mode="Markdown",
         )
+
+
+# --- پردازش تاس تک‌نفره فرستاده شده ---
+
+
+async def handle_dice_sticker(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    """پردازش استیکر تاس ارسالی کاربر (تک‌نفره و چندنفره)"""
+    if not update.message or not update.message.dice:
+        return
+
+    dice_emoji = update.message.dice.emoji
+    dice_value = update.message.dice.value
+    user = update.effective_user
+    user_id = user.id
+
+    # ۱. بررسی بازی چندنفره تاس
+    reply_to = update.message.reply_to_message
+    if reply_to:
+        for game_id, game in list(active_multi_dices.items()):
+            if game["msg_id"] == reply_to.message_id:
+                if user_id not in game["players"]:
+                    await update.message.reply_text(
+                        "❌ شما جزء لیست شرکت‌کنندگان این چالش نیستید!"
+                    )
+                    return
+                if user_id in game["scores"]:
+                    await update.message.reply_text(
+                        "⚠️ شما قبلاً تاس خود را انداخته‌اید!"
+                    )
+                    return
+
+                game["scores"][user_id] = dice_value
+                await update.message.reply_text(
+                    f"🎲 **تاس {user.full_name}: {dice_value}** ثبت شد!"
+                )
+
+                # اگر همه تاس انداختند
+                if len(game["scores"]) == len(game["players"]):
+                    await finalize_multi_dice(context, game_id)
+                return
+
+    # ۲. بررسی بازی تک‌نفره تاس
+    if (
+        context.user_data.get("state") == "WAITING_FOR_DICE_STICKER"
+        and dice_emoji == "🎲"
+    ):
+        bet = context.user_data.get("single_dice_bet", 0)
+        choice = context.user_data.get("dice_choice")
+
+        if bet <= 0 or not choice:
+            return
+
+        is_win = False
+        multiplier = 0.0
+
+        if choice.isdigit() and int(choice) == dice_value:
+            is_win = True
+            multiplier = 3.0
+        elif choice == "زوج" and dice_value % 2 == 0:
+            is_win = True
+            multiplier = 1.5
+        elif choice == "فرد" and dice_value % 2 != 0:
+            is_win = True
+            multiplier = 1.5
+
+        if is_win:
+            prize = int(bet * multiplier)
+            db.update_field(user_id, "points", prize, relative=True)
+            await update.message.reply_text(
+                f"🎲 **عدد تاس:** {dice_value}\n"
+                f"🎯 **انتخاب شما:** {choice}\n"
+                f"🎉 **برنده شدید!**\n"
+                f"💰 **جایزه:** {format_balance(prize)} هاپ (ضریب {multiplier}x)"
+            )
+        else:
+            await update.message.reply_text(
+                f"🎲 **عدد تاس:** {dice_value}\n"
+                f"🎯 **انتخاب شما:** {choice}\n"
+                f"❌ **باختید!** مبلغ {format_balance(bet)} هاپ از دست رفت."
+            )
+
+        context.user_data["state"] = None
+        context.user_data["single_dice_bet"] = 0
+        context.user_data["dice_choice"] = None
+
+
+# --- تاس چندنفره (رقابتی با استیکر) ---
+
+
+async def start_multi_dice(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    user = update.effective_user
+    chat = update.effective_chat
+    args = context.args or update.message.text.split()[1:]
+
+    if len(args) < 2:
+        await update.message.reply_text(
+            "❌ فرمت صحیح: `تاس [مبلغ] [تعداد نفرات]`\nمثال: `تاس 500 3`",
+            parse_mode="Markdown",
+        )
+        return
+
+    try:
+        amount = int(args[0])
+        max_players = int(args[1])
+    except ValueError:
+        await update.message.reply_text(
+            "❌ مبلغ و تعداد نفرات باید عدد معتبر باشند."
+        )
+        return
+
+    if amount <= 0 or max_players < 2:
+        await update.message.reply_text(
+            "❌ حداقل مبلغ ۱ و حداقل تعداد نفرات ۲ نفر است."
+        )
+        return
+
+    user_points = int(db.get_user_field(user.id, "points") or 0)
+    if user_points < amount:
+        await update.message.reply_text(
+            "❌ موجودی شما برای ورود به این قمار کافی نیست."
+        )
+        return
+
+    db.update_field(user.id, "points", -amount, relative=True)
+
+    game_id = f"mdice_{chat.id}_{update.message.message_id}"
+    active_multi_dices[game_id] = {
+        "amount": amount,
+        "max_players": max_players,
+        "players": {user.id: user.full_name},
+        "scores": {},
+        "chat_id": chat.id,
+        "msg_id": None,
+    }
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(
+            "🎲 شرکت در چالش تاس", callback_data=f"join_mdice:{game_id}"
+        )
+    ]])
+
+    msg = await update.message.reply_text(
+        f"⚔️ **چالش تاس گروهی جدید!**\n\n"
+        f"👤 سازنده: {user.full_name}\n"
+        f"💰 ورودی هر نفر: {format_balance(amount)} هاپ\n"
+        f"👥 ظرفیت: ۱ / {max_players} نفر\n\n"
+        f"جهت شرکت دکمه زیر را بزنید!",
+        reply_markup=keyboard,
+        parse_mode="Markdown",
+    )
+
+    active_multi_dices[game_id]["msg_id"] = msg.message_id
+
+
+async def join_multi_dice_callback(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    query = update.callback_query
+    user = query.from_user
+    game_id = query.data.split(":")[1]
+
+    if game_id not in active_multi_dices:
+        await query.answer("❌ این بازی منقضی یا تمام شده است.", show_alert=True)
+        return
+
+    game = active_multi_dices[game_id]
+
+    if user.id in game["players"]:
+        await query.answer(
+            "❌ شما قبلاً وارد این چالش شده‌اید!", show_alert=True
+        )
+        return
+
+    points = int(db.get_user_field(user.id, "points") or 0)
+    if points < game["amount"]:
+        await query.answer("❌ موجودی شما کافی نیست!", show_alert=True)
+        return
+
+    db.update_field(user.id, "points", -game["amount"], relative=True)
+    game["players"][user.id] = user.full_name
+
+    current_count = len(game["players"])
+    total_prize = game["amount"] * current_count
+
+    if current_count >= game["max_players"]:
+        players_list = "\n".join([f"▫️ {name}" for name in game["players"].values()])
+        text = (
+            f"⚔️ **چالش تکمیل شد! تمام بازیکنان آماده‌اند.**\n\n"
+            f"👥 شرکت‌کنندگان:\n{players_list}\n\n"
+            f"💰 مجموع جایزه: {format_balance(total_prize)} هاپ\n\n"
+            f"👇 **همه بازیکنان استیکر تاس (🎲) را روی همین پیام ریپلای کنند!**"
+        )
+        await query.edit_message_text(text, parse_mode="Markdown")
+        await query.answer("✅ ثبت نام تکمیل شد! تاس را پرتاب کنید.")
+    else:
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(
+                "🎲 شرکت در چالش تاس", callback_data=f"join_mdice:{game_id}"
+            )
+        ]])
+        text = (
+            f"⚔️ **چالش تاس گروهی در حال عضوگیری...**\n\n"
+            f"💰 ورودی هر نفر: {format_balance(game['amount'])} هاپ\n"
+            f"👥 ظرفیت: {current_count} / {game['max_players']} نفر\n"
+            f"🏆 مجموع جایزه فعلی: {format_balance(total_prize)} هاپ"
+        )
+        await query.edit_message_text(
+            text, reply_markup=keyboard, parse_mode="Markdown"
+        )
+        await query.answer("✅ وارد چالش شدید!")
+
+
+async def finalize_multi_dice(context, game_id):
+    if game_id not in active_multi_dices:
+        return
+
+    game = active_multi_dices[game_id]
+    scores = game["scores"]
+    total_prize = game["amount"] * len(game["players"])
+
+    max_score = max(scores.values())
+    winners = [uid for uid, sc in scores.items() if sc == max_score]
+
+    result_text = "📊 **نتایج نهایی چالش تاس:**\n\n"
+    for uid, name in game["players"].items():
+        score = scores.get(uid, 0)
+        result_text += f"👤 {name}: **{score}** 🎲\n"
+
+    if len(winners) == 1:
+        winner_id = winners[0]
+        winner_name = game["players"][winner_id]
+        db.update_field(winner_id, "points", total_prize, relative=True)
+        result_text += (
+            f"\n🎉 **برنده:** {winner_name}\n"
+            f"🎁 **مبلغ جایزه:** {format_balance(total_prize)} هاپ"
+        )
+    else:
+        # حالت مساوی
+        split_prize = int(total_prize / len(winners))
+        winner_names = [game["players"][w] for w in winners]
+        for w_id in winners:
+            db.update_field(w_id, "points", split_prize, relative=True)
+        result_text += (
+            f"\n🤝 **نتیجه مساوی بین:** {', '.join(winner_names)}\n"
+            f"💰 جایزه تقسیم شد: هر نفر {format_balance(split_prize)} هاپ"
+        )
+
+    await context.bot.send_message(
+        chat_id=game["chat_id"], text=result_text, parse_mode="Markdown"
+    )
+    del active_multi_dices[game_id]
+
+
+# --- قمار عددی چندنفره قدیمی ---
 
 
 async def start_gamble(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat = update.effective_chat
-
     args = context.args or update.message.text.split()[1:]
 
     if len(args) < 2:
@@ -607,8 +848,7 @@ async def join_gamble_callback(
 ):
     query = update.callback_query
     user = query.from_user
-    data_parts = query.data.split(":")
-    gamble_id = data_parts[1]
+    gamble_id = query.data.split(":")[1]
 
     if gamble_id not in active_gambles:
         await query.answer(
@@ -687,6 +927,48 @@ async def handle_factory_and_smuggle_text(
         if update.message and update.message.text
         else ""
     )
+
+    if state == "WAITING_FOR_SINGLE_DICE_BET":
+        if not text.isdigit() or int(text) <= 0:
+            await update.message.reply_text("❌ لطفاً یک مبلغ معتبر وارد کنید.")
+            return True
+
+        bet = int(text)
+        points = int(db.get_user_field(user_id, "points") or 0)
+        if points < bet:
+            await update.message.reply_text("❌ موجودی کیف شما کافی نیست!")
+            return True
+
+        db.update_field(user_id, "points", -bet, relative=True)
+        context.user_data["single_dice_bet"] = bet
+
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "زوج (1.5x)", callback_data="dice_select_زوج"
+                ),
+                InlineKeyboardButton(
+                    "فرد (1.5x)", callback_data="dice_select_فرد"
+                ),
+            ],
+            [
+                InlineKeyboardButton("1 (3x)", callback_data="dice_select_1"),
+                InlineKeyboardButton("2 (3x)", callback_data="dice_select_2"),
+                InlineKeyboardButton("3 (3x)", callback_data="dice_select_3"),
+            ],
+            [
+                InlineKeyboardButton("4 (3x)", callback_data="dice_select_4"),
+                InlineKeyboardButton("5 (3x)", callback_data="dice_select_5"),
+                InlineKeyboardButton("6 (3x)", callback_data="dice_select_6"),
+            ],
+        ])
+
+        await update.message.reply_text(
+            f"🎲 **مبلغ {format_balance(bet)} هاپ ثبت شد.**\n\nلطفاً نوع شرط‌بندی را انتخاب کنید:",
+            reply_markup=keyboard,
+        )
+        context.user_data["state"] = None
+        return True
 
     if state == "WAITING_FOR_BANK_DEPOSIT":
         points = int(db.get_user_field(user_id, "points") or 0)
