@@ -2,6 +2,7 @@ from aiogram.types import Message
 from config import config
 from models import User
 import time
+import random
 from datetime import datetime, timedelta
 
 async def check_channels(bot, user_id):
@@ -32,15 +33,30 @@ def calculate_hop_reward(user):
     return base + level_bonus
 
 def has_gem_chance():
-    """شانس دریافت جم"""
     return random.random() < 0.05
 
 def get_random_gem():
-    """دریافت جم تصادفی"""
     return random.randint(1, 3)
 
-def format_profile(user):
+def format_profile(user, group_mode=False):
     """فرمت کردن پروفایل"""
+    if group_mode:
+        return f"""
+🐾 **{user['first_name']}**
+━━━━━━━━━━━━━━━
+🎯 هاپ: {user['hop_point']:.1f}
+💎 جم: {user['hop_gem']:.1f}
+📊 سطح: {user['level']}
+
+🐣 {user['hopo_name']}
+🧬 {user['hopo_breed']}
+📈 {user['hopo_stage']}
+❤️ {user['hopo_health']}%
+😊 {user['hopo_happiness']}%
+⚡ {user['hopo_energy']}%
+🍖 {user['hopo_hunger']}%
+        """
+    
     return f"""
 🐾 **پروفایل {user['first_name']}**
 ━━━━━━━━━━━━━━━
@@ -63,7 +79,6 @@ def format_profile(user):
     """
 
 def format_leaderboard(users):
-    """فرمت کردن لیدربرد"""
     if not users:
         return "📊 هنوز کسی تو لیست نیست!"
     
@@ -73,8 +88,19 @@ def format_leaderboard(users):
         text += f"{medal} {user['first_name']} — {user['hop_point']:.1f} هاپ (سطح {user['level']})\n"
     return text
 
+def format_group_leaderboard(users):
+    """لیدربرد مخصوص گروه (بر اساس تعداد پیام)"""
+    if not users:
+        return "📊 هنوز کسی در گروه فعالیت نکرده!"
+    
+    text = "🏆 **برترین‌های گروه**\n━━━━━━━━━━\n"
+    for i, user in enumerate(users, 1):
+        medal = ["🥇", "🥈", "🥉"][i-1] if i <= 3 else f"{i}."
+        text += f"{medal} {user['first_name']}\n"
+        text += f"📨 {user['msg_count']} پیام | 🎯 {user['hop_point']:.1f} هاپ\n━━━━━━━━━━\n"
+    return text
+
 def format_shop(items):
-    """فرمت کردن فروشگاه"""
     if not items:
         return "🛒 فروشگاه خالی است!"
     
