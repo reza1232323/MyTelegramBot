@@ -193,7 +193,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [
             ["پروفایل", "هاپ"],
             ["🐶 پنل سگ", "خرید سگ", "غذا"],
-            ["کارخونه", "شهر"],
+            ["🎡 گردونه شانس", "کارخونه", "شهر"],
             ["🏦 بانک", "👥 زیرمجموعه‌گیری"],
             ["راهنما"],
         ],
@@ -332,6 +332,11 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await pet.claim_hop(update, context, user)
         else:
             await handle_hop_internal(update, context, user)
+    elif clean_text in ["🎡 گردونه شانس", "گردونه شانس", "گردونه", "چرخش", "/spin"]:
+        if hasattr(pet, "spin_wheel"):
+            await pet.spin_wheel(update, context, user)
+        elif hasattr(economy, "spin_wheel"):
+            await economy.spin_wheel(update, context, user)
     elif clean_text in ["راهنما", "help", "/help"]:
         await pet.show_help(update, context)
     elif clean_text in ["خرید سگ", "/buydog"]:
