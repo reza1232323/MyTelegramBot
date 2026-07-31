@@ -45,7 +45,20 @@ def init_db():
             is_admin INTEGER DEFAULT 0,
             is_banned INTEGER DEFAULT 0,
             last_hop_claim REAL DEFAULT 0,
-            registered_at TEXT DEFAULT CURRENT_TIMESTAMP
+            registered_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            group_hop_count INTEGER DEFAULT 0,
+            last_group_hop TEXT
+        )
+    ''')
+    
+    # جدول پیام‌های گروه (برای آمار)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS group_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            group_id INTEGER,
+            message_text TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     
@@ -121,6 +134,7 @@ def init_db():
         missions = [
             ("۱۰ بار هاپ", "۱۰ بار دستور هاپ بزن", "daily", 10, 50, 0, "🎯"),
             ("۵۰ بار هاپ", "۵۰ بار دستور هاپ بزن", "weekly", 50, 200, 5, "🏆"),
+            ("۱۰۰ پیام در گروه", "۱۰۰ پیام در گروه بفرست", "weekly", 100, 100, 2, "💬"),
         ]
         cursor.executemany(
             "INSERT INTO missions (name, description, type, target, reward_hop, reward_gem, emoji) VALUES (?,?,?,?,?,?,?)",
