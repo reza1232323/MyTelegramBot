@@ -25,6 +25,7 @@ from handlers import admin, economy, pet
 # مقدار پاداش دعوت (سکه/پوینت)
 REFERRAL_REWARD = 500
 
+# ----------------- تنظیمات کانال‌های عضویت اجباری -----------------
 REQUIRED_CHANNELS = [
     {
         "name": "کانال اصلی",
@@ -38,16 +39,38 @@ REQUIRED_CHANNELS = [
     },
 ]
 
+logging.basicConfig(level=logging.INFO)
+
+
+# ----------------- توابع عضویت اجباری -----------------
+async def check_user_membership(bot, user_id: int) -> bool:
+    """بررسی عضویت کاربر در تمامی کانال‌های اجباری"""
+    for ch in REQUIRED_CHANNELS:
+        try:
+            member = await bot.get_chat_member(
+                chat_id=ch["username"], user_id=user_id
+            )
+            if member.status in ["left", "kicked"]:
+                return False
+        except BadRequest:
+            continue
+        except Exception as e:
+            logging.error(f"خطا در بررسی عضویت کانال {ch['username']}: {e}")
+            return False
+    return True
+
+
 def get_join_keyboard():
+    """ساخت کیبورد شیشه‌ای عضویت اجباری"""
     buttons = []
     
-    # ===== دکمه‌های کانال (آبی - بدون style) =====
+    # ===== دکمه‌های کانال (آبی با callback_data) =====
     for ch in REQUIRED_CHANNELS:
         buttons.append(
             [
                 InlineKeyboardButton(
                     f"📢 عضویت در {ch['name']}",
-                    url=ch["url"]  # با url همیشه سبزه
+                    callback_data=f"channel_{ch['username']}"  # آبی
                 )
             ]
         )
@@ -58,13 +81,14 @@ def get_join_keyboard():
             InlineKeyboardButton(
                 "✅ عضو شدم، بررسی کن!",
                 callback_data="check_join_status",
-                style="success"
+                style="success"  # سبز
             )
         ]
     )
     
     return InlineKeyboardMarkup(buttons)
-    
+
+
 async def send_must_join_message(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
@@ -368,7 +392,19 @@ async def callback_router(
     user_id = query.from_user.id
     data = query.data
 
-    # ===== بررسی عضویت با start=check =====
+    # ===== مدیریت کلیک روی دکمه کانال (آبی) =====
+    if data.startswith("channel_"):
+        username = data.replace("channel_", "")
+        for ch in REQUIRED_CHANNELS:
+            if ch["username"] == username:
+                await query.answer()
+                await query.message.reply_text(
+                    f"🔗 برای عضویت در {ch['name']} روی لینک زیر کلیک کنید:\n{ch['url']}"
+                )
+                return
+        return
+
+    # ===== بررسی عضویت (سبز) =====
     if data == "check_join_status":
         is_joined = await check_user_membership(context.bot, user_id)
         if is_joined:
