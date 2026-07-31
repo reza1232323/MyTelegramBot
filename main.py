@@ -76,7 +76,7 @@ def get_join_keyboard():
         [
             InlineKeyboardButton(
                 "✅ عضو شدم، بررسی کن!",
-                url=f"https://t.me/{@hopdagz_bot}?start=check"
+                url=f"https://t.me/{bot_username}?start=check"
             )
         ]
     )
