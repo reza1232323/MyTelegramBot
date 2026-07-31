@@ -21,16 +21,19 @@ def is_private(message: Message) -> bool:
 def is_group(message: Message) -> bool:
     return message.chat.type in ["group", "supergroup"]
 
-# ==================== شروع و ثبت‌نام ====================
+# ==================== شروع و ثبت‌نام (فقط پیوی) ====================
 
-@router.message(F.text == "شروع")
 @router.message(Command("start"))
 async def start_command(message: Message, bot):
-    """ثبت‌نام و شروع - هم در پیوی هم گروه"""
+    """ثبت‌نام و شروع - فقط در پیوی"""
+    
+    # اگر در گروه بود، هیچ کاری نکن
+    if is_group(message):
+        return
     
     user = User.get_or_create(message.from_user)
     
-    if is_private(message) and " " in message.text:
+    if " " in message.text:
         ref_code = message.text.split()[1]
         if ref_code.startswith("ref_"):
             referrer_id = int(ref_code.split("_")[1])
@@ -50,9 +53,8 @@ async def start_command(message: Message, bot):
         f"💡 هر ۵ دقیقه با دستور **هاپ** امتیاز بگیر.\n"
         f"📖 راهنما: **راهنما**\n\n"
         f"✨ {user['hop_point']:.1f} هاپ اولیه بهت داده شد!",
-        reply_markup=main_menu() if is_private(message) else None
+        reply_markup=main_menu()
     )
-
 # ==================== دکمه خانه (فقط پیوی) ====================
 
 @router.message(F.text == "🏠 خانه")
