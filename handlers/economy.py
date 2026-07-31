@@ -1,4 +1,3 @@
-
 import asyncio
 import random
 import database as db
@@ -12,7 +11,22 @@ def format_balance(amount):
         return fb(amount)
     except Exception:
         amount = int(amount or 0)
-        return f"{amount:,}"
+        if amount < 1000:
+            return f"{amount:,}"
+        elif amount < 1_000_000:
+            return f"{amount:,}"
+        elif amount < 1_000_000_000:
+            millions = amount / 1_000_000
+            if millions.is_integer():
+                return f"{int(millions)}M"
+            else:
+                return f"{millions:.1f}M"
+        else:
+            billions = amount / 1_000_000_000
+            if billions.is_integer():
+                return f"{int(billions)}B"
+            else:
+                return f"{billions:.1f}B"
 
 # ----------------- لیست محصولات -----------------
 
@@ -59,18 +73,11 @@ async def bank_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user=N
     daily_profit = int(bank_balance * 0.03)
 
     text = (
-        f"🏦 بانک هاپی
-
-"
-        f"💳 شماره حساب: {account_number}
-"
-        f"💰 موجودی بانک: {format_balance(bank_balance)} هاپ پوینت
-"
-        f"👛 موجودی کیف: {format_balance(wallet_balance)} هاپ پوینت
-
-"
-        f"📈 سود روزانه (۳%): {format_balance(daily_profit)} هاپ پوینت
-"
+        f"🏦 بانک هاپی\n\n"
+        f"💳 شماره حساب: {account_number}\n"
+        f"💰 موجودی بانک: {format_balance(bank_balance)} هاپ پوینت\n"
+        f"👛 موجودی کیف: {format_balance(wallet_balance)} هاپ پوینت\n\n"
+        f"📈 سود روزانه (۳%): {format_balance(daily_profit)} هاپ پوینت\n"
         f"⏱ سود بانک هر ۲۴ ساعت یک‌بار قابل دریافت است."
     )
 
@@ -131,8 +138,8 @@ async def show_factory(update: Update, context: ContextTypes.DEFAULT_TYPE):
         price_str = format_balance(item['price'])
         keyboard.append([InlineKeyboardButton(f"{item['name']} - {price_str}", callback_data=f"buy_fac_{code}:{user_id}")])
     
-        reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("🏭 به کارخانه خوش آمدید!محصول مورد نظر برای خرید را انتخاب کنید:", reply_markup=reply_markup, parse_mode="Markdown")
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("🏭 به کارخانه خوش آمدید! محصول مورد نظر برای خرید را انتخاب کنید:", reply_markup=reply_markup, parse_mode="Markdown")
 
 async def factory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -145,11 +152,8 @@ async def factory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         product = FACTORY_PRODUCTS[product_code]
         
         await query.message.reply_text(
-            f"🛒 شما {product['name']} را انتخاب کردید.
-"
-            f"💵 قیمت هر عدد: {format_balance(product['price'])}
-
-"
+            f"🛒 شما {product['name']} را انتخاب کردید.\n"
+            f"💵 قیمت هر عدد: {format_balance(product['price'])}\n\n"
             f"لطفاً تعداد درخواستی خود را ارسال کنید:"
         )
         context.user_data['state'] = "WAITING_FOR_FACTORY_QTY"
@@ -164,10 +168,8 @@ async def show_contraband(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [[InlineKeyboardButton("🔓 آزادی فوری (۲۰,۰۰۰ میو/هاپ)", callback_data=f"pay_bail:{user_id}")]]
         time_str = jail_until.strftime('%H:%M') if jail_until else "۱۵ دقیقه"
         await update.message.reply_text(
-            f"🚨 شما در زندان هستید!
-"
-            f"⏱ زمان آزادی: تا {time_str}
-"
+            f"🚨 شما در زندان هستید!\n"
+            f"⏱ زمان آزادی: تا {time_str}\n"
             f"می‌توانید ۱۵ دقیقه صبر کنید یا با پرداخت ۲۰,۰۰۰ وثیقه فوراً آزاد شوید.",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
@@ -183,8 +185,8 @@ async def show_contraband(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        "🕵️‍♂️ پنل قاچاقچیان"
-        "جنس‌های مورد نظر خود را انتخاب کرده و تعداد را مشخص کنید."
+        "🕵️‍♂️ پنل قاچاقچیان\n"
+        "جنس‌های مورد نظر خود را انتخاب کرده و تعداد را مشخص کنید.\n"
         "⚠️ هشدار: ریسک گیر افتادن و ۱۵ دقیقه زندان وجود دارد!",
         reply_markup=reply_markup,
         parse_mode="Markdown"
@@ -236,7 +238,7 @@ async def handle_smuggle_callback(update: Update, context: ContextTypes.DEFAULT_
         context.user_data['contra_cart'] = {}
         context.user_data['is_smuggling_active'] = True
         
-        await query.message.reply_text("🚚 عملیات قاچاق آغاز شد!محموله ارسال شد. نتیجه تا ۳۰ دقیقه دیگر مشخص می‌شود...")
+        await query.message.reply_text("🚚 عملیات قاچاق آغاز شد! محموله ارسال شد. نتیجه تا ۳۰ دقیقه دیگر مشخص می‌شود...")
 
         asyncio.create_task(process_smuggling_result(context, user_id, total_cost, cart))
 
@@ -251,7 +253,7 @@ async def process_smuggling_result(context, user_id, total_cost, cart):
             db.set_jail(user_id, minutes=15)
         await context.bot.send_message(
             chat_id=user_id,
-            text="🚨 خبر بد! محموله قاچاق شما توسط پلیس لو رفت!شما به مدت ۱۵ دقیقه وارد زندان شدید یا می‌توانید ۲۰,۰۰۰ جریمه بپردازید."
+            text="🚨 خبر بد! محموله قاچاق شما توسط پلیس لو رفت! شما به مدت ۱۵ دقیقه وارد زندان شدید یا می‌توانید ۲۰,۰۰۰ جریمه بپردازید."
         )
     else:
         total_profit = sum(CONTRABAND_PRODUCTS[code]['profit'] * qty for code, qty in cart.items())
@@ -264,8 +266,7 @@ async def process_smuggling_result(context, user_id, total_cost, cart):
         profit_str = format_balance(total_profit)
         await context.bot.send_message(
             chat_id=user_id,
-            text=f"🎉 موفقیت! عملیات قاچاق انجام شد.
-سود خالص: {profit_str} به کیف پول شما اضافه شد!"
+            text=f"🎉 موفقیت! عملیات قاچاق انجام شد.\nسود خالص: {profit_str} به کیف پول شما اضافه شد!"
         )
 
 # ----------------- ۳. سیستم قمار چندنفره -----------------
@@ -277,7 +278,7 @@ async def start_gamble(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args or update.message.text.split()[1:]
     
     if len(args) < 2:
-        await update.message.reply_text("❌ فرمت صحیح: قمار [مبلغ] [تعداد نفرات]مثال: قمار 100 3", parse_mode="Markdown")
+        await update.message.reply_text("❌ فرمت صحیح: قمار [مبلغ] [تعداد نفرات]\nمثال: قمار 100 3", parse_mode="Markdown")
         return
 
     try:
@@ -312,18 +313,11 @@ async def start_gamble(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ])
 
     text = (
-        f"🎲 قمار جدید ایجاد شد!
-
-"
-        f"👤 سازنده: {user.full_name}
-"
-        f"💰 ورودی هر نفر: {format_balance(amount)} هاپ
-"
-        f"👥 ظرفیت: ۱ / {max_players} نفر
-"
-        f"🏆 مجموع جایزه فعلی: {format_balance(amount)} هاپ
-
-"
+        f"🎲 قمار جدید ایجاد شد!\n\n"
+        f"👤 سازنده: {user.full_name}\n"
+        f"💰 ورودی هر نفر: {format_balance(amount)} هاپ\n"
+        f"👥 ظرفیت: ۱ / {max_players} نفر\n"
+        f"🏆 مجموع جایزه فعلی: {format_balance(amount)} هاپ\n\n"
         f"برای شرکت روی دکمه زیر کلیک کنید!"
     )
 
@@ -361,17 +355,11 @@ async def join_gamble_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         winner_id, winner_name = random.choice(gamble["players"])
         db.update_field(winner_id, "points", total_prize, relative=True)
 
-    players_list = "".join([f"▫️ {p[1]}" for p in gamble["players"]])
-    result_text = (
-            f"🎰 قمار تکمیل شد و به پایان رسید!
-
-"
-            f"👥 شرکت‌کنندگان:
-{players_list}
-
-"
-            f"💰 مجموع کل جایزه: {format_balance(total_prize)} هاپ
-"
+        players_list = "\n".join([f"▫️ {p[1]}" for p in gamble["players"]])
+        result_text = (
+            f"🎰 قمار تکمیل شد و به پایان رسید!\n\n"
+            f"👥 شرکت‌کنندگان:\n{players_list}\n\n"
+            f"💰 مجموع کل جایزه: {format_balance(total_prize)} هاپ\n"
             f"🎉 برنده خوش‌شانس: {winner_name}"
         )
         
@@ -384,16 +372,10 @@ async def join_gamble_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         ])
         
         updated_text = (
-            f"🎲 قمار در جریان است...
-
-"
-            f"💰 ورودی هر نفر: {format_balance(gamble['amount'])} هاپ
-"
-            f"👥 ظرفیت: {current_count} / {gamble['max_players']} نفر
-"
-            f"🏆 مجموع جایزه فعلی: {format_balance(total_prize)} هاپ
-
-"
+            f"🎲 قمار در جریان است...\n\n"
+            f"💰 ورودی هر نفر: {format_balance(gamble['amount'])} هاپ\n"
+            f"👥 ظرفیت: {current_count} / {gamble['max_players']} نفر\n"
+            f"🏆 مجموع جایزه فعلی: {format_balance(total_prize)} هاپ\n\n"
             f"برای شرکت روی دکمه زیر کلیک کنید!"
         )
         
@@ -423,15 +405,11 @@ async def handle_factory_and_smuggle_text(update: Update, context: ContextTypes.
             return True
 
         if points < amount:
-            await update.message.reply_text(f"❌ موجودی کیف پول شما کافی نیست!
-💰 موجودی کیف: {format_balance(points)}")
+            await update.message.reply_text(f"❌ موجودی کیف پول شما کافی نیست!\n💰 موجودی کیف: {format_balance(points)}")
         else:
             db.update_field(user_id, "points", -amount, relative=True)
             db.update_field(user_id, "bank_balance", amount, relative=True)
-            await update.message.reply_text(f"✅ مبلغ {format_balance(a
-
-
-mount)} هاپ به بانک واریز شد.")
+            await update.message.reply_text(f"✅ مبلغ {format_balance(amount)} هاپ به بانک واریز شد.")
             
         context.user_data['state'] = None
         return True
@@ -452,8 +430,7 @@ mount)} هاپ به بانک واریز شد.")
             return True
 
         if bank_bal < amount:
-            await update.message.reply_text(f"❌ موجودی بانک شما کافی نیست!
-🏦 موجودی بانک: {format_balance(bank_bal)}")
+            await update.message.reply_text(f"❌ موجودی بانک شما کافی نیست!\n🏦 موجودی بانک: {format_balance(bank_bal)}")
         else:
             db.update_field(user_id, "bank_balance", -amount, relative=True)
             db.update_field(user_id, "points", amount, relative=True)
@@ -524,23 +501,15 @@ async def show_my_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, us
     car = db.get_user_field(user_id, "inventory_car") or 0
 
     text = (
-        "🏭 کارخانه و انبار محصولات شما:"
-        f"👕 لباس هاپویی: {clothes} عدد
-"
-        f"🦴 غذای ویژه: {food} عدد
-"
-        f"🎾 توپ بازی: {toy} عدد
-"
-        f"🏠 لانه شیک: {house} عدد
-
-"
-        "🕵️‍♂️ اجناس قاچاق انبار شده:"
-        f"🚬 سیگار قاچاق: {cig} عدد
-"
-        f"💎 الماس سیاه: {diamond} عدد
-"
-        f"🪙 شمش طلا: {gold} عدد
-"
+        "🏭 کارخانه و انبار محصولات شما:\n"
+        f"👕 لباس هاپویی: {clothes} عدد\n"
+        f"🦴 غذای ویژه: {food} عدد\n"
+        f"🎾 توپ بازی: {toy} عدد\n"
+        f"🏠 لانه شیک: {house} عدد\n\n"
+        "🕵️‍♂️ اجناس قاچاق انبار شده:\n"
+        f"🚬 سیگار قاچاق: {cig} عدد\n"
+        f"💎 الماس سیاه: {diamond} عدد\n"
+        f"🪙 شمش طلا: {gold} عدد\n"
         f"🏎 خودروی قاچاق: {car} عدد"
     )
     
@@ -560,7 +529,7 @@ async def show_sell_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, use
     ]
     
     await update.message.reply_text(
-        "💰 بازار سیاه و فروش محصولات"
+        "💰 بازار سیاه و فروش محصولات\n"
         "محصولی که می‌خواهید بفروشید را انتخاب کنید:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
@@ -592,8 +561,7 @@ async def sell_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.update_field(user_id, "points", item["price"], relative=True)
         
         await query.message.reply_text(
-            f"✅ ۱ عدد {item['name']} با موفقیت فروخته شد!
-"
+            f"✅ ۱ عدد {item['name']} با موفقیت فروخته شد!\n"
             f"💵 مبلغ {item['price']} به کیف پول شما اضافه شد."
         )
 
@@ -663,41 +631,21 @@ async def city_status(update: Update, context: ContextTypes.DEFAULT_TYPE, user=N
     next_level_text = f"سطح {current_level + 1}" if current_level < 5 else "حداکثر سطح"
 
     text = (
-        f"╮──「  شهر هاپو  」
-
-"
-        f"┐─  نام : {chat_title}
-"
-        f"┐─  رتبه جهانی : #1
-"
-        f"└─  
-
-"
-        f"  آمار شهر:
-"
-        f"┐─  سطح : {current_level} / 5
-"
-        f"┐─  خزانه : {treasury_str}
-"
-        f"┐─  کل هاپ : {total_hops:,}
-"
-        f"┐─  کل سگ : {total_dogs:,}
-
-"
-        f"  باف‌های فعال (سطح {current_level}):
-"
-        f"┐─  کولداون هاپ : {max(300 - current_level * 5, 200)}s (اصلی 300s)
-
-"
-        f"  پیشرفت به {next_level_text}:
-"
-        f"┐─  خزانه : {treasury_str} / {target_treasury_str}  {bar_treasury}
-"
-        f"┐─  هاپ‌های کل : {total_hops:,} / {next_req['hops']:,}  {bar_hops}
-"
-        f"┐─  سگ‌های خریداری شده : {total_dogs:,} / {next_req['dogs']:,}  {bar_dogs}
-
-"
+        f"╮──「  شهر هاپو  」\n\n"
+        f"┐─  نام : {chat_title}\n"
+        f"┐─  رتبه جهانی : #1\n"
+        f"└─  \n\n"
+        f"  آمار شهر:\n"
+        f"┐─  سطح : {current_level} / 5\n"
+        f"┐─  خزانه : {treasury_str}\n"
+        f"┐─  کل هاپ : {total_hops:,}\n"
+        f"┐─  کل سگ : {total_dogs:,}\n\n"
+        f"  باف‌های فعال (سطح {current_level}):\n"
+        f"┐─  کولداون هاپ : {max(300 - current_level * 5, 200)}s (اصلی 300s)\n\n"
+        f"  پیشرفت به {next_level_text}:\n"
+        f"┐─  خزانه : {treasury_str} / {target_treasury_str}  {bar_treasury}\n"
+        f"┐─  هاپ‌های کل : {total_hops:,} / {next_req['hops']:,}  {bar_hops}\n"
+        f"┐─  سگ‌های خریداری شده : {total_dogs:,} / {next_req['dogs']:,}  {bar_dogs}\n\n"
         f"📌 برای کمک به خزانه بنویس: اهدا [مقدار]"
     )
     
@@ -708,7 +656,7 @@ async def donate_city(update: Update, context: ContextTypes.DEFAULT_TYPE, user=N
     args = context.args or update.message.text.split()[1:]
 
     if not args or not args[0].isdigit():
-        await update.message.reply_text("⚠️ لطفاً مبلغ اهدا را به عدد مشخص کنید.مثال: اهدا 1000", parse_mode="Markdown")
+        await update.message.reply_text("⚠️ لطفاً مبلغ اهدا را به عدد مشخص کنید.\nمثال: اهدا 1000", parse_mode="Markdown")
         return
 
     amount = int(args[0])
