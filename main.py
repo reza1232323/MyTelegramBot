@@ -20,8 +20,8 @@ from telegram.request import HTTPXRequest
 
 import config
 import database as db
-from handlers import admin, economy, pet, slot
-from slot import slot_bets, handle_slot_bet, handle_slot_sticker
+from handlers import admin, economy, pet
+import slot
 
 # مقدار پاداش دعوت (سکه/پوینت)
 REFERRAL_REWARD = 500
