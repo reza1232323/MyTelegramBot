@@ -14,7 +14,7 @@ import hashlib
 
 router = Router()
 
-# ==================== دیکشنری‌های اسلات ====================
+# ==================== اسلات ماشین با استیکر 🎰 ====================
 
 EMOJI_VALUES = {
     "BAR": 0,
@@ -23,11 +23,7 @@ EMOJI_VALUES = {
     "7️⃣": 3
 }
 
-ROW_MULTIPLIERS = {
-    0: 1,
-    1: 4,
-    2: 16
-}
+ROW_MULTIPLIERS = {0: 1, 1: 4, 2: 16}
 
 PRIZE_MULTIPLIERS = {
     (1, 9): 0,
@@ -40,22 +36,7 @@ PRIZE_MULTIPLIERS = {
     (64, 64): 3.0
 }
 
-# دیکشنری موقت برای ذخیره مبلغ شرط کاربران
 slot_bets = {}
-game_tables = {}
-
-# ==================== فیلتر تشخیص پیوی/گروه ====================
-
-def is_private(message: Message) -> bool:
-    return message.chat.type == "private"
-
-def is_group(message: Message) -> bool:
-    return message.chat.type in ["group", "supergroup"]
-
-def is_admin(user_id: int) -> bool:
-    return user_id in config.ADMIN_IDS
-
-# ==================== توابع اسلات ====================
 
 def calculate_slot_score(emojis):
     score = 1
@@ -72,17 +53,150 @@ def get_prize_multiplier(score):
     return 0
 
 def generate_random_slot():
-    available = ["🍇", "🍋", "7️⃣"]
-    return [random.choice(available) for _ in range(3)]
-
-def get_slot_combination_name(emojis):
-    return f"{emojis[0]} {emojis[1]} {emojis[2]}"
+    return [random.choice(["🍇", "🍋", "7️⃣"]) for _ in range(3)]
 
 def get_slot_number(emojis):
     values = [EMOJI_VALUES.get(e, 0) for e in emojis]
-    number = (values[0] * 16) + (values[1] * 4) + values[2] + 1
-    return number
+    return (values[0] * 16) + (values[1] * 4) + values[2] + 1
 
+# ==================== دستور کازینو ====================
+
+@router.message(F.text == "کازینو")
+async def casino_menu(message: Message):
+    if is_private(message):
+        await message.reply("🎰 کازینو فقط در گروه قابل استفاده است!")
+        return
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🎰 اسلات", callback_data="slot_start")],
+        ]
+    )
+    
+    await message.reply(
+        f"🎰 **کازینو**\n\n"
+        f"برای بازی اسلات، روی دکمه زیر کلیک کن\n"
+        f"سپس مبلغ شرط رو وارد کن و استیکر 🎰 بفرست",
+        reply_markup=keyboard
+    )
+
+# ==================== شروع اسلات ====================
+
+@router.callback_query(F.data == "slot_start")
+async def slot_start(callback: CallbackQuery):
+    if is_private(callback.message):
+        await callback.answer("❌ فقط در گروه!", show_alert=True)
+        return
+    
+    user = get_or_create_user_silent(
+        callback.from_user.id,
+        callback.from_user.username,
+        callback.from_user.first_name
+    )
+    
+    if user["hop_point"] < 100:
+        await callback.answer("❌ حداقل ۱۰۰ میو پوینت نیاز داری!", show_alert=True)
+        return
+    
+    slot_bets[callback.from_user.id] = "waiting"
+    
+    await callback.message.edit_text(
+        f"🎰 **اسلات ماشین**\n\n"
+        f"💰 مبلغ شرط خود را وارد کن (۱۰۰ تا ۱۰۰٬۰۰۰)\n"
+        f"مثال: 500\n\n"
+        f"📊 ضریب‌ها:\n"
+        f"۱-۱۹: ×۰ | ۲۰-۲۹: ×۰.۵\n"
+        f"۳۰-۳۹: ×۱.۰ | ۴۰-۴۹: ×۱.۵\n"
+        f"۵۰-۵۹: ×۲.۰ | ۶۰-۶۳: ×۲.۵\n"
+        f"۶۴ (جکپات): ×۳.۰\n\n"
+        f"بعدش استیکر 🎰 بفرست",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="❌ لغو", callback_data="slot_cancel")]]
+        )
+    )
+    await callback.answer()
+
+# ==================== دریافت مبلغ شرط ====================
+
+# این رو به @router.message(F.text) اضافه کن:
+
+if message.from_user.id in slot_bets and slot_bets[message.from_user.id] == "waiting":
+    try:
+        bet = int(message.text.strip())
+        if bet < 100:
+            await message.reply("❌ حداقل ۱۰۰")
+            return
+        if bet > 100000:
+            await message.reply("❌ حداکثر ۱۰۰٬۰۰۰")
+            return
+    except:
+        await message.reply("❌ عدد وارد کن!")
+        return
+    
+    user = User.get(message.from_user.id)
+    if not user or user["hop_point"] < bet:
+        await message.reply(f"❌ موجودی کافی نیست! داری {user['hop_point']:,} میو")
+        return
+    
+    slot_bets[message.from_user.id] = bet
+    await message.reply(f"✅ مبلغ: {bet:,} میو\n\n🎰 حالا استیکر 🎰 بفرست (۶۰ ثانیه وقت داری)")
+
+# ==================== دریافت استیکر و اجرا ====================
+
+@router.message(F.sticker)
+async def slot_sticker(message: Message):
+    if is_private(message):
+        return
+    
+    if message.from_user.id not in slot_bets or slot_bets[message.from_user.id] == "waiting":
+        return
+    
+    if message.sticker.emoji != "🎰":
+        await message.reply("❌ فقط استیکر 🎰")
+        return
+    
+    bet = slot_bets[message.from_user.id]
+    del slot_bets[message.from_user.id]
+    
+    user = User.get(message.from_user.id)
+    if not user:
+        return
+    
+    result = generate_random_slot()
+    score = calculate_slot_score(result)
+    multiplier = get_prize_multiplier(score)
+    slot_number = get_slot_number(result)
+    combo = f"{result[0]} {result[1]} {result[2]}"
+    
+    win = int(bet * multiplier)
+    
+    # ===== فرمت خروجی مثل عکس =====
+    text = f"🎰 **گردونه شانس**\n\n"
+    text += f"💰 مبلغ ورودی: {bet:,}\n"
+    text += f"📊 ({multiplier}x)\n"
+    text += f"🎯 مبلغ دریافت: {win:,}\n"
+    text += f"👤 بازیکن: {message.from_user.first_name}\n"
+    text += f"⭐ امتیاز: {score}\n\n"
+    text += f"🎰 {combo}\n"
+    text += f"🔢 #{slot_number} از ۶۴"
+    
+    if win > 0:
+        User.update(message.from_user.id, hop_point=user["hop_point"] + win)
+        if score == 64:
+            text += f"\n\n🌟 **جکپات!** 🌟"
+    else:
+        text += f"\n\n😞 باختی!"
+    
+    await message.reply(text)
+
+# ==================== لغو ====================
+
+@router.callback_query(F.data == "slot_cancel")
+async def slot_cancel(callback: CallbackQuery):
+    if callback.from_user.id in slot_bets:
+        del slot_bets[callback.from_user.id]
+    await callback.message.edit_text("❌ لغو شد")
+    await callback.answer()
 # ==================== ثبت‌نام خودکار ====================
 
 def get_or_create_user_silent(user_id, username, first_name):
