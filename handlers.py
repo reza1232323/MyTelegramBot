@@ -10,6 +10,7 @@ import asyncio
 from datetime import datetime, timedelta
 import time
 import re
+import hashlib
 
 router = Router()
 
@@ -21,17 +22,45 @@ def is_private(message: Message) -> bool:
 def is_group(message: Message) -> bool:
     return message.chat.type in ["group", "supergroup"]
 
-# ==================== شروع و ثبت‌نام (فقط پیوی) ====================
+# ==================== ثبت‌نام خودکار (بدون پیام) ====================
+
+def get_or_create_user_silent(user_id, username, first_name):
+    """دریافت یا ایجاد کاربر - بدون هیچ پیامی"""
+    from database import get_db
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+    user = cursor.fetchone()
+    
+    if not user:
+        invite_code = hashlib.md5(str(user_id).encode()).hexdigest()[:8]
+        hatch_time = (datetime.now().timestamp() + 21600)
+        cursor.execute('''
+            INSERT INTO users (id, username, first_name, invite_code, hopo_hatch_time)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (user_id, username, first_name, invite_code, hatch_time))
+        conn.commit()
+        cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        user = cursor.fetchone()
+    
+    conn.close()
+    return dict(user)
+
+# ==================== شروع (فقط پیوی) ====================
 
 @router.message(Command("start"))
 async def start_command(message: Message, bot):
     """ثبت‌نام و شروع - فقط در پیوی"""
     
-    # اگر در گروه بود، هیچ کاری نکن
     if is_group(message):
         return
     
-    user = User.get_or_create(message.from_user)
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
     
     if " " in message.text:
         ref_code = message.text.split()[1]
@@ -55,11 +84,17 @@ async def start_command(message: Message, bot):
         f"✨ {user['hop_point']:.1f} هاپ اولیه بهت داده شد!",
         reply_markup=main_menu()
     )
+
 # ==================== دکمه خانه (فقط پیوی) ====================
 
 @router.message(F.text == "🏠 خانه")
 async def home_command(message: Message, bot):
     if is_private(message):
+        user = get_or_create_user_silent(
+            message.from_user.id,
+            message.from_user.username,
+            message.from_user.first_name
+        )
         await start_command(message, bot)
 
 # ==================== دستور هاپ ====================
@@ -67,6 +102,13 @@ async def home_command(message: Message, bot):
 @router.message(F.text == "هاپ")
 async def get_hop_command(message: Message, bot):
     """دریافت هاپ هر ۵ دقیقه - هم در پیوی هم گروه"""
+    
+    # ثبت‌نام خودکار
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
     
     if is_private(message):
         not_joined = await check_channels(bot, message.from_user.id)
@@ -76,11 +118,6 @@ async def get_hop_command(message: Message, bot):
                 reply_markup=channel_check_kb(not_joined)
             )
             return
-    
-    user = User.get(message.from_user.id)
-    if not user:
-        await message.reply("❌ ابتدا ثبت‌نام کنید: شروع")
-        return
     
     if not can_claim_hop(user):
         remain = int(300 - (time.time() - user["last_hop_claim"]))
@@ -119,10 +156,12 @@ async def get_hop_command(message: Message, bot):
 @router.message(F.text == "🐣 هایوی من")
 async def my_profile(message: Message):
     """مشاهده پروفایل - هم در پیوی هم گروه"""
-    user = User.get(message.from_user.id)
-    if not user:
-        await message.reply("❌ ابتدا ثبت‌نام کنید: شروع")
-        return
+    
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
     
     if user["hopo_stage"] != "egg":
         hunger = max(0, user["hopo_hunger"] - 5)
@@ -173,10 +212,12 @@ async def leaderboard_command(message: Message):
 @router.message(F.text == "🎡 گردونه شانس")
 async def spin_command(message: Message):
     """گردونه شانس - هم در پیوی هم گروه"""
-    user = User.get(message.from_user.id)
-    if not user:
-        await message.reply("❌ ثبت‌نام کن!")
-        return
+    
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
     
     cost = 20
     if user["hop_point"] < cost:
@@ -230,6 +271,13 @@ async def games_menu(message: Message):
 @router.message(F.text.startswith("تاس"))
 async def dice_game(message: Message):
     """بازی تاس - هم در پیوی هم گروه"""
+    
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
+    
     parts = message.text.split()
     if len(parts) < 2:
         await message.reply("❌ فرمت: تاس 100")
@@ -239,11 +287,6 @@ async def dice_game(message: Message):
         bet = float(parts[1])
     except:
         await message.reply("❌ مبلغ نامعتبر!")
-        return
-    
-    user = User.get(message.from_user.id)
-    if not user:
-        await message.reply("❌ ثبت‌نام کن!")
         return
     
     if user["hop_point"] < bet:
@@ -274,6 +317,13 @@ async def dice_game(message: Message):
 @router.message(F.text.startswith("قمار"))
 async def gamble_game(message: Message):
     """بازی قمار - هم در پیوی هم گروه"""
+    
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
+    
     parts = message.text.split()
     if len(parts) < 2:
         await message.reply("❌ فرمت: قمار 100")
@@ -285,8 +335,7 @@ async def gamble_game(message: Message):
         await message.reply("❌ مبلغ نامعتبر!")
         return
     
-    user = User.get(message.from_user.id)
-    if not user or user["hop_point"] < bet:
+    if user["hop_point"] < bet:
         await message.reply("❌ موجودی کافی نیست!")
         return
     
@@ -317,10 +366,12 @@ async def gamble_game(message: Message):
 @router.message(F.text == "سگ")
 async def dog_command(message: Message):
     """خرید و مدیریت سگ - هم در پیوی هم گروه"""
-    user = User.get(message.from_user.id)
-    if not user:
-        await message.reply("❌ ثبت‌نام کن!")
-        return
+    
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
     
     from database import get_db
     conn = get_db()
@@ -361,10 +412,12 @@ async def dog_command(message: Message):
 @router.message(F.text == "قلاب")
 async def fishing_rod_command(message: Message):
     """خرید و ارتقای قلاب - هم در پیوی هم گروه"""
-    user = User.get(message.from_user.id)
-    if not user:
-        await message.reply("❌ ثبت‌نام کن!")
-        return
+    
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
     
     from database import get_db
     conn = get_db()
@@ -403,10 +456,12 @@ async def fishing_rod_command(message: Message):
 @router.message(F.text == "استخوان")
 async def bone_fishing(message: Message):
     """صید استخوان با قلاب - هم در پیوی هم گروه"""
-    user = User.get(message.from_user.id)
-    if not user:
-        await message.reply("❌ ثبت‌نام کن!")
-        return
+    
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
     
     from database import get_db
     conn = get_db()
@@ -441,6 +496,13 @@ async def bone_fishing(message: Message):
 @router.message(F.text.startswith("اسم"))
 async def set_name_command(message: Message):
     """اسم گذاری هاپو - هم در پیوی هم گروه"""
+    
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
+    
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2:
         await message.reply("❌ فرمت: اسم نام")
@@ -456,10 +518,12 @@ async def set_name_command(message: Message):
 @router.message(F.text == "🏦 بانک")
 async def bank_command(message: Message):
     """مدیریت بانک - هم در پیوی هم گروه"""
-    user = User.get(message.from_user.id)
-    if not user:
-        await message.reply("❌ ثبت‌نام کن!")
-        return
+    
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
     
     await message.reply(
         f"🏦 **بانک هاپو**\n\n"
@@ -473,6 +537,13 @@ async def bank_command(message: Message):
 @router.message(F.text.startswith("سپرده"))
 async def deposit_command(message: Message):
     """سپرده‌گذاری - هم در پیوی هم گروه"""
+    
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
+    
     parts = message.text.split()
     if len(parts) < 2:
         await message.reply("❌ فرمت: سپرده 100")
@@ -482,11 +553,6 @@ async def deposit_command(message: Message):
         amount = float(parts[1])
     except:
         await message.reply("❌ مبلغ نامعتبر!")
-        return
-    
-    user = User.get(message.from_user.id)
-    if not user:
-        await message.reply("❌ ثبت‌نام کن!")
         return
     
     if user["hop_point"] < amount:
@@ -504,6 +570,13 @@ async def deposit_command(message: Message):
 @router.message(F.text.startswith("برداشت"))
 async def withdraw_command(message: Message):
     """برداشت از بانک - هم در پیوی هم گروه"""
+    
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
+    
     parts = message.text.split()
     if len(parts) < 2:
         await message.reply("❌ فرمت: برداشت 100")
@@ -513,11 +586,6 @@ async def withdraw_command(message: Message):
         amount = float(parts[1])
     except:
         await message.reply("❌ مبلغ نامعتبر!")
-        return
-    
-    user = User.get(message.from_user.id)
-    if not user:
-        await message.reply("❌ ثبت‌نام کن!")
         return
     
     if user["bank_balance"] < amount:
@@ -538,10 +606,12 @@ async def withdraw_command(message: Message):
 @router.message(F.text == "🏭 کارخانه")
 async def factory_command(message: Message):
     """مدیریت کارخانه - هم در پیوی هم گروه"""
-    user = User.get(message.from_user.id)
-    if not user:
-        await message.reply("❌ ثبت‌نام کن!")
-        return
+    
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
     
     await message.reply(
         f"🏭 **کارخانه**\n\n"
@@ -555,10 +625,12 @@ async def factory_command(message: Message):
 @router.message(F.text == "جمع‌کارخانه")
 async def collect_factory_command(message: Message):
     """جمع‌آوری تولید کارخانه - هم در پیوی هم گروه"""
-    user = User.get(message.from_user.id)
-    if not user:
-        await message.reply("❌ ثبت‌نام کن!")
-        return
+    
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
     
     last_collect = datetime.fromisoformat(user["factory_last_collect"]) if user["factory_last_collect"] else datetime.now()
     hours = (datetime.now() - last_collect).seconds / 3600
@@ -579,10 +651,12 @@ async def collect_factory_command(message: Message):
 @router.message(F.text == "ارتقا‌کارخانه")
 async def upgrade_factory_command(message: Message):
     """ارتقای کارخانه - هم در پیوی هم گروه"""
-    user = User.get(message.from_user.id)
-    if not user:
-        await message.reply("❌ ثبت‌نام کن!")
-        return
+    
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
     
     cost = (user["factory_level"] + 1) * 100 + 50
     if user["hop_point"] < cost:
@@ -610,6 +684,13 @@ async def shop_command(message: Message):
 @router.message(F.text.startswith("خرید"))
 async def buy_command(message: Message):
     """خرید از فروشگاه - هم در پیوی هم گروه"""
+    
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
+    
     parts = message.text.split()
     if len(parts) < 2:
         await message.reply("❌ فرمت: خرید [آیدی] [تعداد]")
@@ -648,10 +729,12 @@ async def inventory_command(message: Message):
 @router.message(F.text == "🎯 مأموریت‌ها")
 async def mission_command(message: Message):
     """مشاهده مأموریت‌ها - هم در پیوی هم گروه"""
-    user = User.get(message.from_user.id)
-    if not user:
-        await message.reply("❌ ثبت‌نام کن!")
-        return
+    
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
     
     from database import get_db
     conn = get_db()
@@ -676,10 +759,12 @@ async def mission_command(message: Message):
 @router.message(F.text == "دریافت‌ماموریت")
 async def claim_mission_command(message: Message):
     """دریافت پاداش مأموریت - هم در پیوی هم گروه"""
-    user = User.get(message.from_user.id)
-    if not user:
-        await message.reply("❌ ثبت‌نام کن!")
-        return
+    
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
     
     if not user["daily_mission_done"]:
         User.update(
@@ -697,10 +782,12 @@ async def claim_mission_command(message: Message):
 @router.message(F.text == "🔗 دعوت دوستان")
 async def invite_command(message: Message):
     """دریافت لینک دعوت - هم در پیوی هم گروه"""
-    user = User.get(message.from_user.id)
-    if not user:
-        await message.reply("❌ ثبت‌نام کن!")
-        return
+    
+    user = get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
     
     bot_info = await message.bot.get_me()
     await message.reply(
@@ -1011,10 +1098,11 @@ async def feed_hopo_callback(callback: CallbackQuery):
         await callback.answer("❌ این دکمه فقط در پیوی کار میکنه!", show_alert=True)
         return
     
-    user = User.get(callback.from_user.id)
-    if not user:
-        await callback.message.edit_text("❌ ثبت‌نام کن!")
-        return
+    user = get_or_create_user_silent(
+        callback.from_user.id,
+        callback.from_user.username,
+        callback.from_user.first_name
+    )
     
     has_food = Inventory.use_item(callback.from_user.id, "غذا")
     if not has_food:
@@ -1048,10 +1136,11 @@ async def sleep_hopo_callback(callback: CallbackQuery):
         await callback.answer("❌ این دکمه فقط در پیوی کار میکنه!", show_alert=True)
         return
     
-    user = User.get(callback.from_user.id)
-    if not user:
-        await callback.message.edit_text("❌ ثبت‌نام کن!")
-        return
+    user = get_or_create_user_silent(
+        callback.from_user.id,
+        callback.from_user.username,
+        callback.from_user.first_name
+    )
     
     energy = min(100, user["hopo_energy"] + 30)
     User.update(callback.from_user.id, hopo_energy=energy)
@@ -1065,10 +1154,11 @@ async def play_hopo_callback(callback: CallbackQuery):
         await callback.answer("❌ این دکمه فقط در پیوی کار میکنه!", show_alert=True)
         return
     
-    user = User.get(callback.from_user.id)
-    if not user:
-        await callback.message.edit_text("❌ ثبت‌نام کن!")
-        return
+    user = get_or_create_user_silent(
+        callback.from_user.id,
+        callback.from_user.username,
+        callback.from_user.first_name
+    )
     
     energy = max(0, user["hopo_energy"] - 10)
     happiness = min(100, user["hopo_happiness"] + 15)
@@ -1089,10 +1179,11 @@ async def hatch_hopo_callback(callback: CallbackQuery):
         await callback.answer("❌ این دکمه فقط در پیوی کار میکنه!", show_alert=True)
         return
     
-    user = User.get(callback.from_user.id)
-    if not user:
-        await callback.message.edit_text("❌ ثبت‌نام کن!")
-        return
+    user = get_or_create_user_silent(
+        callback.from_user.id,
+        callback.from_user.username,
+        callback.from_user.first_name
+    )
     
     if user["hopo_stage"] != "egg":
         await callback.answer("🐣 هاپوت دیگه تخم نیست!", show_alert=True)
@@ -1150,6 +1241,13 @@ async def handle_group_messages(message: Message, bot):
     
     if not is_group(message):
         return
+    
+    # ثبت‌نام خودکار
+    get_or_create_user_silent(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name
+    )
     
     GroupMessage.add(message.from_user.id, message.chat.id, message.text or "")
     
