@@ -120,9 +120,41 @@ def calculate_hop_reward(level):
     return random.randint(int(base_min), int(base_max))
 
 
+# ----------------- توابع داخلی بازی تاس 🎲 -----------------
+async def handle_dice_internal(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    """ارسال انیمیشن تاس تلگرام"""
+    await update.message.reply_text("🎲 **تاس انداخته شد!**")
+    await context.bot.send_dice(chat_id=update.effective_chat.id, emoji="🎲")
+
+
+async def handle_dice_callback_internal(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    """مدیریت کلیک روی دکمه‌های تاس تک‌نفره و گروهی"""
+    query = update.callback_query
+    data = query.data
+
+    if "dice_solo" in data or data == "dice":
+        await query.answer("🎲 در حال انداختن تاس...")
+        await query.message.reply_text("🎲 **تاس شما:**")
+        await context.bot.send_dice(
+            chat_id=query.message.chat_id, emoji="🎲"
+        )
+    elif "dice_group" in data:
+        await query.answer("👥 تاس گروهی")
+        await query.message.reply_text(
+            "🎲 **چالش تاس گروهی!**\nبا دوستان خود تاس بیندازید تا بالاترین عدد برنده شود!"
+        )
+        await context.bot.send_dice(
+            chat_id=query.message.chat_id, emoji="🎲"
+        )
+    else:
+        await query.answer()
+
+
 # ----------------- دستورات ربات -----------------
-
-
 async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """نمایش لینک و آمار زیرمجموعه‌گیری کاربر"""
     user_id = update.effective_user.id
@@ -189,11 +221,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_must_join_message(update, context)
         return
 
+    # 📌 اضافه شدن دکمه 🎲 تاس به منوی اصلی
     main_keyboard = ReplyKeyboardMarkup(
         [
             ["پروفایل", "هاپ"],
             ["🐶 پنل سگ", "خرید سگ", "غذا"],
-            ["🎡 گردونه شانس", "🎰 کازینو", "کارخونه"],
+            ["🎡 گردونه شانس", "🎰 کازینو", "🎲 تاس"],
             ["🏦 بانک", "شهر", "👥 زیرمجموعه‌گیری"],
             ["راهنما"],
         ],
@@ -366,6 +399,15 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif hasattr(economy, "start_gamble"):
             await economy.start_gamble(update, context)
 
+    # 🎲 بازی تاس (متنی / دکمه کیبورد)
+    elif clean_text in ["🎲 تاس", "تاس", "dice", "/dice"]:
+        if hasattr(economy, "play_dice"):
+            await economy.play_dice(update, context)
+        elif hasattr(pet, "play_dice"):
+            await pet.play_dice(update, context)
+        else:
+            await handle_dice_internal(update, context)
+
     # 🏦 ۳. اقتصاد، بانک، کارخانه، قاچاق و شهر
     elif clean_text in ["🏦 بانک", "بانک", "bank", "/bank"]:
         if hasattr(economy, "bank_status"):
@@ -452,12 +494,18 @@ async def callback_router(
         await referral_command(update, context)
         await query.answer()
 
-    # 🎰 مدیریت کالبک‌های کازینو
-    elif action.startswith("casino_") or action.startswith("spin_"):
+    # 🎰🎲 مدیریت کالبک‌های کازینو و دکمه‌های تاس (تک‌نفره و گروهی)
+    elif (
+        action.startswith("casino_")
+        or action.startswith("spin_")
+        or action.startswith("dice")
+    ):
         if hasattr(economy, "handle_casino_callback"):
             await economy.handle_casino_callback(update, context)
         elif hasattr(pet, "handle_casino_callback"):
             await pet.handle_casino_callback(update, context)
+        else:
+            await handle_dice_callback_internal(update, context)
 
     # 🎣 مدیریت تصمیم‌گیری صید ماهی (فروش طعمه یا غذادادن)
     elif action in ["fish_sell", "fish_feed"]:
@@ -527,7 +575,27 @@ def main():
     app.add_error_handler(error_handler)
 
     app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CommandHandler(["casino", "gamble"], economy.show_casino_menu if hasattr(economy, "show_casino_menu") else start_command))
+    app.add_handler(
+        CommandHandler(
+            ["casino", "gamble"],
+            (
+                economy.show_casino_menu
+                if hasattr(economy, "show_casino_menu")
+                else start_command
+            ),
+        )
+    )
+    # 🎲 اضافه شدن دستور مستقیم /dice
+    app.add_handler(
+        CommandHandler(
+            "dice",
+            (
+                economy.play_dice
+                if hasattr(economy, "play_dice")
+                else handle_dice_internal
+            ),
+        )
+    )
     if hasattr(economy, "bank_status"):
         app.add_handler(CommandHandler("bank", economy.bank_status))
     app.add_handler(CommandHandler(["referral", "sub"], referral_command))
