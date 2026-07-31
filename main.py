@@ -22,9 +22,6 @@ import config
 import database as db
 from handlers import admin, economy, pet
 
-# ----------------- کاربران مسدود شده (آیدی‌های نادیده گرفته شده) -----------------
-BANNED_USERS = [8486466067]
-
 # مقدار پاداش دعوت (سکه/پوینت)
 REFERRAL_REWARD = 500
 
@@ -56,6 +53,7 @@ async def check_user_membership(bot, user_id: int) -> bool:
             if member.status in ["left", "kicked"]:
                 return False
         except BadRequest:
+            # اگر ربات ادمین کانال نباشد یا آیدی اشتباه باشد، رد می‌شود
             continue
         except Exception as e:
             logging.error(f"خطا در بررسی عضویت کانال {ch['username']}: {e}")
@@ -68,13 +66,13 @@ def get_join_keyboard():
     buttons = []
     for ch in REQUIRED_CHANNELS:
         buttons.append(
-            [InlineKeyboardButton(f"🔔 عضویت در {ch['name']}", url=ch["url"])]
+            [InlineKeyboardButton(f"عضویت در {ch['name']}", url=ch["url"])]
         )
 
     buttons.append(
         [
             InlineKeyboardButton(
-                "✅ عضو شدم، بررسی کن!", callback_data="check_join_status"
+                "عضو شدم، بررسی کن!", callback_data="check_join_status"
             )
         ]
     )
@@ -93,7 +91,7 @@ async def send_must_join_message(
     ])
 
     text = (
-        f"⛔️ **عزیز {user_first_name}!**\n\n"
+        f"⛔️ عزیز {user_first_name}!\n\n"
         f"برای استفاده از ربات هاپ‌داگ، ابتدا باید عضو این کانال‌ها بشی:\n\n"
         f"{channels_list}\n\n"
         f"👇 روی دکمه‌ها کلیک کن، عضو بشو، بعد «عضو شدم» رو بزن:"
@@ -122,47 +120,10 @@ def calculate_hop_reward(level):
     return random.randint(int(base_min), int(base_max))
 
 
-# ----------------- توابع داخلی بازی تاس 🎲 -----------------
-async def handle_dice_internal(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-):
-    """ارسال انیمیشن تاس تلگرام"""
-    await update.message.reply_text("🎲 **تاس انداخته شد!**")
-    await context.bot.send_dice(chat_id=update.effective_chat.id, emoji="🎲")
-
-
-async def handle_dice_callback_internal(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-):
-    """مدیریت کلیک روی دکمه‌های تاس تک‌نفره و گروهی"""
-    query = update.callback_query
-    data = query.data
-
-    if "dice_solo" in data or data == "dice":
-        await query.answer("🎲 در حال انداختن تاس...")
-        await query.message.reply_text("🎲 **تاس شما:**")
-        await context.bot.send_dice(
-            chat_id=query.message.chat_id, emoji="🎲"
-        )
-    elif "dice_group" in data:
-        await query.answer("👥 تاس گروهی")
-        await query.message.reply_text(
-            "🎲 **چالش تاس گروهی!**\nبا دوستان خود تاس بیندازید تا بالاترین عدد برنده شود!"
-        )
-        await context.bot.send_dice(
-            chat_id=query.message.chat_id, emoji="🎲"
-        )
-    else:
-        await query.answer()
-
-
 # ----------------- دستورات ربات -----------------
 async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """نمایش لینک و آمار زیرمجموعه‌گیری کاربر"""
     user_id = update.effective_user.id
-    if user_id in BANNED_USERS:
-        return
-
     bot_username = context.bot.username
 
     ref_count = (
@@ -174,12 +135,12 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     referral_link = f"https://t.me/{bot_username}?start={user_id}"
 
     text = (
-        f"👥 **سیستم دعوت و زیرمجموعه‌گیری**\n\n"
+        f"👥 سیستم دعوت و زیرمجموعه‌گیری\n\n"
         f"با دعوت دوستان خود به ربات، پاداش دریافت کنید!\n\n"
-        f"🎁 **پاداش هر دعوت:** {REFERRAL_REWARD:,} سکه\n"
-        f"📊 **تعداد دعوت‌های شما:** {ref_count} نفر\n"
-        f"💰 **مجموع درآمد از دعوت:** {total_earned:,} سکه\n\n"
-        f"🔗 **لینک اختصاصی شما:**\n"
+        f"🎁 پاداش هر دعوت: {REFERRAL_REWARD:,} سکه\n"
+        f"📊 تعداد دعوت‌های شما: {ref_count} نفر\n"
+        f"💰 مجموع درآمد از دعوت: {total_earned:,} سکه\n\n"
+        f"🔗 لینک اختصاصی شما:\n"
         f"`{referral_link}`"
     )
 
@@ -200,11 +161,6 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    
-    # بررسی مسدود بودن کاربر
-    if user_id in BANNED_USERS:
-        return
-
     username = update.effective_user.username or "کاربر"
 
     db.get_user(user_id, username)
@@ -220,7 +176,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 await context.bot.send_message(
                     chat_id=inviter_id,
-                    text=f"🎉 یک کاربر جدید با لینک شما وارد ربات شد!\n🎁 مبلغ **{REFERRAL_REWARD:,} سکه** به حساب شما اضافه شد.",
+                    text=f"🎉 یک کاربر جدید با لینک شما وارد ربات شد!\n🎁 مبلغ {REFERRAL_REWARD:,} سکه به حساب شما اضافه شد.",
                     parse_mode="Markdown",
                 )
             except Exception:
@@ -235,8 +191,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [
             ["پروفایل", "هاپ"],
             ["🐶 پنل سگ", "خرید سگ", "غذا"],
-            ["🎡 گردونه شانس", "🎰 کازینو", "🎲 تاس"],
-            ["🏦 بانک", "شهر", "👥 زیرمجموعه‌گیری"],
+            ["کارخونه", "شهر"],
+            ["🏦 بانک", "👥 زیرمجموعه‌گیری"],
             ["راهنما"],
         ],
         resize_keyboard=True,
@@ -254,7 +210,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     start_text = (
         f"سلام {update.effective_user.first_name} عزیز! 👋\n"
         f"به ربات خوش آمدید.\n\n"
-        f"💡 برای گرفتن لینک دعوت می‌توانید از دکمه شیشه‌ای زیر یا دکمه **👥 زیرمجموعه‌گیری** در کیبورد استفاده کنید."
+        f"💡 برای گرفتن لینک دعوت می‌توانید از دکمه شیشه‌ای زیر یا دکمه 👥 زیرمجموعه‌گیری در کیبورد استفاده کنید."
     )
 
     await update.message.reply_text(start_text, reply_markup=main_keyboard)
@@ -266,7 +222,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_hop_internal(
     update: Update, context: ContextTypes.DEFAULT_TYPE, user=None
 ):
-    """مدیریت فرایند هاپ"""
+    """مدیریت فرایند هاپ در صورتی که در فایل pet.py تابع claim_hop تعریف نشده باشد"""
     user_id = update.effective_user.id
     current_time = int(time.time())
 
@@ -278,7 +234,7 @@ async def handle_hop_internal(
         minutes = remaining // 60
         seconds = remaining % 60
         await update.message.reply_text(
-            f"⏳ سگ شما خسته است! لطفا **{minutes} دقیقه و {seconds} ثانیه** صبر کنید."
+            f"⏳ سگ شما خسته است! لطفا {minutes} دقیقه و {seconds} ثانیه صبر کنید."
         )
         return
 
@@ -299,16 +255,16 @@ async def handle_hop_internal(
         progress = 0
         db.update_field(user_id, "level", 1, relative=True)
         db.update_field(user_id, "level_hops_progress", 0, relative=False)
-        level_up_msg = f"\n🎉 **تبریک! شما به سطح {level} ارتقا یافتید!** 🚀"
+        level_up_msg = f"\n🎉 تبریک! شما به سطح {level} ارتقا یافتید! 🚀"
     else:
         db.update_field(
             user_id, "level_hops_progress", progress, relative=False
         )
 
     await update.message.reply_text(
-        f"🐕 **هاپ! هاپ!**\n\n"
-        f"💰 پاداش دریافتی: **{reward:,} سکه**\n"
-        f"📊 پیشرفت سطح {level}: **[{progress}/{needed}]** هاپ{level_up_msg}",
+        f"🐕 هاپ! هاپ!\n\n"
+        f"💰 پاداش دریافتی: {reward:,} سکه\n"
+        f"📊 پیشرفت سطح {level}: [{progress}/{needed}] هاپ{level_up_msg}",
         parse_mode="Markdown",
     )
 
@@ -324,62 +280,15 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
 
-    user_id = update.effective_user.id
-
-    # ⛔️ نادیده‌گرفتن کامل آیدی مسدود شده
-    if user_id in BANNED_USERS:
-        return
-
     text = update.message.text.strip()
+    user_id = update.effective_user.id
 
     is_joined = await check_user_membership(context.bot, user_id)
     if not is_joined:
         await send_must_join_message(update, context)
         return
 
-    # 🎲 پردازش دستور متنی تاس ۲ نفره (مثال: تاس 2 زوج 100)
-    parts = text.split()
-    if len(parts) == 4 and parts[0] in ["تاس", "dice"] and parts[1].isdigit():
-        max_players = int(parts[1])
-        creator_choice = parts[2]
-        bet_amount = int(parts[3]) if parts[3].isdigit() else 0
-
-        if max_players != 2:
-            await update.message.reply_text("❌ در حال حاضر فقط چالش ۲ نفره پشتیبانی می‌شود.")
-            return
-
-        if creator_choice not in ["زوج", "فرد"]:
-            await update.message.reply_text("❌ انتخاب باید «زوج» یا «فرد» باشد.")
-            return
-
-        creator_points = db.get_user_field(user_id, "points") or 0
-        if creator_points < bet_amount:
-            await update.message.reply_text("❌ موجودی سکه شما برای ایجاد این چالش کافی نیست!")
-            return
-
-        game_id = f"dice_{user_id}_{int(time.time())}"
-        context.bot_data[game_id] = {
-            "creator_id": user_id,
-            "creator_choice": creator_choice,
-            "bet_amount": bet_amount,
-        }
-
-        opposite_choice = "فرد" if creator_choice == "زوج" else "زوج"
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton("🎲 شرکت در بازی", callback_data=f"join_dice:{game_id}")
-        ]])
-
-        text_msg = (
-            f"🎲 **چالش تاس ۲ نفره!**\n\n"
-            f"👤 سازنده: {update.effective_user.first_name}\n"
-            f"🎯 انتخاب سازنده: **{creator_choice}**\n"
-            f"💰 مبلغ ورودی: **{bet_amount:,} سکه**\n\n"
-            f"👇 نفر دوم با ورود به بازی، انتخابش **{opposite_choice}** خواهد بود."
-        )
-        await update.message.reply_text(text_msg, parse_mode="Markdown", reply_markup=keyboard)
-        return
-
-    # 📌 بررسی اولویت اول: آیا کاربر در حالت تغییر نام سگ است؟
+    # بررسی اولویت اول: آیا کاربر در حالت تغییر نام سگ است؟
     if hasattr(pet, "handle_dog_rename_text"):
         is_handled = await pet.handle_dog_rename_text(update, context)
         if is_handled:
@@ -401,7 +310,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     clean_text = text.split("@")[0].lower()
 
-    # 📌 ۱. عمومی، سگ و زیرمجموعه‌گیری
+    # ۱. عمومی، سگ و زیرمجموعه‌گیری
     if clean_text in ["پروفایل", "هاپوهام", "هاپوهاش", "/profile"]:
         await pet.show_profile(update, context, user)
     elif clean_text in [
@@ -421,11 +330,6 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await pet.claim_hop(update, context, user)
         else:
             await handle_hop_internal(update, context, user)
-    elif clean_text in ["🎡 گردونه شانس", "گردونه شانس", "گردونه", "چرخش", "/spin"]:
-        if hasattr(pet, "spin_wheel"):
-            await pet.spin_wheel(update, context, user)
-        elif hasattr(economy, "spin_wheel"):
-            await economy.spin_wheel(update, context, user)
     elif clean_text in ["راهنما", "help", "/help"]:
         await pet.show_help(update, context)
     elif clean_text in ["خرید سگ", "/buydog"]:
@@ -442,29 +346,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]:
         await referral_command(update, context)
 
-    # 🎰 ۲. کازینو و بازی‌ها
-    elif clean_text in [
-        "🎰 کازینو",
-        "کازینو",
-        "کازینو آنلاین",
-        "casino",
-        "/casino",
-    ]:
-        if hasattr(economy, "show_casino_menu"):
-            await economy.show_casino_menu(update, context)
-        elif hasattr(economy, "start_gamble"):
-            await economy.start_gamble(update, context)
-
-    # 🎲 بازی تاس (متنی / دکمه کیبورد)
-    elif clean_text in ["🎲 تاس", "تاس", "dice", "/dice"]:
-        if hasattr(economy, "play_dice"):
-            await economy.play_dice(update, context)
-        elif hasattr(pet, "play_dice"):
-            await pet.play_dice(update, context)
-        else:
-            await handle_dice_internal(update, context)
-
-    # 🏦 ۳. اقتصاد، بانک، کارخانه، قاچاق و شهر
+    # ۲. اقتصاد، بانک، کارخانه، قاچاق و شهر
     elif clean_text in ["🏦 بانک", "بانک", "bank", "/bank"]:
         if hasattr(economy, "bank_status"):
             await economy.bank_status(update, context, user)
@@ -486,7 +368,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif clean_text.startswith("اهدا") or clean_text.startswith("/donate"):
         await economy.donate_city(update, context, user)
 
-    # 👑 ۴. دستورات ادمین
+    # ۳. دستورات ادمین
     elif user_id in config.ADMIN_IDS:
         if text.startswith("افزایش پوینت"):
             await admin.add_points(update, context)
@@ -505,11 +387,6 @@ async def callback_router(
 ):
     query = update.callback_query
     user_id = query.from_user.id
-
-    # ⛔️ نادیده‌گرفتن کامل آیدی مسدود شده در کلیک روی دکمه‌ها
-    if user_id in BANNED_USERS:
-        return
-
     data = query.data
 
     if data == "check_join_status":
@@ -526,61 +403,6 @@ async def callback_router(
             await query.answer(
                 "❌ هنوز در تمامی کانال‌ها عضو نشده‌اید!", show_alert=True
             )
-        return
-
-    # 🎲 مدیریت شرکت در چالش تاس متنی
-    if data.startswith("join_dice:"):
-        game_id = data.split(":")[1]
-        game = context.bot_data.get(game_id)
-
-        if not game:
-            await query.answer("❌ این چالش منقضی یا تمام شده است.", show_alert=True)
-            return
-
-        creator_id = game["creator_id"]
-        bet_amount = game["bet_amount"]
-
-        if user_id == creator_id:
-            await query.answer("❌ شما خودتان سازنده این چالش هستید!", show_alert=True)
-            return
-
-        joiner_points = db.get_user_field(user_id, "points") or 0
-        if joiner_points < bet_amount:
-            await query.answer("❌ سکه کافی برای شرکت در این چالش ندارید!", show_alert=True)
-            return
-
-        creator_points = db.get_user_field(creator_id, "points") or 0
-        if creator_points < bet_amount:
-            await query.answer("❌ سکه سازنده بازی دیگر کافی نیست!", show_alert=True)
-            return
-
-        # کسر سکه ورودی از هر دو نفر
-        db.update_field(creator_id, "points", -bet_amount, relative=True)
-        db.update_field(user_id, "points", -bet_amount, relative=True)
-
-        await query.answer("🎲 در حال پرتاب تاس...")
-        dice_msg = await context.bot.send_dice(chat_id=query.message.chat_id, emoji="🎲")
-        dice_value = dice_msg.dice.value
-
-        result_type = "زوج" if dice_value % 2 == 0 else "فرد"
-        total_prize = bet_amount * 2
-
-        if result_type == game["creator_choice"]:
-            winner_id = creator_id
-            winner_name = "سازنده بازی"
-        else:
-            winner_id = user_id
-            winner_name = query.from_user.first_name
-
-        # واریز مجموع کل جایزه به برنده
-        db.update_field(winner_id, "points", total_prize, relative=True)
-
-        await query.message.reply_text(
-            f"🎲 عدد تاس آمد: **{dice_value}** ({result_type})\n\n"
-            f"🏆 کاربر **{winner_name}** برنده **{total_prize:,} سکه** شد!",
-            parse_mode="Markdown"
-        )
-        del context.bot_data[game_id]
         return
 
     if ":" in data:
@@ -605,32 +427,19 @@ async def callback_router(
         await send_must_join_message(update, context)
         return
 
-    # 📌 مدیریت دکمه شیشه‌ای زیرمجموعه‌گیری
+    # مدیریت دکمه شیشه‌ای زیرمجموعه‌گیری
     if action == "get_referral_link":
         await referral_command(update, context)
         await query.answer()
 
-    # 🎰🎲 مدیریت کالبک‌های کازینو و دکمه‌های تاس (تک‌نفره و گروهی)
-    elif (
-        action.startswith("casino_")
-        or action.startswith("spin_")
-        or action.startswith("dice")
-    ):
-        if hasattr(economy, "handle_casino_callback"):
-            await economy.handle_casino_callback(update, context)
-        elif hasattr(pet, "handle_casino_callback"):
-            await pet.handle_casino_callback(update, context)
-        else:
-            await handle_dice_callback_internal(update, context)
-
-    # 🎣 مدیریت تصمیم‌گیری صید ماهی (فروش طعمه یا غذادادن)
+    # مدیریت تصمیم‌گیری صید ماهی (فروش طعمه یا غذادادن)
     elif action in ["fish_sell", "fish_feed"]:
         if hasattr(pet, "handle_fish_callback"):
             await pet.handle_fish_callback(update, context)
         else:
             await query.answer()
 
-    # 🐶 مدیریت کلیک‌های مربوط به پنل سگ
+    # مدیریت کلیک‌های مربوط به پنل سگ
     elif (
         action.startswith("dog_")
         or action.startswith("pet_")
@@ -643,19 +452,19 @@ async def callback_router(
         else:
             await query.answer()
 
-    # 🏦 مدیریت دکمه‌های بانک
+    # مدیریت دکمه‌های بانک
     elif action.startswith("bank_"):
         if hasattr(economy, "handle_bank_callback"):
             await economy.handle_bank_callback(update, context)
 
-    # 🏭 مدیریت دکمه‌های کارخانه
+    # مدیریت دکمه‌های کارخانه
     elif action.startswith("buy_fac_") or action.startswith("fac_"):
         if hasattr(economy, "factory_callback"):
             await economy.factory_callback(update, context)
         elif hasattr(economy, "handle_factory_callback"):
             await economy.handle_factory_callback(update, context)
 
-    # 📦 مدیریت دکمه‌های قاچاق
+    # مدیریت دکمه‌های قاچاق
     elif action.startswith("select_contra_") or action in [
         "start_smuggling",
         "pay_bail",
@@ -663,12 +472,12 @@ async def callback_router(
         if hasattr(economy, "handle_smuggle_callback"):
             await economy.handle_smuggle_callback(update, context)
 
-    # 💰 مدیریت فروش محصولات
+    # مدیریت فروش محصولات
     elif action.startswith("sell_"):
         if hasattr(economy, "sell_callback"):
             await economy.sell_callback(update, context)
 
-    # 🎲 مدیریت شرکت در قمار
+    # مدیریت شرکت در قمار
     elif action.startswith("join_gamble"):
         if hasattr(economy, "join_gamble_callback"):
             await economy.join_gamble_callback(update, context)
@@ -691,27 +500,6 @@ def main():
     app.add_error_handler(error_handler)
 
     app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(
-        CommandHandler(
-            ["casino", "gamble"],
-            (
-                economy.show_casino_menu
-                if hasattr(economy, "show_casino_menu")
-                else start_command
-            ),
-        )
-    )
-    # 🎲 اضافه شدن دستور مستقیم /dice
-    app.add_handler(
-        CommandHandler(
-            "dice",
-            (
-                economy.play_dice
-                if hasattr(economy, "play_dice")
-                else handle_dice_internal
-            ),
-        )
-    )
     if hasattr(economy, "bank_status"):
         app.add_handler(CommandHandler("bank", economy.bank_status))
     app.add_handler(CommandHandler(["referral", "sub"], referral_command))
