@@ -111,8 +111,8 @@ async def start_command(message: Message, bot):
     )
     
     await message.reply(
-        f"🎉 **به میوپی خوش اومدی {user['first_name']}!**\n\n"
-        f"🐱 هر ۵ دقیقه با دستور **میو** امتیاز بگیر.\n"
+        f"🎉 **به هاپو خوش اومدی {user['first_name']}!**\n\n"
+        f"🐱 هر ۵ دقیقه با دستور **هاپ** امتیاز بگیر.\n"
         f"🎰 برای بازی به گروه برو و **کازینو** رو بزن.\n"
         f"📖 راهنما: **راهنما**",
         reply_markup=main_menu()
@@ -125,9 +125,9 @@ async def home_command(message: Message, bot):
     if is_private(message):
         await start_command(message, bot)
 
-# ==================== دستور میو ====================
+# ==================== دستور هاپ ====================
 
-@router.message(F.text == "میو")
+@router.message(F.text == "هاپ")
 async def get_hop_command(message: Message, bot):
     user = get_or_create_user_silent(
         message.from_user.id,
@@ -136,14 +136,14 @@ async def get_hop_command(message: Message, bot):
     )
     
     if is_admin(message.from_user.id):
-        await message.reply("👑 شما ادمین هستید! میو پوینت بینهایت.")
+        await message.reply("👑 شما ادمین هستید! هاپو پوینت بینهایت.")
         return
     
     if is_private(message):
         not_joined = await check_channels(bot, message.from_user.id)
         if not_joined:
             await message.reply(
-                "⚠️ برای دریافت میو ابتدا در کانال‌های زیر عضو شوید:",
+                "⚠️ برای دریافت هاپو ابتدا در کانال‌های زیر عضو شوید:",
                 reply_markup=channel_check_kb(not_joined)
             )
             return
@@ -177,7 +177,7 @@ async def get_hop_command(message: Message, bot):
     gem_text = f" و 💎 {gem_reward} جم" if gem_reward > 0 else ""
     bonus_text = f" (🌟 {bonus} پاداش گروهی)" if bonus > 0 else ""
     
-    await message.reply(f"🎉 {hop_reward} میو پوینت گرفتی!{gem_text}{bonus_text}")
+    await message.reply(f"🎉 {hop_reward} هاپو پوینت گرفتی!{gem_text}{bonus_text}")
 
 # ==================== پروفایل ====================
 
@@ -196,7 +196,7 @@ async def my_profile(message: Message):
         User.update(message.from_user.id, hopo_hunger=hunger, hopo_happiness=happiness)
         user = User.get(message.from_user.id)
     
-    admin_text = "\n👑 **ادمین - میو بینهایت**" if is_admin(message.from_user.id) else ""
+    admin_text = "\n👑 **ادمین - هاپو بینهایت**" if is_admin(message.from_user.id) else ""
     
     await message.reply(
         format_profile(user, group_mode=is_group(message)) + admin_text,
@@ -218,7 +218,7 @@ async def user_profile_reply(message: Message):
         await message.reply("❌ کاربر در ربات ثبت‌نام نکرده!")
         return
     
-    admin_text = "\n👑 **ادمین - میو بینهایت**" if is_admin(target_id) else ""
+    admin_text = "\n👑 **ادمین - هاپو بینهایت**" if is_admin(target_id) else ""
     
     await message.reply(format_profile(user, group_mode=is_group(message)) + admin_text)
 
@@ -246,13 +246,13 @@ async def spin_command(message: Message):
     )
     
     prizes = [
-        ("🎉 ۵۰ میو!", 50, 0),
-        ("🎉 ۲۰ میو!", 20, 0),
-        ("🎉 ۱۰۰ میو!", 100, 0),
+        ("🎉 ۵۰ هاپو!", 50, 0),
+        ("🎉 ۲۰ هاپو!", 20, 0),
+        ("🎉 ۱۰۰ هاپو!", 100, 0),
         ("💎 ۵ جم!", 0, 5),
         ("💎 ۲ جم!", 0, 2),
         ("😞 هیچی!", 0, 0),
-        ("⭐ ۵۰۰ میو!", 500, 0),
+        ("⭐ ۵۰۰ هاپو!", 500, 0),
         ("🥚 تخم طلایی!", 0, 0, "egg")
     ]
     
@@ -263,7 +263,7 @@ async def spin_command(message: Message):
         else:
             hop_win, gem_win = prize[1], prize[2]
             if hop_win > 0:
-                result = f"{prize[0]} (👑 ادمین - میو بینهایت)"
+                result = f"{prize[0]} (👑 ادمین - هاپو بینهایت)"
             elif gem_win > 0:
                 User.update(message.from_user.id, hop_gem=user["hop_gem"] + gem_win)
                 result = prize[0]
@@ -274,7 +274,7 @@ async def spin_command(message: Message):
     
     cost = 20
     if user["hop_point"] < cost:
-        await message.reply(f"❌ {cost} میو نیاز داری!")
+        await message.reply(f"❌ {cost} هاپو نیاز داری!")
         return
     
     User.update(message.from_user.id, hop_point=user["hop_point"] - cost)
@@ -287,7 +287,7 @@ async def spin_command(message: Message):
         hop_win, gem_win = prize[1], prize[2]
         if hop_win > 0:
             User.update(message.from_user.id, hop_point=user["hop_point"] + hop_win)
-            result = f"{prize[0]} (مجموع: {user['hop_point'] - cost + hop_win:.1f} میو)"
+            result = f"{prize[0]} (مجموع: {user['hop_point'] - cost + hop_win:.1f} هاپو)"
         elif gem_win > 0:
             User.update(message.from_user.id, hop_gem=user["hop_gem"] + gem_win)
             result = prize[0]
@@ -302,7 +302,7 @@ async def spin_command(message: Message):
 @router.message(F.text == "🎲 بازی‌ها")
 async def games_menu(message: Message):
     await message.reply(
-        "🎮 **بازی‌های میوپی**\n\n"
+        "🎮 **بازی‌های هاپو**\n\n"
         "🎲 **تاس** [مبلغ]\n"
         "🎡 **گردونه**\n"
         "♠️ **قمار** [مبلغ]\n"
@@ -335,9 +335,9 @@ async def dice_game(message: Message):
     
     if is_admin(message.from_user.id):
         if user_roll > bot_roll:
-            result = "🎉 بردی! (👑 ادمین - میو بینهایت)"
+            result = "🎉 بردی! (👑 ادمین - هاپو بینهایت)"
         elif user_roll < bot_roll:
-            result = "😞 باختی! (👑 ادمین - میو کم نمیشه)"
+            result = "😞 باختی! (👑 ادمین - هاپو کم نمیشه)"
         else:
             result = "🤝 مساوی شد!"
         await message.reply(
@@ -348,16 +348,16 @@ async def dice_game(message: Message):
         return
     
     if user["hop_point"] < bet:
-        await message.reply(f"❌ موجودی کافی نیست! داری {user['hop_point']:.1f} میو")
+        await message.reply(f"❌ موجودی کافی نیست! داری {user['hop_point']:.1f} هاپو")
         return
     
     if user_roll > bot_roll:
         win = bet * 1.5
         User.update(message.from_user.id, hop_point=user["hop_point"] + win)
-        result = f"🎉 بردی! {win:.1f} میو"
+        result = f"🎉 بردی! {win:.1f} هاپو"
     elif user_roll < bot_roll:
         User.update(message.from_user.id, hop_point=user["hop_point"] - bet)
-        result = f"😞 باختی! {bet:.1f} میو"
+        result = f"😞 باختی! {bet:.1f} هاپو"
     else:
         result = "🤝 مساوی شد!"
     
@@ -395,9 +395,9 @@ async def gamble_game(message: Message):
     
     if is_admin(message.from_user.id):
         if ranks[user_card] > ranks[bot_card]:
-            result = "🎉 بردی! (👑 ادمین - میو بینهایت)"
+            result = "🎉 بردی! (👑 ادمین - هاپو بینهایت)"
         elif ranks[user_card] < ranks[bot_card]:
-            result = "😞 باختی! (👑 ادمین - میو کم نمیشه)"
+            result = "😞 باختی! (👑 ادمین - هاپو کم نمیشه)"
         else:
             result = "🤝 مساوی شد!"
         await message.reply(
@@ -414,10 +414,10 @@ async def gamble_game(message: Message):
     if ranks[user_card] > ranks[bot_card]:
         win = bet * 2
         User.update(message.from_user.id, hop_point=user["hop_point"] + win)
-        result = f"🎉 بردی! {win:.1f} میو"
+        result = f"🎉 بردی! {win:.1f} هاپو"
     elif ranks[user_card] < ranks[bot_card]:
         User.update(message.from_user.id, hop_point=user["hop_point"] - bet)
-        result = f"😞 باختی! {bet:.1f} میو"
+        result = f"😞 باختی! {bet:.1f} هاپو"
     else:
         result = "🤝 مساوی شد!"
     
@@ -466,7 +466,7 @@ async def dog_command(message: Message):
     
     if not has_dog:
         if user["hop_point"] < 100:
-            await message.reply("❌ ۱۰۰ میو نیاز داری برای خرید سگ!")
+            await message.reply("❌ ۱۰۰ هاپو نیاز داری برای خرید سگ!")
             return
         User.update(message.from_user.id, hop_point=user["hop_point"] - 100)
         conn = get_db()
@@ -478,7 +478,7 @@ async def dog_command(message: Message):
     else:
         upgrade_cost = dog_level * 50
         if user["hop_point"] < upgrade_cost:
-            await message.reply(f"❌ {upgrade_cost} میو نیازه برای ارتقا!")
+            await message.reply(f"❌ {upgrade_cost} هاپو نیازه برای ارتقا!")
             return
         User.update(message.from_user.id, hop_point=user["hop_point"] - upgrade_cost)
         conn = get_db()
@@ -525,7 +525,7 @@ async def fishing_rod_command(message: Message):
     
     if rod_level == 0:
         if user["hop_point"] < 50:
-            await message.reply("❌ ۵۰ میو نیاز داری برای خرید قلاب!")
+            await message.reply("❌ ۵۰ هاپو نیاز داری برای خرید قلاب!")
             return
         User.update(message.from_user.id, hop_point=user["hop_point"] - 50)
         conn = get_db()
@@ -537,7 +537,7 @@ async def fishing_rod_command(message: Message):
     else:
         upgrade_cost = rod_level * 30
         if user["hop_point"] < upgrade_cost:
-            await message.reply(f"❌ {upgrade_cost} میو نیازه!")
+            await message.reply(f"❌ {upgrade_cost} هاپو نیازه!")
             return
         User.update(message.from_user.id, hop_point=user["hop_point"] - upgrade_cost)
         conn = get_db()
@@ -628,11 +628,11 @@ async def bank_command(message: Message):
         message.from_user.first_name
     )
     
-    admin_text = "\n👑 **ادمین - میو بینهایت**" if is_admin(message.from_user.id) else ""
+    admin_text = "\n👑 **ادمین - هاپو بینهایت**" if is_admin(message.from_user.id) else ""
     
     await message.reply(
-        f"🏦 **بانک میوپی**\n\n"
-        f"💰 موجودی: {user['bank_balance']:.1f} میو\n"
+        f"🏦 **بانک هاپو**\n\n"
+        f"💰 موجودی: {user['bank_balance']:.1f} هاپو\n"
         f"📈 سود: {user['bank_interest'] * 100}%\n"
         f"{admin_text}\n\n"
         f"دستورات:\n"
@@ -664,11 +664,11 @@ async def deposit_command(message: Message):
             message.from_user.id,
             bank_balance=user["bank_balance"] + amount
         )
-        await message.reply(f"✅ {amount:.1f} میو به بانک واریز شد! (👑 ادمین - رایگان)")
+        await message.reply(f"✅ {amount:.1f} هاپو به بانک واریز شد! (👑 ادمین - رایگان)")
         return
     
     if user["hop_point"] < amount:
-        await message.reply(f"❌ موجودی کافی نیست! داری {user['hop_point']:.1f} میو")
+        await message.reply(f"❌ موجودی کافی نیست! داری {user['hop_point']:.1f} هاپو")
         return
     
     User.update(
@@ -677,7 +677,7 @@ async def deposit_command(message: Message):
         bank_balance=user["bank_balance"] + amount
     )
     
-    await message.reply(f"✅ {amount:.1f} میو به بانک واریز شد!")
+    await message.reply(f"✅ {amount:.1f} هاپو به بانک واریز شد!")
 
 @router.message(F.text.startswith("برداشت"))
 async def withdraw_command(message: Message):
@@ -704,11 +704,11 @@ async def withdraw_command(message: Message):
             hop_point=user["hop_point"] + amount,
             bank_balance=user["bank_balance"] - amount
         )
-        await message.reply(f"✅ {amount:.1f} میو از بانک برداشت شد! (👑 ادمین - بینهایت)")
+        await message.reply(f"✅ {amount:.1f} هاپو از بانک برداشت شد! (👑 ادمین - بینهایت)")
         return
     
     if user["bank_balance"] < amount:
-        await message.reply(f"❌ موجودی بانک کافی نیست! داری {user['bank_balance']:.1f} میو")
+        await message.reply(f"❌ موجودی بانک کافی نیست! داری {user['bank_balance']:.1f} هاپو")
         return
     
     User.update(
@@ -717,7 +717,7 @@ async def withdraw_command(message: Message):
         bank_balance=user["bank_balance"] - amount
     )
     
-    await message.reply(f"✅ {amount:.1f} میو از بانک برداشت شد!")
+    await message.reply(f"✅ {amount:.1f} هاپو از بانک برداشت شد!")
 
 # ==================== کارخانه ====================
 
@@ -735,7 +735,7 @@ async def factory_command(message: Message):
     await message.reply(
         f"🏭 **کارخانه**\n\n"
         f"📊 سطح: {user['factory_level']}\n"
-        f"⚡ تولید: {user['factory_production']:.1f} میو در ساعت\n"
+        f"⚡ تولید: {user['factory_production']:.1f} هاپو در ساعت\n"
         f"{admin_text}\n\n"
         f"دستورات:\n"
         f"📥 **جمع‌کارخانه**\n"
@@ -757,7 +757,7 @@ async def collect_factory_command(message: Message):
             hop_point=user["hop_point"] + production,
             factory_last_collect=datetime.now().isoformat()
         )
-        await message.reply(f"🏭 {production:.1f} میو از کارخانه جمع کردی! (👑 ادمین - تولید بینهایت)")
+        await message.reply(f"🏭 {production:.1f} هاپو از کارخانه جمع کردی! (👑 ادمین - تولید بینهایت)")
         return
     
     last_collect = datetime.fromisoformat(user["factory_last_collect"]) if user["factory_last_collect"] else datetime.now()
@@ -774,7 +774,7 @@ async def collect_factory_command(message: Message):
         factory_last_collect=datetime.now().isoformat()
     )
     
-    await message.reply(f"🏭 {production:.1f} میو از کارخانه جمع کردی!")
+    await message.reply(f"🏭 {production:.1f} هاپو از کارخانه جمع کردی!")
 
 @router.message(F.text == "ارتقا‌کارخانه")
 async def upgrade_factory_command(message: Message):
@@ -795,7 +795,7 @@ async def upgrade_factory_command(message: Message):
     
     cost = (user["factory_level"] + 1) * 100 + 50
     if user["hop_point"] < cost:
-        await message.reply(f"❌ {cost} میو نیاز داری!")
+        await message.reply(f"❌ {cost} هاپو نیاز داری!")
         return
     
     User.update(
@@ -893,7 +893,7 @@ async def mission_command(message: Message):
         status = "✅" if (mission["type"] == "daily" and user["daily_mission_done"]) or (mission["type"] == "weekly" and user["weekly_mission_done"]) else "❌"
         text += f"{mission['emoji']} {mission['name']}\n"
         text += f"{mission['description']}\n"
-        text += f"پاداش: {mission['reward_hop']} میو"
+        text += f"پاداش: {mission['reward_hop']} هاپو"
         if mission['reward_gem'] > 0:
             text += f" + {mission['reward_gem']} جم"
         text += f"\nوضعیت: {status}\n━━━━━━━━━━\n"
@@ -919,7 +919,7 @@ async def claim_mission_command(message: Message):
             weekly_mission_done=1,
             hop_point=user["hop_point"] + 1000
         )
-        await message.reply("🎁 ۱۰۰۰ میو پاداش مأموریت گرفتی! (👑 ادمین)")
+        await message.reply("🎁 ۱۰۰۰ هاپو پاداش مأموریت گرفتی! (👑 ادمین)")
         return
     
     if not user["daily_mission_done"]:
@@ -928,7 +928,7 @@ async def claim_mission_command(message: Message):
             daily_mission_done=1,
             hop_point=user["hop_point"] + 50
         )
-        await message.reply("🎁 ۵۰ میو پاداش روزانه گرفتی!")
+        await message.reply("🎁 ۵۰ هاپو پاداش روزانه گرفتی!")
     else:
         await message.reply("❌ امروز پاداش رو گرفتی!")
 
@@ -949,7 +949,7 @@ async def invite_command(message: Message):
     
     await message.reply(
         f"🔗 **لینک دعوت اختصاصی**\n\n"
-        f"برای هر دعوت ۲۰ میو پاداش می‌گیری!\n"
+        f"برای هر دعوت ۲۰ هاپو پاداش می‌گیری!\n"
         f"تعداد دعوت‌ها: {user['invite_count']}{admin_text}\n\n"
         f"https://t.me/{bot_info.username}?start=ref_{user['id']}"
     )
@@ -961,7 +961,7 @@ async def invite_command(message: Message):
 async def help_command(message: Message):
     admin_text = """
 👑 **ویژگی‌های ادمین:**
-✅ میو بینهایت (هرگز کم نمیشه)
+✅ هاپو بینهایت (هرگز کم نمیشه)
 ✅ گردونه شانس رایگان
 ✅ بازی‌ها رایگان
 ✅ خرید سگ و قلاب رایگان
@@ -969,14 +969,14 @@ async def help_command(message: Message):
 ✅ خرید از فروشگاه رایگان
 ✅ تولید کارخانه بینهایت
 ✅ صید استخوان ۱۰۰٪
-✅ پاداش مأموریت‌ها ۱۰۰۰ میو
+✅ پاداش مأموریت‌ها ۱۰۰۰ هاپو
 """ if is_admin(message.from_user.id) else ""
     
     help_text = f"""
-📖 **راهنمای کامل ربات میوپی**
+📖 **راهنمای کامل ربات هاپو**
 
 🐾 **دستورات اصلی (همه جا)**
-**میو** ➜ دریافت میو (هر ۵ دقیقه)
+**هاپ** ➜ دریافت هاپو (هر ۵ دقیقه)
 **هاپوهام** ➜ مشاهده پروفایل
 **هاپ‌هاش** ➜ پروفایل کاربر ریپلای شده
 **لیدربرد** ➜ جدول برترین‌ها
@@ -1099,7 +1099,7 @@ async def add_points_admin(message: Message):
         return
     
     User.update(target_id, hop_point=user["hop_point"] + amount)
-    await message.reply(f"✅ {amount:.1f} میو به {user['first_name']} اضافه شد!")
+    await message.reply(f"✅ {amount:.1f} هاپو به {user['first_name']} اضافه شد!")
 
 @router.message(F.text.startswith("کاهش پوینت"))
 async def remove_points_admin(message: Message):
@@ -1132,7 +1132,7 @@ async def remove_points_admin(message: Message):
         return
     
     User.update(target_id, hop_point=max(0, user["hop_point"] - amount))
-    await message.reply(f"✅ {amount:.1f} میو از {user['first_name']} کم شد!")
+    await message.reply(f"✅ {amount:.1f} هاپو از {user['first_name']} کم شد!")
 
 @router.message(F.text.startswith("افزایش لول"))
 async def add_level_admin(message: Message):
@@ -1373,7 +1373,7 @@ async def play_hopo_callback(callback: CallbackQuery):
     
     User.update(callback.from_user.id, hopo_energy=energy, hopo_happiness=happiness)
     
-    reward_text = f" و {reward} میو گرفتی!" if reward > 0 else ""
+    reward_text = f" و {reward} هاپو گرفتی!" if reward > 0 else ""
     await callback.message.edit_text(f"🎮 با هاپو بازی کردی! خوشحالی: {happiness}%{reward_text}")
     await callback.answer()
 
@@ -1487,7 +1487,7 @@ async def casino_menu(message: Message):
     await message.reply(
         f"🎰 **کازینو**\n\n"
         f"👤 {user['first_name']}\n"
-        f"💰 میو پوینت: {user['hop_point']:,}\n\n"
+        f"💰 هاپو پوینت: {user['hop_point']:,}\n\n"
         f"برای بازی اسلات، روی دکمه زیر کلیک کن\n"
         f"سپس مبلغ شرط رو وارد کن و استیکر 🎰 بفرست",
         reply_markup=keyboard
@@ -1508,7 +1508,7 @@ async def slot_start(callback: CallbackQuery):
     )
     
     if user["hop_point"] < 100:
-        await callback.answer("❌ حداقل ۱۰۰ میو پوینت نیاز داری!", show_alert=True)
+        await callback.answer("❌ حداقل ۱۰۰ هاپو پوینت نیاز داری!", show_alert=True)
         return
     
     slot_bets[callback.from_user.id] = "waiting"
@@ -1552,10 +1552,10 @@ async def handle_slot_bet_input(message: Message):
     try:
         bet = int(message.text.strip())
         if bet < 100:
-            await message.reply("❌ حداقل مبلغ ۱۰۰ میو پوینت است!")
+            await message.reply("❌ حداقل مبلغ ۱۰۰ هاپو پوینت است!")
             return
         if bet > 100000:
-            await message.reply("❌ حداکثر مبلغ ۱۰۰٬۰۰۰ میو پوینت است!")
+            await message.reply("❌ حداکثر مبلغ ۱۰۰٬۰۰۰ هاپو پوینت است!")
             return
     except:
         await message.reply("❌ لطفا یک عدد معتبر وارد کنید!")
@@ -1563,14 +1563,14 @@ async def handle_slot_bet_input(message: Message):
     
     user = User.get(message.from_user.id)
     if not user or user["hop_point"] < bet:
-        await message.reply(f"❌ موجودی کافی نیست! داری {user['hop_point']:,} میو پوینت")
+        await message.reply(f"❌ موجودی کافی نیست! داری {user['hop_point']:,} هاپو پوینت")
         return
     
     # ذخیره مبلغ شرط
     slot_bets[message.from_user.id] = bet
     
     await message.reply(
-        f"✅ مبلغ شرط: {bet:,} میو پوینت\n\n"
+        f"✅ مبلغ شرط: {bet:,} هاپو پوینت\n\n"
         f"🎰 حالا استیکر **🎰** رو بفرستید تا شانس خود را امتحان کنید!\n"
         f"⏱️ فقط ۶۰ ثانیه فرصت دارید..."
     )
@@ -1695,4 +1695,4 @@ async def handle_group_messages(message: Message, bot):
         msg_count = GroupMessage.get_user_count(message.from_user.id, message.chat.id)
         if msg_count % 10 == 0:
             User.update(message.from_user.id, hop_point=user["hop_point"] + 1)
-            await message.reply(f"🌟 {user['first_name']} به خاطر فعالیت در گروه ۱ میو گرفتی!")
+            await message.reply(f"🌟 {user['first_name']} به خاطر فعالیت در گروه ۱ هاپو گرفتی!")
