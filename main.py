@@ -193,8 +193,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [
             ["پروفایل", "هاپ"],
             ["🐶 پنل سگ", "خرید سگ", "غذا"],
-            ["🎡 گردونه شانس", "کارخونه", "شهر"],
-            ["🏦 بانک", "👥 زیرمجموعه‌گیری"],
+            ["🎡 گردونه شانس", "🎰 کازینو", "کارخونه"],
+            ["🏦 بانک", "شهر", "👥 زیرمجموعه‌گیری"],
             ["راهنما"],
         ],
         resize_keyboard=True,
@@ -353,7 +353,20 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]:
         await referral_command(update, context)
 
-    # 🏦 ۲. اقتصاد، بانک، کارخانه، قاچاق و شهر
+    # 🎰 ۲. کازینو و بازی‌ها
+    elif clean_text in [
+        "🎰 کازینو",
+        "کازینو",
+        "کازینو آنلاین",
+        "casino",
+        "/casino",
+    ]:
+        if hasattr(economy, "show_casino_menu"):
+            await economy.show_casino_menu(update, context)
+        elif hasattr(economy, "start_gamble"):
+            await economy.start_gamble(update, context)
+
+    # 🏦 ۳. اقتصاد، بانک، کارخانه، قاچاق و شهر
     elif clean_text in ["🏦 بانک", "بانک", "bank", "/bank"]:
         if hasattr(economy, "bank_status"):
             await economy.bank_status(update, context, user)
@@ -375,7 +388,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif clean_text.startswith("اهدا") or clean_text.startswith("/donate"):
         await economy.donate_city(update, context, user)
 
-    # 👑 ۳. دستورات ادمین
+    # 👑 ۴. دستورات ادمین
     elif user_id in config.ADMIN_IDS:
         if text.startswith("افزایش پوینت"):
             await admin.add_points(update, context)
@@ -438,6 +451,13 @@ async def callback_router(
     if action == "get_referral_link":
         await referral_command(update, context)
         await query.answer()
+
+    # 🎰 مدیریت کالبک‌های کازینو
+    elif action.startswith("casino_") or action.startswith("spin_"):
+        if hasattr(economy, "handle_casino_callback"):
+            await economy.handle_casino_callback(update, context)
+        elif hasattr(pet, "handle_casino_callback"):
+            await pet.handle_casino_callback(update, context)
 
     # 🎣 مدیریت تصمیم‌گیری صید ماهی (فروش طعمه یا غذادادن)
     elif action in ["fish_sell", "fish_feed"]:
@@ -507,6 +527,7 @@ def main():
     app.add_error_handler(error_handler)
 
     app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler(["casino", "gamble"], economy.show_casino_menu if hasattr(economy, "show_casino_menu") else start_command))
     if hasattr(economy, "bank_status"):
         app.add_handler(CommandHandler("bank", economy.bank_status))
     app.add_handler(CommandHandler(["referral", "sub"], referral_command))
