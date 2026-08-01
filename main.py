@@ -65,38 +65,10 @@ pending_transfers = {}
 
 # ==================== قیمت‌های بازار ====================
 market_prices = {
-    "clothes": {
-        "base_price": 50,
-        "min_price": 40,
-        "max_price": 60,
-        "buy_price": 50,
-        "last_update": 0,
-        "sales_count": 0
-    },
-    "food": {
-        "base_price": 95,
-        "min_price": 70,
-        "max_price": 120,
-        "buy_price": 100,
-        "last_update": 0,
-        "sales_count": 0
-    },
-    "toy": {
-        "base_price": 32,
-        "min_price": 25,
-        "max_price": 40,
-        "buy_price": 30,
-        "last_update": 0,
-        "sales_count": 0
-    },
-    "house": {
-        "base_price": 1100,
-        "min_price": 800,
-        "max_price": 1500,
-        "buy_price": 1000,
-        "last_update": 0,
-        "sales_count": 0
-    },
+    "clothes": {"base_price": 3, "min_price": 2, "max_price": 5, "last_update": 0, "sales_count": 0},
+    "food": {"base_price": 3, "min_price": 2, "max_price": 5, "last_update": 0, "sales_count": 0},
+    "toy": {"base_price": 3, "min_price": 2, "max_price": 5, "last_update": 0, "sales_count": 0},
+    "house": {"base_price": 3, "min_price": 2, "max_price": 5, "last_update": 0, "sales_count": 0},
 }
 
 def get_spin_prize():
@@ -109,22 +81,22 @@ def update_market_prices():
         if current_time - data["last_update"] >= 3600:
             sales = data["sales_count"]
             if sales > 10:
-                price_change = -data["buy_price"] * 0.08
+                price_change = -0.5
             elif sales > 5:
-                price_change = -data["buy_price"] * 0.04
+                price_change = -0.2
             elif sales == 0:
-                price_change = data["buy_price"] * 0.08
+                price_change = 0.5
             else:
-                price_change = data["buy_price"] * 0.02
+                price_change = 0.1
             new_price = data["base_price"] + price_change
             new_price = max(data["min_price"], min(data["max_price"], new_price))
-            data["base_price"] = round(new_price)
+            data["base_price"] = round(new_price, 1)
             data["sales_count"] = 0
             data["last_update"] = current_time
 
 def get_product_price(product_code):
     update_market_prices()
-    return market_prices.get(product_code, {}).get("base_price", 0)
+    return market_prices.get(product_code, {}).get("base_price", 3)
 
 def record_sale(product_code):
     if product_code in market_prices:
@@ -200,7 +172,7 @@ def calculate_hop_reward(level):
     return random.randint(int(base_min), int(base_max))
 
 
-# ==================== لیدربرد (درست شده) ====================
+# ==================== لیدربرد ====================
 async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -212,7 +184,6 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     conn = db.get_connection()
     cursor = conn.cursor()
     
-    # دریافت ۱۰ کاربر برتر
     cursor.execute("""
         SELECT user_id, username, points, level 
         FROM users 
@@ -221,16 +192,14 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     """)
     top_users = cursor.fetchall()
     
-    # دریافت رتبه کاربر فعلی
     cursor.execute("""
         SELECT COUNT(*) + 1 
         FROM users 
-        WHERE points > (SELECT COALESCE(points, 0) FROM users WHERE user_id = ?)
+        WHERE points > (SELECT points FROM users WHERE user_id = ?)
     """, (user_id,))
     rank_result = cursor.fetchone()
-    user_rank = rank_result[0] if rank_result and rank_result[0] else 1
+    user_rank = rank_result[0] if rank_result else 1
     
-    # دریافت اطلاعات کاربر فعلی
     cursor.execute("""
         SELECT user_id, username, points, level 
         FROM users 
@@ -257,8 +226,8 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         text += "━━━━━━━━━━━━━━━━━━━\n"
 
     if user_data:
-        user_points = user_data[2] if user_data[2] else 0
-        user_level = user_data[3] if user_data[3] else 1
+        user_points = user_data[2]
+        user_level = user_data[3]
         text += f"\n📊 رتبه شما: #{user_rank}\n"
         text += f"   💰 {user_points:,} هاپو | سطح {user_level}"
 
@@ -342,11 +311,6 @@ async def sell_products_command(update: Update, context: ContextTypes.DEFAULT_TY
     price_toy = get_product_price("toy")
     price_house = get_product_price("house")
     
-    buy_clothes = market_prices["clothes"]["buy_price"]
-    buy_food = market_prices["food"]["buy_price"]
-    buy_toy = market_prices["toy"]["buy_price"]
-    buy_house = market_prices["house"]["buy_price"]
-    
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(
             f"لباس ({clothes} عدد) - {price_clothes} هاپ", 
@@ -371,10 +335,10 @@ async def sell_products_command(update: Update, context: ContextTypes.DEFAULT_TY
         f"💰 بازار فروش محصولات\n"
         f"━━━━━━━━━━━━━━━━━━━\n\n"
         f"قیمت‌های لحظه‌ای:\n"
-        f"👕 لباس: {price_clothes} هاپ (خرید: {buy_clothes} هاپ)\n"
-        f"🦴 غذا: {price_food} هاپ (خرید: {buy_food} هاپ)\n"
-        f"🎾 توپ: {price_toy} هاپ (خرید: {buy_toy} هاپ)\n"
-        f"🏠 لانه: {price_house} هاپ (خرید: {buy_house} هاپ)\n\n"
+        f"👕 لباس: {price_clothes} هاپ (حداقل 2 | حداکثر 5)\n"
+        f"🦴 غذا: {price_food} هاپ (حداقل 2 | حداکثر 5)\n"
+        f"🎾 توپ: {price_toy} هاپ (حداقل 2 | حداکثر 5)\n"
+        f"🏠 لانه: {price_house} هاپ (حداقل 2 | حداکثر 5)\n\n"
         f"موجودی انبار شما:\n"
         f"👕 لباس: {clothes} عدد\n"
         f"🦴 غذا: {food} عدد\n"
@@ -552,7 +516,7 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     sender_data = db.get_user(user_id)
-    sender_points = sender_data[2] if sender_data[2] else 0
+    sender_points = sender_data[2]
     sender_name = update.effective_user.first_name
     
     if sender_points < amount:
@@ -577,7 +541,7 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "target_name": target_name,
         "target_username": target_username,
         "sender_points": sender_points,
-        "target_points": target_data[2] if target_data[2] else 0,
+        "target_points": target_data[2],
         "status": "pending"
     }
     
@@ -684,7 +648,7 @@ async def transfer_accept(callback: CallbackQuery, context: ContextTypes.DEFAULT
                 f"━━━━━━━━━━━━━━━━━━━\n\n"
                 f"👤 از طرف: {transfer['sender_name']}\n"
                 f"💰 مبلغ: {transfer['amount']:,} هاپ پوینت\n"
-                f"📊 موجودی جدید شما: {new_target_points:,} هاپ پوین特"
+                f"📊 موجودی جدید شما: {new_target_points:,} هاپ پوینت"
             )
         )
     except Exception:
