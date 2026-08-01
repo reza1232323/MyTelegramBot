@@ -234,9 +234,9 @@ async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.edit_text(final_text, parse_mode="Markdown")
 
 
-# ==================== انتقال هاپو (با ریپلای) ====================
+# ==================== انتقال هاپ پوینت (با ریپلای) ====================
 async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """انتقال هاپو به کاربر دیگر با ریپلای"""
+    """انتقال هاپ پوینت به کاربر دیگر با ریپلای"""
     user_id = update.effective_user.id
     
     # بررسی عضویت در کانال
@@ -249,30 +249,67 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.reply_to_message:
         await update.message.reply_text(
             "❌ **فرمت اشتباه!**\n\n"
-            "برای انتقال هاپو، روی پیام کاربر مورد نظر **ریپلای** کنید و بنویسید:\n"
-            "`انتقال [مبلغ]`\n\n"
-            "مثال: `انتقال 100`",
+            "برای انتقال هاپ پوینت، روی پیام کاربر مورد نظر **ریپلای** کنید و بنویسید:\n"
+            "`انتقال هاپ پوینت [مبلغ]`\n\n"
+            "مثال: `انتقال هاپ پوینت 100`",
             parse_mode="Markdown"
         )
         return
     
     # بررسی فرمت پیام
     parts = update.message.text.split()
-    if len(parts) < 2:
+    if len(parts) < 3:
         await update.message.reply_text(
             "❌ **فرمت اشتباه!**\n\n"
             "فرمت صحیح:\n"
-            "`انتقال [مبلغ]`\n\n"
-            "مثال: `انتقال 100`",
+            "`انتقال هاپ پوینت [مبلغ]`\n\n"
+            "مثال: `انتقال هاپ پوینت 100`",
+            parse_mode="Markdown"
+        )
+        return
+    
+    # بررسی اینکه دستور درست نوشته شده
+    if parts[0] != "انتقال" or parts[1] != "هاپ" or parts[2] != "پوینت":
+        await update.message.reply_text(
+            "❌ **فرمت اشتباه!**\n\n"
+            "فرمت صحیح:\n"
+            "`انتقال هاپ پوینت [مبلغ]`\n\n"
+            "مثال: `انتقال هاپ پوینت 100`",
             parse_mode="Markdown"
         )
         return
     
     # دریافت مبلغ
+    if len(parts) < 4:
+        await update.message.reply_text(
+            "❌ **مبلغ را وارد کنید!**\n\n"
+            "مثال: `انتقال هاپ پوینت 100`",
+            parse_mode="Markdown"
+        )
+        return
+    
+    amount_str = parts[3]
+    
+    # تبدیل اعداد فارسی به انگلیسی
+    persian_to_english = {
+        '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4',
+        '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9'
+    }
+    
+    for persian, english in persian_to_english.items():
+        amount_str = amount_str.replace(persian, english)
+    
+    amount_str = amount_str.replace(",", "").replace(" ", "")
+    
     try:
-        amount = int(parts[1])
+        amount = int(amount_str)
     except ValueError:
-        await update.message.reply_text("❌ مبلغ باید عدد باشد!")
+        await update.message.reply_text(
+            "❌ **مبلغ باید عدد باشد!**\n\n"
+            "مثال: `انتقال هاپ پوینت 100`\n"
+            "یا `انتقال هاپ پوینت ۱,۰۰۰`",
+            parse_mode="Markdown"
+        )
         return
     
     if amount <= 0:
@@ -291,13 +328,13 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # بررسی موجودی کاربر
     sender_data = db.get_user(user_id)
-    sender_points = sender_data[2]  # points
+    sender_points = sender_data[2]
     sender_name = update.effective_user.first_name
     
     if sender_points < amount:
         await update.message.reply_text(
             f"❌ موجودی کافی نیست!\n"
-            f"💰 موجودی شما: {sender_points:,} هاپو"
+            f"💰 موجودی شما: {sender_points:,} هاپ پوینت"
         )
         return
     
@@ -308,43 +345,40 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     # انجام انتقال
-    db.update_field(user_id, "points", -amount, relative=True)  # کم کردن از فرستنده
-    db.update_field(target_id, "points", amount, relative=True)  # اضافه کردن به گیرنده
+    db.update_field(user_id, "points", -amount, relative=True)
+    db.update_field(target_id, "points", amount, relative=True)
     
-    # دریافت موجودی جدید
     new_sender_points = sender_points - amount
     new_target_points = target_data[2] + amount
     
-    # ساخت پیام با فرمت زیبا
     target_display = f"@{target_username}" if target_username else target_name
     
     transfer_text = (
-        f"🔄 **انتقال هاپویی**\n"
+        f"🔄 **انتقال هاپ پوینت**\n"
         f"━━━━━━━━━━━━━━━━━━━\n\n"
         f"💰 مبلغ انتقال یافته: **{amount:,}** 🪙\n"
         f"🔺 از **{sender_name}** به **{target_display}**\n\n"
         f"🔻 با موفقیت انتقال یافت ✅\n\n"
-        f"📊 موجودی **{sender_name}**: {new_sender_points:,} هاپو"
+        f"📊 موجودی **{sender_name}**: {new_sender_points:,} هاپ پوینت"
     )
     
-    # ارسال پیام تایید
     await update.message.reply_text(transfer_text, parse_mode="Markdown")
     
-    # ارسال پیام به گیرنده (اگه ربات دسترسی داشته باشه)
+    # ارسال پیام به گیرنده
     try:
         await context.bot.send_message(
             chat_id=target_id,
             text=(
-                f"🎉 **دریافت هاپو!**\n"
+                f"🎉 **دریافت هاپ پوینت!**\n"
                 f"━━━━━━━━━━━━━━━━━━━\n\n"
                 f"👤 از طرف: **{sender_name}**\n"
-                f"💰 مبلغ: **{amount:,}** هاپو\n"
-                f"📊 موجودی جدید شما: **{new_target_points:,}** هاپو"
+                f"💰 مبلغ: **{amount:,}** هاپ پوینت\n"
+                f"📊 موجودی جدید شما: **{new_target_points:,}** هاپ پوینت"
             ),
             parse_mode="Markdown"
         )
     except Exception:
-        pass  # اگر کاربر ربات رو بلاک کرده باشد
+        pass
 
 
 # ----------------- دستورات ربات -----------------
@@ -408,7 +442,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ["🏭 کارخونه", "🌆 شهر"],
             ["🏦 بانک", "👥 زیرمجموعه‌گیری"],
             ["🎡 گردونه", "🏆 لیدربرد"],
-            ["💰 انتقال", "📖 راهنما"],
+            ["💰 انتقال هاپ پوینت", "📖 راهنما"],
         ],
         resize_keyboard=True,
     )
@@ -423,8 +457,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💡 برای گرفتن لینک دعوت می‌توانید از دکمه شیشه‌ای زیر یا دکمه 👥 زیرمجموعه‌گیری در کیبورد استفاده کنید.\n\n"
         f"🎡 برای گردونه شانس از دکمه گردونه استفاده کنید.\n"
         f"🏆 برای مشاهده لیدربرد از دکمه لیدربرد استفاده کنید.\n\n"
-        f"💰 برای انتقال هاپو، روی پیام کاربر ریپلای کنید و بنویسید:\n"
-        f"`انتقال [مبلغ]`"
+        f"💰 برای انتقال هاپ پوینت، روی پیام کاربر ریپلای کنید و بنویسید:\n"
+        f"`انتقال هاپ پوینت [مبلغ]`"
     )
 
     await update.message.reply_text(start_text, reply_markup=main_keyboard, parse_mode="Markdown")
@@ -508,8 +542,8 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = db.get_user(user_id, username)
     clean_text = text.split("@")[0].lower()
 
-    # ===== انتقال (اولویت بالا) =====
-    if clean_text.startswith("انتقال"):
+    # ===== انتقال هاپ پوینت (اولویت بالا) =====
+    if clean_text.startswith("انتقال هاپ پوینت") or clean_text.startswith("انتقال"):
         await transfer_command(update, context)
         return
 
