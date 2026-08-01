@@ -353,6 +353,8 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     target_display = f"@{target_username}" if target_username else target_name
     
+    # ===== رفع مشکل مارک‌داون =====
+    # برای جلوگیری از خطا، از parse_mode=None استفاده میکنیم
     transfer_text = (
         f"🔄 **انتقال هاپ پوینت**\n"
         f"━━━━━━━━━━━━━━━━━━━\n\n"
@@ -362,26 +364,24 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📊 موجودی **{sender_name}**: {new_sender_points:,} هاپ پوینت"
     )
     
-    await update.message.reply_text(transfer_text, parse_mode="Markdown")
+    # ارسال پیام بدون مارک‌داون برای جلوگیری از خطا
+    await update.message.reply_text(transfer_text, parse_mode=None)
     
-    # ===== ارسال پیام به گیرنده (با try/except) =====
+    # ارسال پیام به گیرنده (با try/except و بدون مارک‌داون)
     try:
         await context.bot.send_message(
             chat_id=target_id,
             text=(
-                f"🎉 **دریافت هاپ پوینت!**\n"
+                f"🎉 دریافت هاپ پوینت!\n"
                 f"━━━━━━━━━━━━━━━━━━━\n\n"
-                f"👤 از طرف: **{sender_name}**\n"
-                f"💰 مبلغ: **{amount:,}** هاپ پوینت\n"
-                f"📊 موجودی جدید شما: **{new_target_points:,}** هاپ پوینت"
+                f"👤 از طرف: {sender_name}\n"
+                f"💰 مبلغ: {amount:,} هاپ پوینت\n"
+                f"📊 موجودی جدید شما: {new_target_points:,} هاپ پوینت"
             ),
-            parse_mode="Markdown"
+            parse_mode=None
         )
     except Exception as e:
-        # اگر کاربر ربات رو بلاک کرده باشه یا دسترسی نباشه
-        # فقط لاگ میگیریم و به کاربر چیزی نمیگیم
         logging.warning(f"نمی‌توان به کاربر {target_id} پیام داد: {e}")
-        pass
         pass
 
 
