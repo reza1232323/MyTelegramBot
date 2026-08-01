@@ -200,7 +200,7 @@ def calculate_hop_reward(level):
     return random.randint(int(base_min), int(base_max))
 
 
-# ==================== لیدربرد (درست شده) ====================
+# ==================== لیدربرد ====================
 async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -212,7 +212,6 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     conn = db.get_connection()
     cursor = conn.cursor()
     
-    # دریافت ۱۰ کاربر برتر
     cursor.execute("""
         SELECT user_id, username, points, level 
         FROM users 
@@ -221,7 +220,6 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     """)
     top_users = cursor.fetchall()
     
-    # دریافت رتبه کاربر فعلی
     cursor.execute("""
         SELECT COUNT(*) + 1 
         FROM users 
@@ -230,7 +228,6 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     rank_result = cursor.fetchone()
     user_rank = rank_result[0] if rank_result and rank_result[0] else 1
     
-    # دریافت اطلاعات کاربر فعلی
     cursor.execute("""
         SELECT user_id, username, points, level 
         FROM users 
@@ -684,7 +681,7 @@ async def transfer_accept(callback: CallbackQuery, context: ContextTypes.DEFAULT
                 f"━━━━━━━━━━━━━━━━━━━\n\n"
                 f"👤 از طرف: {transfer['sender_name']}\n"
                 f"💰 مبلغ: {transfer['amount']:,} هاپ پوینت\n"
-                f"📊 موجودی جدید شما: {new_target_points:,} هاپ پوین特"
+                f"📊 موجودی جدید شما: {new_target_points:,} هاپ پوینت"
             )
         )
     except Exception:
@@ -797,6 +794,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_must_join_message(update, context)
         return
 
+    # ===== منو بدون کارخونه من =====
     main_keyboard = ReplyKeyboardMarkup(
         [
             ["پروفایل", "هاپ"],
@@ -910,7 +908,7 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await sell_products_command(update, context)
         return
 
-    # ===== انبار =====
+    # ===== انبار (جایگزین کارخونه من) =====
     if clean_text in ["انبار", "warehouse"]:
         await warehouse_command(update, context)
         return
@@ -956,8 +954,6 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await economy.bank_status(update, context, user)
     elif clean_text in ["کارخونه"]:
         await economy.show_factory(update, context)
-    elif clean_text in ["کارخونه من"]:
-        await economy.show_my_factory(update, context, user)
     elif clean_text in ["قاچاق", "قاچاقچی"]:
         await economy.show_contraband(update, context)
     elif clean_text.startswith("زندان"):
