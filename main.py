@@ -794,6 +794,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_must_join_message(update, context)
         return
 
+    # ===== منو بدون کارخونه من =====
     main_keyboard = ReplyKeyboardMarkup(
         [
             ["پروفایل", "هاپ"],
@@ -907,7 +908,7 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await sell_products_command(update, context)
         return
 
-    # ===== انبار =====
+    # ===== انبار (جایگزین کارخونه من) =====
     if clean_text in ["انبار", "warehouse"]:
         await warehouse_command(update, context)
         return
