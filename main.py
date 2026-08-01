@@ -17,16 +17,12 @@ from telegram.ext import (
     ContextTypes,
     MessageHandler,
     filters,
-    Router,
 )
 from telegram.request import HTTPXRequest
 
 import config
 import database as db
 from handlers import admin, economy, pet
-
-# ==================== تعریف Router ====================
-router = Router()
 
 # مقدار پاداش دعوت (سکه/پوینت)
 REFERRAL_REWARD = 500
@@ -142,7 +138,6 @@ def calculate_hop_reward(level):
 
 
 # ==================== لیدربرد ====================
-@router.message
 async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -192,7 +187,6 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 # ==================== گردونه شانس ====================
-@router.message
 async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     now = time.time()
@@ -245,7 +239,6 @@ async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==================== انتقال هاپ پوینت (با دکمه‌های رنگی) ====================
-@router.message
 async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """انتقال هاپ پوینت به کاربر دیگر با ریپلای و دکمه‌های رنگی"""
     user_id = update.effective_user.id
@@ -408,7 +401,6 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==================== دکمه تایید انتقال (سبز) ====================
-@router.callback_query(F.data.startswith("transfer_accept_"))
 async def transfer_accept(callback: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
     transfer_id = callback.data.replace("transfer_accept_", "")
     transfer = pending_transfers.get(transfer_id)
@@ -467,7 +459,6 @@ async def transfer_accept(callback: CallbackQuery, context: ContextTypes.DEFAULT
 
 
 # ==================== دکمه لغو انتقال (قرمز) ====================
-@router.callback_query(F.data.startswith("transfer_reject_"))
 async def transfer_reject(callback: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
     transfer_id = callback.data.replace("transfer_reject_", "")
     transfer = pending_transfers.get(transfer_id)
@@ -520,7 +511,6 @@ async def transfer_reject(callback: CallbackQuery, context: ContextTypes.DEFAULT
 
 
 # ----------------- دستورات ربات -----------------
-@router.message
 async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     bot_username = context.bot.username
@@ -550,7 +540,6 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 
-@router.message
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or "کاربر"
@@ -605,7 +594,6 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("منوی سریع زیرمجموعه‌گیری:", reply_markup=inline_keyboard)
 
 
-@router.message
 async def handle_hop_internal(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     user_id = update.effective_user.id
     current_time = int(time.time())
@@ -655,7 +643,6 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logging.error(f"خطایی در پردازش رخ داد: {context.error}", exc_info=context.error)
 
 
-@router.message
 async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
@@ -753,11 +740,20 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await admin.broadcast(update, context)
 
 
-@router.callback_query
 async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
     data = query.data
+
+    # ===== دکمه تایید انتقال (سبز) =====
+    if data.startswith("transfer_accept_"):
+        await transfer_accept(query, context)
+        return
+    
+    # ===== دکمه لغو انتقال (قرمز) =====
+    if data.startswith("transfer_reject_"):
+        await transfer_reject(query, context)
+        return
 
     if data.startswith("channel_"):
         username = data.replace("channel_", "")
@@ -859,7 +855,7 @@ def main():
     app.add_handler(CommandHandler(["referral", "sub"], referral_command))
     app.add_handler(CommandHandler(["leaderboard", "liderboard"], leaderboard_command))
 
-    # ===== اضافه کردن router =====
+    # ===== هندلرهای اصلی =====
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, router_message))
     app.add_handler(CallbackQueryHandler(callback_router))
 
