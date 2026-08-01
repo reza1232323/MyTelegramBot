@@ -13,7 +13,7 @@ from telegram.error import BadRequest
 from telegram.ext import (
     ApplicationBuilder,
     CallbackQueryHandler,
-    CommandHandler,ش
+    CommandHandler,
     ContextTypes,
     MessageHandler,
     filters,
