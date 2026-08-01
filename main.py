@@ -44,8 +44,8 @@ REQUIRED_CHANNELS = [
 logging.basicConfig(level=logging.INFO)
 
 # ==================== دیکشنری گردونه شانس ====================
-user_last_spin = {}  # {user_id: timestamp}
-SPIN_COOLDOWN = 12 * 3600  # ۱۲ ساعت
+user_last_spin = {}
+SPIN_COOLDOWN = 12 * 3600
 
 SPIN_PRIZES = [
     {"amount": 100, "weight": 35},
@@ -61,11 +61,74 @@ SPIN_PRIZES = [
 ]
 
 # ==================== دیکشنری انتقال‌های در انتظار ====================
-pending_transfers = {}  # {transfer_id: {sender_id, target_id, amount, sender_name, target_name, ...}}
+pending_transfers = {}
+
+# ==================== قیمت‌های بازار ====================
+market_prices = {
+    "clothes": {
+        "base_price": 50,
+        "min_price": 40,
+        "max_price": 60,
+        "buy_price": 50,
+        "last_update": 0,
+        "sales_count": 0
+    },
+    "food": {
+        "base_price": 95,
+        "min_price": 70,
+        "max_price": 120,
+        "buy_price": 100,
+        "last_update": 0,
+        "sales_count": 0
+    },
+    "toy": {
+        "base_price": 32,
+        "min_price": 25,
+        "max_price": 40,
+        "buy_price": 30,
+        "last_update": 0,
+        "sales_count": 0
+    },
+    "house": {
+        "base_price": 1100,
+        "min_price": 800,
+        "max_price": 1500,
+        "buy_price": 1000,
+        "last_update": 0,
+        "sales_count": 0
+    },
+}
 
 def get_spin_prize():
     weights = [p["weight"] for p in SPIN_PRIZES]
     return random.choices(SPIN_PRIZES, weights=weights, k=1)[0]["amount"]
+
+def update_market_prices():
+    current_time = time.time()
+    for product, data in market_prices.items():
+        if current_time - data["last_update"] >= 3600:
+            sales = data["sales_count"]
+            if sales > 10:
+                price_change = -data["buy_price"] * 0.08
+            elif sales > 5:
+                price_change = -data["buy_price"] * 0.04
+            elif sales == 0:
+                price_change = data["buy_price"] * 0.08
+            else:
+                price_change = data["buy_price"] * 0.02
+            new_price = data["base_price"] + price_change
+            new_price = max(data["min_price"], min(data["max_price"], new_price))
+            data["base_price"] = round(new_price)
+            data["sales_count"] = 0
+            data["last_update"] = current_time
+
+def get_product_price(product_code):
+    update_market_prices()
+    return market_prices.get(product_code, {}).get("base_price", 0)
+
+def record_sale(product_code):
+    if product_code in market_prices:
+        market_prices[product_code]["sales_count"] += 1
 
 
 # ----------------- توابع عضویت اجباری -----------------
@@ -91,7 +154,7 @@ def get_join_keyboard():
         buttons.append(
             [
                 InlineKeyboardButton(
-                    f"🔴 عضویت در {ch['name']}",
+                    f"عضویت در {ch['name']}",
                     callback_data=f"channel_{ch['username']}",
                     style="danger"
                 )
@@ -100,7 +163,7 @@ def get_join_keyboard():
     buttons.append(
         [
             InlineKeyboardButton(
-                "✅ عضو شدم، بررسی کن!",
+                "عضو شدم، بررسی کن!",
                 callback_data="check_join_status",
                 style="success"
             )
@@ -137,7 +200,7 @@ def calculate_hop_reward(level):
     return random.randint(int(base_min), int(base_max))
 
 
-# ==================== لیدربرد ====================
+# ==================== لیدربرد (درست شده) ====================
 async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -148,6 +211,8 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     conn = db.get_connection()
     cursor = conn.cursor()
+    
+    # دریافت ۱۰ کاربر برتر
     cursor.execute("""
         SELECT user_id, username, points, level 
         FROM users 
@@ -155,6 +220,23 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         LIMIT 10
     """)
     top_users = cursor.fetchall()
+    
+    # دریافت رتبه کاربر فعلی
+    cursor.execute("""
+        SELECT COUNT(*) + 1 
+        FROM users 
+        WHERE points > (SELECT COALESCE(points, 0) FROM users WHERE user_id = ?)
+    """, (user_id,))
+    rank_result = cursor.fetchone()
+    user_rank = rank_result[0] if rank_result and rank_result[0] else 1
+    
+    # دریافت اطلاعات کاربر فعلی
+    cursor.execute("""
+        SELECT user_id, username, points, level 
+        FROM users 
+        WHERE user_id = ?
+    """, (user_id,))
+    user_data = cursor.fetchone()
     conn.close()
 
     if not top_users:
@@ -170,20 +252,180 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         user_id_db, username, points, level = user
         medal = medals[i-1] if i <= 3 else f"{i}."
         name = username or f"کاربر {user_id_db}"
-        if len(name) > 15:
-            name = name[:15] + "..."
         text += f"{medal} {name}\n"
-        text += f"   💰 {points:,} هاپو | 🎯 سطح {level}\n"
+        text += f"   💰 {points:,} هاپو | سطح {level}\n"
         text += "━━━━━━━━━━━━━━━━━━━\n"
 
-    user_data = db.get_user(user_id)
     if user_data:
-        user_points = user_data[2]
-        user_level = user_data[3]
-        text += f"\n📊 رتبه شما:\n"
-        text += f"   💰 {user_points:,} هاپو | 🎯 سطح {user_level}"
+        user_points = user_data[2] if user_data[2] else 0
+        user_level = user_data[3] if user_data[3] else 1
+        text += f"\n📊 رتبه شما: #{user_rank}\n"
+        text += f"   💰 {user_points:,} هاپو | سطح {user_level}"
 
     await update.message.reply_text(text, parse_mode=None)
+
+
+# ==================== انبار ====================
+async def warehouse_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    is_joined = await check_user_membership(context.bot, user_id)
+    if not is_joined:
+        await send_must_join_message(update, context)
+        return
+    
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT 
+            inventory_clothes, inventory_food, inventory_toy, inventory_house,
+            inventory_cig, inventory_diamond, inventory_gold, inventory_car,
+            points, level
+        FROM users WHERE user_id = ?
+    """, (user_id,))
+    result = cursor.fetchone()
+    conn.close()
+    
+    if not result:
+        await update.message.reply_text("❌ کاربر پیدا نشد!")
+        return
+    
+    clothes, food, toy, house, cig, diamond, gold, car, points, level = result
+    
+    text = (
+        f"📦 انبار شما\n"
+        f"━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💰 هاپو پوینت: {points:,} | سطح {level}\n\n"
+        f"محصولات کارخانه:\n"
+        f"👕 لباس هاپویی: {clothes} عدد\n"
+        f"🦴 غذای ویژه: {food} عدد\n"
+        f"🎾 توپ بازی: {toy} عدد\n"
+        f"🏠 لانه شیک: {house} عدد\n\n"
+        f"محصولات قاچاق:\n"
+        f"🚬 سیگار قاچاق: {cig} عدد\n"
+        f"💎 الماس سیاه: {diamond} عدد\n"
+        f"🪙 شمش طلا: {gold} عدد\n"
+        f"🏎 خودروی قاچاق: {car} عدد"
+    )
+    
+    await update.message.reply_text(text, parse_mode=None)
+
+
+# ==================== فروش محصولات ====================
+async def sell_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    is_joined = await check_user_membership(context.bot, user_id)
+    if not is_joined:
+        await send_must_join_message(update, context)
+        return
+    
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT inventory_clothes, inventory_food, inventory_toy, inventory_house 
+        FROM users WHERE user_id = ?
+    """, (user_id,))
+    result = cursor.fetchone()
+    conn.close()
+    
+    if not result:
+        await update.message.reply_text("❌ کاربر پیدا نشد!")
+        return
+    
+    clothes, food, toy, house = result
+    
+    update_market_prices()
+    
+    price_clothes = get_product_price("clothes")
+    price_food = get_product_price("food")
+    price_toy = get_product_price("toy")
+    price_house = get_product_price("house")
+    
+    buy_clothes = market_prices["clothes"]["buy_price"]
+    buy_food = market_prices["food"]["buy_price"]
+    buy_toy = market_prices["toy"]["buy_price"]
+    buy_house = market_prices["house"]["buy_price"]
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            f"لباس ({clothes} عدد) - {price_clothes} هاپ", 
+            callback_data=f"sell_clothes_flex"
+        )],
+        [InlineKeyboardButton(
+            f"غذا ({food} عدد) - {price_food} هاپ", 
+            callback_data=f"sell_food_flex"
+        )],
+        [InlineKeyboardButton(
+            f"توپ ({toy} عدد) - {price_toy} هاپ", 
+            callback_data=f"sell_toy_flex"
+        )],
+        [InlineKeyboardButton(
+            f"لانه ({house} عدد) - {price_house} هاپ", 
+            callback_data=f"sell_house_flex"
+        )],
+        [InlineKeyboardButton("بازگشت", callback_data="back_from_sell")]
+    ])
+    
+    text = (
+        f"💰 بازار فروش محصولات\n"
+        f"━━━━━━━━━━━━━━━━━━━\n\n"
+        f"قیمت‌های لحظه‌ای:\n"
+        f"👕 لباس: {price_clothes} هاپ (خرید: {buy_clothes} هاپ)\n"
+        f"🦴 غذا: {price_food} هاپ (خرید: {buy_food} هاپ)\n"
+        f"🎾 توپ: {price_toy} هاپ (خرید: {buy_toy} هاپ)\n"
+        f"🏠 لانه: {price_house} هاپ (خرید: {buy_house} هاپ)\n\n"
+        f"موجودی انبار شما:\n"
+        f"👕 لباس: {clothes} عدد\n"
+        f"🦴 غذا: {food} عدد\n"
+        f"🎾 توپ: {toy} عدد\n"
+        f"🏠 لانه: {house} عدد\n\n"
+        f"نکته: قیمت‌ها هر ساعت بر اساس میزان فروش تغییر میکنند!"
+    )
+    
+    await update.message.reply_text(text, parse_mode=None, reply_markup=keyboard)
+
+
+async def sell_product_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    data = query.data
+    
+    product_type = data.replace("sell_", "").replace("_flex", "")
+    
+    field_name = f"inventory_{product_type}"
+    current_count = db.get_user_field(user_id, field_name) or 0
+    
+    if current_count <= 0:
+        await query.message.reply_text("❌ شما هیچ محصولی برای فروش ندارید!")
+        return
+    
+    price = get_product_price(product_type)
+    record_sale(product_type)
+    
+    db.update_field(user_id, field_name, -1, relative=True)
+    db.update_field(user_id, "points", price, relative=True)
+    
+    new_count = db.get_user_field(user_id, field_name) or 0
+    new_points = db.get_user_field(user_id, "points") or 0
+    
+    product_names = {
+        "clothes": "لباس",
+        "food": "غذا",
+        "toy": "توپ",
+        "house": "لانه"
+    }
+    
+    await query.message.reply_text(
+        f"✅ فروش موفق!\n"
+        f"━━━━━━━━━━━━━━━━━━━\n\n"
+        f"محصول: {product_names.get(product_type, product_type)}\n"
+        f"💰 قیمت فروش: {price} هاپ\n"
+        f"📊 موجودی باقی‌مانده: {new_count} عدد\n"
+        f"💰 موجودی کیف: {new_points:,} هاپ"
+    )
 
 
 # ==================== گردونه شانس ====================
@@ -238,9 +480,8 @@ async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.edit_text(final_text, parse_mode=None)
 
 
-# ==================== انتقال هاپ پوینت (با تایید فرستنده) ====================
+# ==================== انتقال هاپ پوینت ====================
 async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """انتقال هاپ پوینت به کاربر دیگر با تایید فرستنده"""
     user_id = update.effective_user.id
     
     is_joined = await check_user_membership(context.bot, user_id)
@@ -251,21 +492,19 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.reply_to_message:
         await update.message.reply_text(
             "❌ فرمت اشتباه!\n\n"
-            "برای انتقال هاپ پوینت، روی پیام کاربر مورد نظر ریپلای کنید و بنویسید:\n"
+            "برای انتقال هاپ پوینت، روی پیام کاربر ریپلای کنید و بنویسید:\n"
             "انتقال هاپ پوینت [مبلغ]\n\n"
-            "مثال: انتقال هاپ پوینت 100",
-            parse_mode=None
+            "مثال: انتقال هاپ پوینت 100"
         )
         return
     
     parts = update.message.text.split()
-    if len(parts) < 3:
+    if len(parts) < 4:
         await update.message.reply_text(
             "❌ فرمت اشتباه!\n\n"
             "فرمت صحیح:\n"
             "انتقال هاپ پوینت [مبلغ]\n\n"
-            "مثال: انتقال هاپ پوینت 100",
-            parse_mode=None
+            "مثال: انتقال هاپ پوینت 100"
         )
         return
     
@@ -274,16 +513,7 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ فرمت اشتباه!\n\n"
             "فرمت صحیح:\n"
             "انتقال هاپ پوینت [مبلغ]\n\n"
-            "مثال: انتقال هاپ پوینت 100",
-            parse_mode=None
-        )
-        return
-    
-    if len(parts) < 4:
-        await update.message.reply_text(
-            "❌ مبلغ را وارد کنید!\n\n"
-            "مثال: انتقال هاپ پوینت 100",
-            parse_mode=None
+            "مثال: انتقال هاپ پوینت 100"
         )
         return
     
@@ -305,8 +535,7 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "❌ مبلغ باید عدد باشد!\n\n"
             "مثال: انتقال هاپ پوینت 100\n"
-            "یا انتقال هاپ پوینت ۱,۰۰۰",
-            parse_mode=None
+            "یا انتقال هاپ پوینت ۱,۰۰۰"
         )
         return
     
@@ -314,7 +543,6 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ مبلغ باید بیشتر از صفر باشد!")
         return
     
-    # دریافت کاربر هدف (کسی که روش ریپلای شده)
     target_id = update.message.reply_to_message.from_user.id
     target_name = update.message.reply_to_message.from_user.first_name
     target_username = update.message.reply_to_message.from_user.username
@@ -323,20 +551,17 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ نمی‌توانید به خودتان انتقال دهید!")
         return
     
-    # بررسی موجودی فرستنده
     sender_data = db.get_user(user_id)
-    sender_points = sender_data[2]
+    sender_points = sender_data[2] if sender_data[2] else 0
     sender_name = update.effective_user.first_name
     
     if sender_points < amount:
         await update.message.reply_text(
             f"❌ موجودی کافی نیست!\n"
-            f"💰 موجودی شما: {sender_points:,} هاپ پوینت",
-            parse_mode=None
+            f"💰 موجودی شما: {sender_points:,} هاپ پوینت"
         )
         return
     
-    # بررسی وجود کاربر هدف
     target_data = db.get_user(target_id)
     if not target_data:
         await update.message.reply_text("❌ کاربر مورد نظر در ربات ثبت‌نام نکرده است!")
@@ -352,29 +577,27 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "target_name": target_name,
         "target_username": target_username,
         "sender_points": sender_points,
-        "target_points": target_data[2],
+        "target_points": target_data[2] if target_data[2] else 0,
         "status": "pending"
     }
     
     target_display = f"@{target_username}" if target_username else target_name
     
-    # ===== دکمه‌های تایید/لغو برای فرستنده =====
     keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
-                "✅ تایید و ارسال",
+                "تایید و ارسال",
                 callback_data=f"transfer_accept_{transfer_id}",
                 style="success"
             ),
             InlineKeyboardButton(
-                "❌ لغو",
+                "لغو",
                 callback_data=f"transfer_reject_{transfer_id}",
                 style="danger"
             )
         ]
     ])
     
-    # ===== پیام تایید به فرستنده =====
     await update.message.reply_text(
         f"📨 تایید انتقال هاپ پوینت\n"
         f"━━━━━━━━━━━━━━━━━━━\n\n"
@@ -388,7 +611,6 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_to_message_id=update.message.message_id
     )
     
-    # ===== اطلاع به گیرنده =====
     try:
         await context.bot.send_message(
             chat_id=target_id,
@@ -405,7 +627,6 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pass
 
 
-# ==================== تایید انتقال توسط فرستنده ====================
 async def transfer_accept(callback: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
     transfer_id = callback.data.replace("transfer_accept_", "")
     transfer = pending_transfers.get(transfer_id)
@@ -432,8 +653,7 @@ async def transfer_accept(callback: CallbackQuery, context: ContextTypes.DEFAULT
             f"❌ انتقال ناموفق!\n"
             f"━━━━━━━━━━━━━━━━━━━\n\n"
             f"💰 موجودی شما کافی نیست!\n"
-            f"📊 موجودی: {sender_data[2]:,} هاپ پوینت",
-            parse_mode=None
+            f"📊 موجودی: {sender_data[2]:,} هاپ پوینت"
         )
         del pending_transfers[transfer_id]
         return
@@ -453,8 +673,7 @@ async def transfer_accept(callback: CallbackQuery, context: ContextTypes.DEFAULT
         f"━━━━━━━━━━━━━━━━━━━\n\n"
         f"💰 مبلغ: {transfer['amount']:,} هاپ پوینت\n"
         f"👤 به: {target_display}\n"
-        f"📊 موجودی جدید شما: {new_sender_points:,} هاپ پوینت",
-        parse_mode=None
+        f"📊 موجودی جدید شما: {new_sender_points:,} هاپ پوینت"
     )
     
     try:
@@ -465,9 +684,8 @@ async def transfer_accept(callback: CallbackQuery, context: ContextTypes.DEFAULT
                 f"━━━━━━━━━━━━━━━━━━━\n\n"
                 f"👤 از طرف: {transfer['sender_name']}\n"
                 f"💰 مبلغ: {transfer['amount']:,} هاپ پوینت\n"
-                f"📊 موجودی جدید شما: {new_target_points:,} هاپ پوینت"
-            ),
-            parse_mode=None
+                f"📊 موجودی جدید شما: {new_target_points:,} هاپ پوین特"
+            )
         )
     except Exception:
         pass
@@ -476,7 +694,6 @@ async def transfer_accept(callback: CallbackQuery, context: ContextTypes.DEFAULT
     await callback.answer("✅ انتقال با موفقیت انجام شد!")
 
 
-# ==================== لغو انتقال توسط فرستنده ====================
 async def transfer_reject(callback: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
     transfer_id = callback.data.replace("transfer_reject_", "")
     transfer = pending_transfers.get(transfer_id)
@@ -505,8 +722,7 @@ async def transfer_reject(callback: CallbackQuery, context: ContextTypes.DEFAULT
         f"━━━━━━━━━━━━━━━━━━━\n\n"
         f"💰 مبلغ: {transfer['amount']:,} هاپ پوینت\n"
         f"👤 به: {target_display}\n\n"
-        f"شما این درخواست را لغو کردید.",
-        parse_mode=None
+        f"شما این درخواست را لغو کردید."
     )
     
     try:
@@ -518,8 +734,7 @@ async def transfer_reject(callback: CallbackQuery, context: ContextTypes.DEFAULT
                 f"👤 از طرف: {transfer['sender_name']}\n"
                 f"💰 مبلغ: {transfer['amount']:,} هاپ پوینت\n\n"
                 f"فرستنده درخواست را لغو کرد."
-            ),
-            parse_mode=None
+            )
         )
     except Exception:
         pass
@@ -549,7 +764,7 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     share_url = f"https://t.me/share/url?url={referral_link}&text=بیا%20تو%20این%20ربات%20باهم%20بازی%20کنیم!"
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔗 اشتراک‌گذاری لینک", url=share_url)]
+        [InlineKeyboardButton("اشتراک‌گذاری لینک", url=share_url)]
     ])
 
     if update.callback_query:
@@ -584,27 +799,28 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     main_keyboard = ReplyKeyboardMarkup(
         [
-            ["📊 پروفایل", "🎯 هاپ"],
-            ["🐶 پنل سگ", "🛒 خرید سگ", "🍖 غذا"],
-            ["🏭 کارخونه", "🌆 شهر"],
-            ["🏦 بانک", "👥 زیرمجموعه‌گیری"],
-            ["🎡 گردونه", "🏆 لیدربرد"],
-            ["💰 انتقال هاپ پوینت", "📖 راهنما"],
+            ["پروفایل", "هاپ"],
+            ["پنل سگ", "خرید سگ", "غذا"],
+            ["کارخونه", "شهر"],
+            ["بانک", "زیرمجموعه‌گیری"],
+            ["فروش محصولات", "انبار"],
+            ["گردونه", "لیدربرد"],
+            ["راهنما"],
         ],
         resize_keyboard=True,
     )
 
     inline_keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("👥 دریافت لینک زیرمجموعه‌گیری", callback_data="get_referral_link")]
+        [InlineKeyboardButton("دریافت لینک زیرمجموعه‌گیری", callback_data="get_referral_link")]
     ])
 
     start_text = (
-        f"سلام {update.effective_user.first_name} عزیز! 👋\n"
+        f"سلام {update.effective_user.first_name} عزیز!\n"
         f"به ربات خوش آمدید.\n\n"
-        f"💡 برای گرفتن لینک دعوت می‌توانید از دکمه شیشه‌ای زیر یا دکمه 👥 زیرمجموعه‌گیری در کیبورد استفاده کنید.\n\n"
-        f"🎡 برای گردونه شانس از دکمه گردونه استفاده کنید.\n"
-        f"🏆 برای مشاهده لیدربرد از دکمه لیدربرد استفاده کنید.\n\n"
-        f"💰 برای انتقال هاپ پوینت، روی پیام کاربر ریپلای کنید و بنویسید:\n"
+        f"برای گرفتن لینک دعوت می‌توانید از دکمه شیشه‌ای زیر یا دکمه زیرمجموعه‌گیری در کیبورد استفاده کنید.\n\n"
+        f"گردونه شانس: هر ۱۲ ساعت یک بار\n"
+        f"لیدربرد: مشاهده برترین‌ها\n\n"
+        f"برای انتقال هاپ پوینت، روی پیام کاربر ریپلای کنید و بنویسید:\n"
         f"انتقال هاپ پوینت [مبلغ]"
     )
 
@@ -645,7 +861,7 @@ async def handle_hop_internal(update: Update, context: ContextTypes.DEFAULT_TYPE
         progress = 0
         db.update_field(user_id, "level", 1, relative=True)
         db.update_field(user_id, "level_hops_progress", 0, relative=False)
-        level_up_msg = f"\n🎉 تبریک! شما به سطح {level} ارتقا یافتید! 🚀"
+        level_up_msg = f"\n🎉 تبریک! شما به سطح {level} ارتقا یافتید!"
     else:
         db.update_field(user_id, "level_hops_progress", progress, relative=False)
 
@@ -689,61 +905,69 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = db.get_user(user_id, username)
     clean_text = text.split("@")[0].lower()
 
-    # ===== انتقال هاپ پوینت (اولویت بالا) =====
+    # ===== فروش محصولات =====
+    if clean_text in ["فروش محصولات", "فروش", "بازار"]:
+        await sell_products_command(update, context)
+        return
+
+    # ===== انبار =====
+    if clean_text in ["انبار", "warehouse"]:
+        await warehouse_command(update, context)
+        return
+
+    # ===== انتقال هاپ پوینت =====
     if clean_text.startswith("انتقال هاپ پوینت") or clean_text.startswith("انتقال"):
         await transfer_command(update, context)
         return
 
     # ===== گردونه شانس =====
-    if clean_text in ["گردونه", "🎡 گردونه", "چرخونه", "گلدونه"]:
+    if clean_text in ["گردونه", "چرخونه", "گلدونه"]:
         await spin_command(update, context)
         return
 
     # ===== لیدربرد =====
-    if clean_text in ["لیدربرد", "🏆 لیدربرد", "leaderboard", "/leaderboard"]:
+    if clean_text in ["لیدربرد", "leaderboard"]:
         await leaderboard_command(update, context)
         return
 
     # ===== بقیه دستورات =====
-    if clean_text in ["پروفایل", "هاپوهام", "هاپوهاش", "/profile"]:
+    if clean_text in ["پروفایل", "هاپوهام", "هاپوهاش"]:
         await pet.show_profile(update, context, user)
-    elif clean_text in ["🐶 پنل سگ", "پنل سگ", "سگ من", "سگ", "/dog", "/dogpanel"]:
+    elif clean_text in ["پنل سگ", "سگ من", "سگ"]:
         if hasattr(pet, "show_dog_panel"):
             await pet.show_dog_panel(update, context, user)
         elif hasattr(pet, "show_profile"):
             await pet.show_profile(update, context, user)
-    elif clean_text in ["هاپ", "hop", "/hop"]:
+    elif clean_text in ["هاپ", "hop"]:
         if hasattr(pet, "claim_hop"):
             await pet.claim_hop(update, context, user)
         else:
             await handle_hop_internal(update, context, user)
-    elif clean_text in ["راهنما", "help", "/help"]:
+    elif clean_text in ["راهنما", "help"]:
         await pet.show_help(update, context)
-    elif clean_text in ["خرید سگ", "/buydog"]:
+    elif clean_text in ["خرید سگ"]:
         await pet.buy_dog(update, context, user)
-    elif clean_text in ["غذا", "/feed"]:
+    elif clean_text in ["غذا"]:
         await pet.feed_dog(update, context, user)
-    elif clean_text in ["👥 زیرمجموعه‌گیری", "زیرمجموعه‌گیری", "زیرمجموعه", "دعوت", "رفرال", "/referral"]:
+    elif clean_text in ["زیرمجموعه‌گیری", "زیرمجموعه", "دعوت", "رفرال"]:
         await referral_command(update, context)
-    elif clean_text in ["🏦 بانک", "بانک", "bank", "/bank"]:
+    elif clean_text in ["بانک"]:
         if hasattr(economy, "bank_status"):
             await economy.bank_status(update, context, user)
-    elif clean_text in ["کارخونه", "/factory"]:
+    elif clean_text in ["کارخونه"]:
         await economy.show_factory(update, context)
-    elif clean_text in ["کارخونه من", "/myfactory"]:
+    elif clean_text in ["کارخونه من"]:
         await economy.show_my_factory(update, context, user)
-    elif clean_text in ["فروش", "بازار", "/sell"]:
-        await economy.show_sell_menu(update, context, user)
-    elif clean_text in ["قاچاق", "قاچاقچی", "/smuggle"]:
+    elif clean_text in ["قاچاق", "قاچاقچی"]:
         await economy.show_contraband(update, context)
-    elif clean_text.startswith("زندان") or clean_text.startswith("/jail"):
+    elif clean_text.startswith("زندان"):
         if hasattr(economy, "jail_status"):
             await economy.jail_status(update, context, user)
-    elif clean_text.startswith("قمار") or clean_text.startswith("/gamble"):
+    elif clean_text.startswith("قمار"):
         await economy.start_gamble(update, context)
-    elif clean_text in ["شهر", "/city"]:
+    elif clean_text in ["شهر"]:
         await economy.city_status(update, context, user)
-    elif clean_text.startswith("اهدا") or clean_text.startswith("/donate"):
+    elif clean_text.startswith("اهدا"):
         await economy.donate_city(update, context, user)
     elif user_id in config.ADMIN_IDS:
         if text.startswith("افزایش پوینت"):
@@ -763,16 +987,26 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     data = query.data
 
-    # ===== دکمه تایید انتقال (سبز) =====
+    # ===== فروش محصولات =====
+    if data in ["sell_clothes_flex", "sell_food_flex", "sell_toy_flex", "sell_house_flex"]:
+        await sell_product_callback(update, context)
+        return
+
+    if data == "back_from_sell":
+        await query.message.delete()
+        await query.answer()
+        return
+
+    # ===== انتقال =====
     if data.startswith("transfer_accept_"):
         await transfer_accept(query, context)
         return
     
-    # ===== دکمه لغو انتقال (قرمز) =====
     if data.startswith("transfer_reject_"):
         await transfer_reject(query, context)
         return
 
+    # ===== کانال‌ها =====
     if data.startswith("channel_"):
         username = data.replace("channel_", "")
         for ch in REQUIRED_CHANNELS:
@@ -782,7 +1016,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except Exception:
                     pass
                 await query.message.reply_text(
-                    f"🔗 برای عضویت در {ch['name']} روی لینک زیر کلیک کنید:\n{ch['url']}"
+                    f"برای عضویت در {ch['name']} روی لینک زیر کلیک کنید:\n{ch['url']}"
                 )
                 await query.answer()
                 return
@@ -791,13 +1025,13 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "check_join_status":
         is_joined = await check_user_membership(context.bot, user_id)
         if is_joined:
-            await query.answer("✅ عضویت شما تایید شد. از ربات استفاده کنید!", show_alert=True)
+            await query.answer("عضویت شما تایید شد.", show_alert=True)
             try:
                 await query.message.delete()
             except Exception:
                 pass
         else:
-            await query.answer("❌ هنوز در تمامی کانال‌ها عضو نشده‌اید!", show_alert=True)
+            await query.answer("هنوز عضو نشده‌اید!", show_alert=True)
         return
 
     if ":" in data:
@@ -805,14 +1039,14 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         action = parts[0]
         owner_id = int(parts[1]) if parts[1].isdigit() else None
         if owner_id and user_id != owner_id:
-            await query.answer("❌ این پنل برای شما نیست!", show_alert=True)
+            await query.answer("این پنل برای شما نیست!", show_alert=True)
             return
     else:
         action = data
 
     is_joined = await check_user_membership(context.bot, user_id)
     if not is_joined:
-        await query.answer("❌ ابتدا باید در کانال‌های اجباری عضو شوید!", show_alert=True)
+        await query.answer("ابتدا عضو کانال‌ها شوید!", show_alert=True)
         await send_must_join_message(update, context)
         return
 
