@@ -577,8 +577,6 @@ async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "│ 📌 قیمت‌ها هر ساعت بروزرسانی میشوند\n"
         "└─────────────────────\n\n"
         
-        "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "💡 **نکته:** برای اطلاعات بیشتر به ربات پیوی بروید."
     )
 
     if update.callback_query:
