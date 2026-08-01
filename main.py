@@ -1,6 +1,7 @@
 import logging
 import random
 import time
+import asyncio
 from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -41,10 +42,30 @@ REQUIRED_CHANNELS = [
 
 logging.basicConfig(level=logging.INFO)
 
+# ==================== دیکشنری گردونه شانس ====================
+user_last_spin = {}  # {user_id: timestamp}
+SPIN_COOLDOWN = 12 * 3600  # ۱۲ ساعت
+
+SPIN_PRIZES = [
+    {"amount": 100, "weight": 35},
+    {"amount": 200, "weight": 30},
+    {"amount": 300, "weight": 25},
+    {"amount": 500, "weight": 15},
+    {"amount": 1000, "weight": 10},
+    {"amount": 2000, "weight": 7},
+    {"amount": 5000, "weight": 4},
+    {"amount": 10000, "weight": 2},
+    {"amount": 50000, "weight": 1},
+    {"amount": 100000, "weight": 0.5},
+]
+
+def get_spin_prize():
+    weights = [p["weight"] for p in SPIN_PRIZES]
+    return random.choices(SPIN_PRIZES, weights=weights, k=1)[0]["amount"]
+
 
 # ----------------- توابع عضویت اجباری -----------------
 async def check_user_membership(bot, user_id: int) -> bool:
-    """بررسی عضویت کاربر در تمامی کانال‌های اجباری"""
     for ch in REQUIRED_CHANNELS:
         try:
             member = await bot.get_chat_member(
@@ -61,9 +82,7 @@ async def check_user_membership(bot, user_id: int) -> bool:
 
 
 def get_join_keyboard():
-    """ساخت کیبورد شیشه‌ای عضویت اجباری"""
     buttons = []
-    
     for ch in REQUIRED_CHANNELS:
         buttons.append(
             [
@@ -74,7 +93,6 @@ def get_join_keyboard():
                 )
             ]
         )
-    
     buttons.append(
         [
             InlineKeyboardButton(
@@ -84,19 +102,12 @@ def get_join_keyboard():
             )
         ]
     )
-    
     return InlineKeyboardMarkup(buttons)
 
 
-async def send_must_join_message(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-):
-    """ارسال بنر و پیام عضویت اجباری"""
+async def send_must_join_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_first_name = update.effective_user.first_name
-
-    channels_list = "\n".join([
-        f"• {ch['name']}" for ch in REQUIRED_CHANNELS
-    ])
+    channels_list = "\n".join([f"• {ch['name']}" for ch in REQUIRED_CHANNELS])
 
     text = (
         f"⛔️ عزیز {user_first_name}!\n\n"
@@ -106,13 +117,9 @@ async def send_must_join_message(
     )
 
     if update.message:
-        await update.message.reply_text(
-            text, parse_mode="Markdown", reply_markup=get_join_keyboard()
-        )
+        await update.message.reply_text(text, parse_mode="Markdown", reply_markup=get_join_keyboard())
     elif update.callback_query:
-        await update.callback_query.message.reply_text(
-            text, parse_mode="Markdown", reply_markup=get_join_keyboard()
-        )
+        await update.callback_query.message.reply_text(text, parse_mode="Markdown", reply_markup=get_join_keyboard())
 
 
 # ----------------- سیستم محاسباتی هاپ -----------------
@@ -128,14 +135,13 @@ def calculate_hop_reward(level):
 
 # ==================== لیدربرد ====================
 async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش جدول برترین کاربران بر اساس هاپو پوینت"""
     user_id = update.effective_user.id
-    
+
     is_joined = await check_user_membership(context.bot, user_id)
     if not is_joined:
         await send_must_join_message(update, context)
         return
-    
+
     conn = db.get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -146,38 +152,86 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     """)
     top_users = cursor.fetchall()
     conn.close()
-    
+
     if not top_users:
         await update.message.reply_text("📊 هنوز کاربری در سیستم ثبت‌نام نکرده است!")
         return
-    
+
     text = "🏆 **لیدربرد برترین های هاپو** 🏆\n"
     text += "━━━━━━━━━━━━━━━━━━━\n\n"
-    
+
     medals = ["🥇", "🥈", "🥉"]
-    
+
     for i, user in enumerate(top_users, 1):
         user_id_db, username, points, level = user
         medal = medals[i-1] if i <= 3 else f"{i}."
         name = username or f"کاربر {user_id_db}"
-        
         if len(name) > 15:
             name = name[:15] + "..."
-        
-        # ===== رفع مشکل مارک‌داون =====
-        # اسم رو با `code` میذاریم تا کاراکترهای خاص خراب نکنن
         text += f"{medal} `{name}`\n"
         text += f"   💰 {points:,} هاپو | 🎯 سطح {level}\n"
         text += "━━━━━━━━━━━━━━━━━━━\n"
-    
+
     user_data = db.get_user(user_id)
     if user_data:
         user_points = user_data[2]
         user_level = user_data[3]
         text += f"\n📊 **رتبه شما:**\n"
         text += f"   💰 {user_points:,} هاپو | 🎯 سطح {user_level}"
-    
+
     await update.message.reply_text(text, parse_mode="Markdown")
+
+
+# ==================== گردونه شانس ====================
+async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    now = time.time()
+
+    is_joined = await check_user_membership(context.bot, user_id)
+    if not is_joined:
+        await send_must_join_message(update, context)
+        return
+
+    last_spin = user_last_spin.get(user_id, 0)
+    if now - last_spin < SPIN_COOLDOWN:
+        remaining = int(SPIN_COOLDOWN - (now - last_spin))
+        hours = remaining // 3600
+        minutes = (remaining % 3600) // 60
+        await update.message.reply_text(
+            f"⏳ هنوز {hours} ساعت و {minutes} دقیقه مونده تا گردونه بعدی!"
+        )
+        return
+
+    user_last_spin[user_id] = now
+
+    msg = await update.message.reply_text(
+        "🎡 گردونه در حال چرخش...",
+        reply_to_message_id=update.message.message_id
+    )
+
+    steps = [
+        "🎡 گردونه در حال چرخش...",
+        "🎡 چرخش ادامه داره...",
+        "🎡 تقریباً ایستاد...",
+        "🎡 لحظاتی دیگر...",
+    ]
+
+    for step in steps:
+        await asyncio.sleep(0.8)
+        try:
+            await msg.edit_text(step)
+        except:
+            pass
+
+    prize = get_spin_prize()
+    db.update_field(user_id, "points", prize, relative=True)
+
+    final_text = (
+        f"🎉 **تبریک!**\n"
+        f"💰 شما **{prize:,}** هاپ پوینت برنده شدید!\n\n"
+        f"⏳ گردونه بعدی: ۱۲ ساعت دیگر"
+    )
+    await msg.edit_text(final_text, parse_mode="Markdown")
 
 
 # ----------------- دستورات ربات -----------------
@@ -185,11 +239,7 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     bot_username = context.bot.username
 
-    ref_count = (
-        db.get_referral_stats(user_id)
-        if hasattr(db, "get_referral_stats")
-        else 0
-    )
+    ref_count = db.get_referral_stats(user_id) if hasattr(db, "get_referral_stats") else 0
     total_earned = ref_count * REFERRAL_REWARD
     referral_link = f"https://t.me/{bot_username}?start={user_id}"
 
@@ -209,13 +259,9 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ])
 
     if update.callback_query:
-        await update.callback_query.message.reply_text(
-            text, parse_mode="Markdown", reply_markup=keyboard
-        )
+        await update.callback_query.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
     else:
-        await update.message.reply_text(
-            text, parse_mode="Markdown", reply_markup=keyboard
-        )
+        await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -226,12 +272,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if context.args and context.args[0].isdigit():
         inviter_id = int(context.args[0])
-
         if hasattr(db, "set_inviter") and db.set_inviter(user_id, inviter_id):
-            db.update_field(
-                inviter_id, "points", REFERRAL_REWARD, relative=True
-            )
-
+            db.update_field(inviter_id, "points", REFERRAL_REWARD, relative=True)
             try:
                 await context.bot.send_message(
                     chat_id=inviter_id,
@@ -252,36 +294,29 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ["🐶 پنل سگ", "🛒 خرید سگ", "🍖 غذا"],
             ["🏭 کارخونه", "🌆 شهر"],
             ["🏦 بانک", "👥 زیرمجموعه‌گیری"],
-            ["🏆 لیدربرد", "📖 راهنما"],
+            ["🎡 گردونه", "🏆 لیدربرد"],
+            ["📖 راهنما"],
         ],
         resize_keyboard=True,
     )
 
     inline_keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "👥 دریافت لینک زیرمجموعه‌گیری",
-                callback_data="get_referral_link",
-            )
-        ]
+        [InlineKeyboardButton("👥 دریافت لینک زیرمجموعه‌گیری", callback_data="get_referral_link")]
     ])
 
     start_text = (
         f"سلام {update.effective_user.first_name} عزیز! 👋\n"
         f"به ربات خوش آمدید.\n\n"
         f"💡 برای گرفتن لینک دعوت می‌توانید از دکمه شیشه‌ای زیر یا دکمه 👥 زیرمجموعه‌گیری در کیبورد استفاده کنید.\n\n"
+        f"🎡 برای گردونه شانس از دکمه گردونه استفاده کنید.\n"
         f"🏆 برای مشاهده لیدربرد از دکمه لیدربرد استفاده کنید."
     )
 
     await update.message.reply_text(start_text, reply_markup=main_keyboard)
-    await update.message.reply_text(
-        "منوی سریع زیرمجموعه‌گیری:", reply_markup=inline_keyboard
-    )
+    await update.message.reply_text("منوی سریع زیرمجموعه‌گیری:", reply_markup=inline_keyboard)
 
 
-async def handle_hop_internal(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, user=None
-):
+async def handle_hop_internal(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     user_id = update.effective_user.id
     current_time = int(time.time())
 
@@ -316,9 +351,7 @@ async def handle_hop_internal(
         db.update_field(user_id, "level_hops_progress", 0, relative=False)
         level_up_msg = f"\n🎉 تبریک! شما به سطح {level} ارتقا یافتید! 🚀"
     else:
-        db.update_field(
-            user_id, "level_hops_progress", progress, relative=False
-        )
+        db.update_field(user_id, "level_hops_progress", progress, relative=False)
 
     await update.message.reply_text(
         f"🐕 هاپ! هاپ!\n\n"
@@ -329,9 +362,7 @@ async def handle_hop_internal(
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    logging.error(
-        f"خطایی در پردازش رخ داد: {context.error}", exc_info=context.error
-    )
+    logging.error(f"خطایی در پردازش رخ داد: {context.error}", exc_info=context.error)
 
 
 async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -354,34 +385,28 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.args = text.split()[1:]
 
     if hasattr(economy, "handle_factory_and_smuggle_text"):
-        handled = await economy.handle_factory_and_smuggle_text(
-            update, context
-        )
+        handled = await economy.handle_factory_and_smuggle_text(update, context)
         if handled:
             return
 
-    username = (
-        update.effective_user.username or update.effective_user.first_name
-    )
+    username = update.effective_user.username or update.effective_user.first_name
     user = db.get_user(user_id, username)
-
     clean_text = text.split("@")[0].lower()
+
+    # ===== گردونه شانس =====
+    if clean_text in ["گردونه", "🎡 گردونه", "چرخونه", "گلدونه"]:
+        await spin_command(update, context)
+        return
 
     # ===== لیدربرد =====
     if clean_text in ["لیدربرد", "🏆 لیدربرد", "leaderboard", "/leaderboard"]:
         await leaderboard_command(update, context)
         return
 
+    # ===== بقیه دستورات =====
     if clean_text in ["پروفایل", "هاپوهام", "هاپوهاش", "/profile"]:
         await pet.show_profile(update, context, user)
-    elif clean_text in [
-        "🐶 پنل سگ",
-        "پنل سگ",
-        "سگ من",
-        "سگ",
-        "/dog",
-        "/dogpanel",
-    ]:
+    elif clean_text in ["🐶 پنل سگ", "پنل سگ", "سگ من", "سگ", "/dog", "/dogpanel"]:
         if hasattr(pet, "show_dog_panel"):
             await pet.show_dog_panel(update, context, user)
         elif hasattr(pet, "show_profile"):
@@ -397,14 +422,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await pet.buy_dog(update, context, user)
     elif clean_text in ["غذا", "/feed"]:
         await pet.feed_dog(update, context, user)
-    elif clean_text in [
-        "👥 زیرمجموعه‌گیری",
-        "زیرمجموعه‌گیری",
-        "زیرمجموعه",
-        "دعوت",
-        "رفرال",
-        "/referral",
-    ]:
+    elif clean_text in ["👥 زیرمجموعه‌گیری", "زیرمجموعه‌گیری", "زیرمجموعه", "دعوت", "رفرال", "/referral"]:
         await referral_command(update, context)
     elif clean_text in ["🏦 بانک", "بانک", "bank", "/bank"]:
         if hasattr(economy, "bank_status"):
@@ -439,9 +457,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await admin.broadcast(update, context)
 
 
-async def callback_router(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-):
+async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
     data = query.data
@@ -454,7 +470,6 @@ async def callback_router(
                     await query.message.delete()
                 except Exception:
                     pass
-                
                 await query.message.reply_text(
                     f"🔗 برای عضویت در {ch['name']} روی لینک زیر کلیک کنید:\n{ch['url']}"
                 )
@@ -465,38 +480,28 @@ async def callback_router(
     if data == "check_join_status":
         is_joined = await check_user_membership(context.bot, user_id)
         if is_joined:
-            await query.answer(
-                "✅ عضویت شما تایید شد. از ربات استفاده کنید!", show_alert=True
-            )
+            await query.answer("✅ عضویت شما تایید شد. از ربات استفاده کنید!", show_alert=True)
             try:
                 await query.message.delete()
             except Exception:
                 pass
         else:
-            await query.answer(
-                "❌ هنوز در تمامی کانال‌ها عضو نشده‌اید!", show_alert=True
-            )
+            await query.answer("❌ هنوز در تمامی کانال‌ها عضو نشده‌اید!", show_alert=True)
         return
 
     if ":" in data:
         parts = data.split(":")
         action = parts[0]
         owner_id = int(parts[1]) if parts[1].isdigit() else None
-
         if owner_id and user_id != owner_id:
-            await query.answer(
-                "❌ این پنل برای شما نیست! لطفا خودتان دستور را ارسال کنید.",
-                show_alert=True,
-            )
+            await query.answer("❌ این پنل برای شما نیست!", show_alert=True)
             return
     else:
         action = data
 
     is_joined = await check_user_membership(context.bot, user_id)
     if not is_joined:
-        await query.answer(
-            "❌ ابتدا باید در کانال‌های اجباری عضو شوید!", show_alert=True
-        )
+        await query.answer("❌ ابتدا باید در کانال‌های اجباری عضو شوید!", show_alert=True)
         await send_must_join_message(update, context)
         return
 
@@ -508,11 +513,7 @@ async def callback_router(
             await pet.handle_fish_callback(update, context)
         else:
             await query.answer()
-    elif (
-        action.startswith("dog_")
-        or action.startswith("pet_")
-        or action == "dog_panel"
-    ):
+    elif action.startswith("dog_") or action.startswith("pet_") or action == "dog_panel":
         if hasattr(pet, "handle_dog_callback"):
             await pet.handle_dog_callback(update, context)
         elif hasattr(pet, "dog_callback"):
@@ -527,10 +528,7 @@ async def callback_router(
             await economy.factory_callback(update, context)
         elif hasattr(economy, "handle_factory_callback"):
             await economy.handle_factory_callback(update, context)
-    elif action.startswith("select_contra_") or action in [
-        "start_smuggling",
-        "pay_bail",
-    ]:
+    elif action.startswith("select_contra_") or action in ["start_smuggling", "pay_bail"]:
         if hasattr(economy, "handle_smuggle_callback"):
             await economy.handle_smuggle_callback(update, context)
     elif action.startswith("sell_"):
