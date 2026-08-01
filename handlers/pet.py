@@ -1,1352 +1,589 @@
-import logging
 import random
 import time
+import math
 import asyncio
 from datetime import datetime, timedelta
-from telegram import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    ReplyKeyboardMarkup,
-    Update,
-    CallbackQuery,
-)
-from telegram.error import BadRequest
-from telegram.ext import (
-    ApplicationBuilder,
-    CallbackQueryHandler,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    filters,
-)
-from telegram.request import HTTPXRequest
-
-import config
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+from telegram.error import RetryAfter
 import database as db
-from handlers import admin, economy, pet
 
-# مقدار پاداش دعوت (سکه/پوینت)
-REFERRAL_REWARD = 500
-
-# ----------------- تنظیمات کانال‌های عضویت اجباری -----------------
-REQUIRED_CHANNELS = [
-    {
-        "name": "کانال اصلی",
-        "username": "@CODMSAOPZX",
-        "url": "https://t.me/CODMSAOPZX",
-    },
-    {
-        "name": "کانال دوم",
-        "username": "@esmok_shop_poy",
-        "url": "https://t.me/esmok_shop_poy",
-    },
+# ----------------- لیست استیکرهای ماهیگیری -----------------
+FISHING_STICKERS = [
+    "CAACAgIAAxkBAAE1231...",  # شناسه استیکر ۱
+    "CAACAgIAAxkBAAE1232...",  # شناسه استیکر ۲
 ]
 
-logging.basicConfig(level=logging.INFO)
-
-# ==================== دیکشنری گردونه شانس ====================
-user_last_spin = {}
-SPIN_COOLDOWN = 12 * 3600
-
-SPIN_PRIZES = [
-    {"amount": 100, "weight": 35},
-    {"amount": 200, "weight": 30},
-    {"amount": 300, "weight": 25},
-    {"amount": 500, "weight": 15},
-    {"amount": 1000, "weight": 10},
-    {"amount": 2000, "weight": 7},
-    {"amount": 5000, "weight": 4},
-    {"amount": 10000, "weight": 2},
-    {"amount": 50000, "weight": 1},
-    {"amount": 100000, "weight": 0.5},
+# ----------------- جدول اطلاعات ماهی‌ها -----------------
+FISH_TYPES = [
+    # معمولی
+    {"rarity": "معمولی", "min_w": 0.25, "max_w": 0.50, "mult": 1.10, "food": 1, "chance": 30},
+    {"rarity": "معمولی", "min_w": 0.50, "max_w": 0.99, "mult": 1.15, "food": 1, "chance": 25},
+    # کمیاب
+    {"rarity": "کمیاب", "min_w": 0.10, "max_w": 0.20, "mult": 7.50, "food": 2, "chance": 12},
+    {"rarity": "کمیاب", "min_w": 0.75, "max_w": 1.45, "mult": 1.30, "food": 2, "chance": 10},
+    {"rarity": "کمیاب", "min_w": 1.00, "max_w": 1.99, "mult": 1.50, "food": 2, "chance": 8},
+    # حماسی
+    {"rarity": "حماسی", "min_w": 1.50, "max_w": 2.50, "mult": 1.75, "food": 3, "chance": 5},
+    {"rarity": "حماسی", "min_w": 2.00, "max_w": 2.99, "mult": 1.95, "food": 3, "chance": 4},
+    {"rarity": "حماسی", "min_w": 3.00, "max_w": 4.99, "mult": 1.95, "food": 3, "chance": 3},
+    # افسانه‌ای
+    {"rarity": "افسانه‌ای", "min_w": 5.00, "max_w": 7.99, "mult": 2.10, "food": 5, "chance": 1.5},
+    {"rarity": "افسانه‌ای", "min_w": 8.00, "max_w": 11.99, "mult": 2.10, "food": 5, "chance": 1.0},
+    {"rarity": "افسانه‌ای", "min_w": 12.00, "max_w": 17.99, "mult": 2.20, "food": 5, "chance": 0.3},
+    {"rarity": "افسانه‌ای (ویژه)", "min_w": 5.00, "max_w": 7.99, "mult": 5.30, "food": 5, "chance": 0.2},
 ]
 
-# ==================== دیکشنری انتقال‌های در انتظار ====================
-pending_transfers = {}
-
-# ==================== دیکشنری اسپم هاپ ====================
-hop_spam = {}  # {user_id: [timestamps]}
-
-# ==================== قیمت‌های بازار ====================
-market_prices = {
-    "clothes": {
-        "base_price": 50,
-        "min_price": 40,
-        "max_price": 60,
-        "buy_price": 50,
-        "last_update": 0,
-        "sales_count": 0
-    },
-    "food": {
-        "base_price": 95,
-        "min_price": 70,
-        "max_price": 120,
-        "buy_price": 100,
-        "last_update": 0,
-        "sales_count": 0
-    },
-    "toy": {
-        "base_price": 32,
-        "min_price": 25,
-        "max_price": 40,
-        "buy_price": 30,
-        "last_update": 0,
-        "sales_count": 0
-    },
-    "house": {
-        "base_price": 1100,
-        "min_price": 800,
-        "max_price": 1500,
-        "buy_price": 1000,
-        "last_update": 0,
-        "sales_count": 0
-    },
+# ----------------- تنظیمات و جدول ۳۰ سطحی سگ -----------------
+DOG_LEVELS = {
+    1:  {"upgrade_cost": 0,       "rate": 0.1,  "capacity": 50},
+    2:  {"upgrade_cost": 150,     "rate": 0.2,  "capacity": 150},
+    3:  {"upgrade_cost": 450,     "rate": 0.3,  "capacity": 500},
+    4:  {"upgrade_cost": 1250,    "rate": 0.5,  "capacity": 1500},
+    5:  {"upgrade_cost": 3000,    "rate": 0.75, "capacity": 5000},
+    6:  {"upgrade_cost": 5250,    "rate": 1.0,  "capacity": 8250},
+    7:  {"upgrade_cost": 8750,    "rate": 1.25, "capacity": 11500},
+    8:  {"upgrade_cost": 13250,   "rate": 1.5,  "capacity": 14500},
+    9:  {"upgrade_cost": 23250,   "rate": 1.75, "capacity": 22500},
+    10: {"upgrade_cost": 36750,   "rate": 2.0,  "capacity": 31250},
+    11: {"upgrade_cost": 52500,   "rate": 2.5,  "capacity": 48500},
+    12: {"upgrade_cost": 76250,   "rate": 3.0,  "capacity": 65000},
+    13: {"upgrade_cost": 98000,   "rate": 3.5,  "capacity": 82750},
+    14: {"upgrade_cost": 125000,  "rate": 4.0,  "capacity": 115000},
+    15: {"upgrade_cost": 192500,  "rate": 4.5,  "capacity": 145250},
+    16: {"upgrade_cost": 275000,  "rate": 5.0,  "capacity": 195000},
+    17: {"upgrade_cost": 382500,  "rate": 5.75, "capacity": 250000},
+    18: {"upgrade_cost": 538500,  "rate": 6.5,  "capacity": 315000},
+    19: {"upgrade_cost": 826000,  "rate": 7.25, "capacity": 362500},
+    20: {"upgrade_cost": 1125000, "rate": 8.0,  "capacity": 410100},
+    21: {"upgrade_cost": 1725000, "rate": 9.0,  "capacity": 487500},
+    22: {"upgrade_cost": 2145000, "rate": 10.0, "capacity": 527500},
+    23: {"upgrade_cost": 2525000, "rate": 11.0, "capacity": 578000},
+    24: {"upgrade_cost": 2950000, "rate": 12.0, "capacity": 645750},
+    25: {"upgrade_cost": 3400000, "rate": 13.0, "capacity": 715000},
+    26: {"upgrade_cost": 5000000, "rate": 14.25,"capacity": 800000},
+    27: {"upgrade_cost": 6125000, "rate": 15.5, "capacity": 910000},
+    28: {"upgrade_cost": 7345000, "rate": 16.75,"capacity": 1050000},
+    29: {"upgrade_cost": 8532250, "rate": 18.0, "capacity": 1185000},
+    30: {"upgrade_cost": 9875000, "rate": 19.25,"capacity": 1345000},
 }
 
-def get_spin_prize():
-    weights = [p["weight"] for p in SPIN_PRIZES]
-    return random.choices(SPIN_PRIZES, weights=weights, k=1)[0]["amount"]
+RANK_UPGRADE_COSTS = {
+    5: 50000,
+    10: 250000,
+    15: 1500000,
+    20: 4250000,
+    25: 10000000
+}
 
-def update_market_prices():
-    current_time = time.time()
-    for product, data in market_prices.items():
-        if current_time - data["last_update"] >= 3600:
-            sales = data["sales_count"]
-            if sales > 10:
-                price_change = -data["buy_price"] * 0.08
-            elif sales > 5:
-                price_change = -data["buy_price"] * 0.04
-            elif sales == 0:
-                price_change = data["buy_price"] * 0.08
-            else:
-                price_change = data["buy_price"] * 0.02
-            new_price = data["base_price"] + price_change
-            new_price = max(data["min_price"], min(data["max_price"], new_price))
-            data["base_price"] = round(new_price)
-            data["sales_count"] = 0
-            data["last_update"] = current_time
+RANK_NAMES = {
+    1: "هاپوی تازه‌کار",
+    5: "هاپوی زبرجدی",
+    10: "هاپوی زرنگ",
+    15: "هاپوی آلفا",
+    20: "امپراتور هاپو",
+    25: "افسانه هاپویی"
+}
 
-def get_product_price(product_code):
-    update_market_prices()
-    return market_prices.get(product_code, {}).get("base_price", 0)
+def get_rank_name(level: int) -> str:
+    current_rank = "هاپوی تازه‌کار"
+    for lvl in sorted(RANK_NAMES.keys()):
+        if level >= lvl:
+            current_rank = RANK_NAMES[lvl]
+    return current_rank
 
-def record_sale(product_code):
-    if product_code in market_prices:
-        market_prices[product_code]["sales_count"] += 1
+# ----------------- توابع کمکی -----------------
 
+def format_balance(amount: int) -> str:
+    if amount < 1000:
+        return f"{amount} دونه"
+    elif amount < 1_000_000:
+        return f"{amount} کا"
+    elif amount < 1_000_000_000:
+        millions = amount / 1_000_000
+        if millions.is_integer():
+            return f"{int(millions)} میلیون"
+        else:
+            return f"{millions:.1f} میلیون"
+    else:
+        billions = amount / 1_000_000_000
+        if billions.is_integer():
+            return f"{int(billions)} میلیارد"
+        else:
+            return f"{billions:.1f} میلیارد"
 
-# ==================== سیستم زندان ====================
-def is_user_in_jail(user_id):
-    """بررسی اینکه کاربر در زندان هست یا نه"""
-    jail_until = db.get_user_field(user_id, "jail_until")
-    if jail_until:
-        try:
-            jail_time = datetime.strptime(jail_until, "%Y-%m-%d %H:%M:%S")
-            if datetime.now() < jail_time:
-                return True, jail_time
-        except:
-            pass
-    # اگر زمان گذشته، آزادش کن
-    db.update_field(user_id, "in_jail", 0, relative=False)
-    db.update_field(user_id, "jail_until", None, relative=False)
-    return False, None
-
-def put_user_in_jail(user_id, minutes=15, reason="قاچاق"):
-    """قرار دادن کاربر در زندان"""
-    jail_until = datetime.now() + timedelta(minutes=minutes)
-    db.update_field(user_id, "in_jail", 1, relative=False)
-    db.update_field(user_id, "jail_until", jail_until.strftime("%Y-%m-%d %H:%M:%S"), relative=False)
-    db.update_field(user_id, "jail_reason", reason, relative=False)
-    return jail_until
-
-def release_from_jail(user_id):
-    """آزاد کردن کاربر از زندان"""
-    db.update_field(user_id, "in_jail", 0, relative=False)
-    db.update_field(user_id, "jail_until", None, relative=False)
-    db.update_field(user_id, "jail_reason", None, relative=False)
-
-def check_hop_spam(user_id):
-    """بررسی اسپم هاپ (۱۰ ثانیه ۶ بار)"""
-    now = time.time()
-    if user_id not in hop_spam:
-        hop_spam[user_id] = []
-    
-    # اضافه کردن زمان جدید
-    hop_spam[user_id].append(now)
-    
-    # حذف زمان‌های قدیمی (بیشتر از ۱۰ ثانیه)
-    hop_spam[user_id] = [t for t in hop_spam[user_id] if now - t <= 10]
-    
-    # اگر ۶ بار یا بیشتر در ۱۰ ثانیه
-    if len(hop_spam[user_id]) >= 6:
-        hop_spam[user_id] = []  # ریست کردن
-        return True
-    return False
-
-
-# ==================== دستور زندان ====================
-async def jail_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش وضعیت زندان"""
-    user_id = update.effective_user.id
-    
-    is_joined = await check_user_membership(context.bot, user_id)
-    if not is_joined:
-        await send_must_join_message(update, context)
-        return
-    
-    in_jail, jail_until = is_user_in_jail(user_id)
-    
-    if not in_jail:
-        await update.message.reply_text(
-            "🔓 **شما در زندان نیستید!**\n"
-            "━━━━━━━━━━━━━━━━━━━\n\n"
-            "✅ وضعیت شما: آزاد\n"
-            "📍 میتوانید از تمام بخش‌های ربات استفاده کنید.\n\n"
-            "⚠️ هشدار: قاچاق و اسپم کردن باعث زندان میشود!"
-        )
-        return
-    
-    # محاسبه زمان باقیمانده
-    remaining = jail_until - datetime.now()
-    minutes = remaining.seconds // 60
-    seconds = remaining.seconds % 60
-    
-    reason = db.get_user_field(user_id, "jail_reason") or "نامشخص"
-    
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "💰 پرداخت ۲۰,۰۰۰ جریمه و آزادی",
-                callback_data=f"jail_pay_{user_id}"
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                "⏳ ماندن در زندان",
-                callback_data=f"jail_stay_{user_id}"
-            )
-        ]
-    ])
-    
-    text = (
-        f"🔒 **شما در زندان هستید!**\n"
-        f"━━━━━━━━━━━━━━━━━━━\n\n"
-        f"⚠️ دلیل: {reason}\n"
-        f"⏱ زمان باقیمانده: {minutes} دقیقه و {seconds} ثانیه\n\n"
-        f"برای آزادی، یکی از گزینه‌های زیر را انتخاب کنید:\n"
-        f"💰 پرداخت ۲۰,۰۰۰ هاپ و آزادی فوری\n"
-        f"⏳ صبر کردن تا پایان زمان زندان"
-    )
-    
-    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
-
-
-async def jail_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """مدیریت دکمه‌های زندان"""
-    query = update.callback_query
-    user_id = query.from_user.id
-    data = query.data
-    
-    await query.answer()
-    
-    if data.startswith("jail_pay_"):
-        # پرداخت جریمه
-        user_points = db.get_user_field(user_id, "points") or 0
-        
-        if user_points < 20000:
-            await query.message.reply_text(
-                f"❌ **موجودی کافی نیست!**\n"
-                f"━━━━━━━━━━━━━━━━━━━\n\n"
-                f"💰 موجودی شما: {user_points:,} هاپ\n"
-                f"💰 جریمه: ۲۰,۰۰۰ هاپ\n\n"
-                f"برای آزادی باید ۲۰,۰۰۰ هاپ داشته باشید."
-            )
-            return
-        
-        # کسر جریمه و آزادی
-        db.update_field(user_id, "points", -20000, relative=True)
-        release_from_jail(user_id)
-        
-        await query.message.edit_text(
-            f"✅ **شما آزاد شدید!**\n"
-            f"━━━━━━━━━━━━━━━━━━━\n\n"
-            f"💰 جریمه پرداخت شده: ۲۰,۰۰۰ هاپ\n"
-            f"🔓 وضعیت: آزاد\n\n"
-            f"دیگر در زندان نیستید. از ربات استفاده کنید!"
-        )
-        
-    elif data.startswith("jail_stay_"):
-        # ماندن در زندان
-        _, _, user_id_str = data.split("_")
-        target_id = int(user_id_str)
-        
-        if user_id != target_id:
-            await query.answer("این دکمه برای شما نیست!", show_alert=True)
-            return
-        
-        in_jail, jail_until = is_user_in_jail(user_id)
-        if not in_jail:
-            await query.message.edit_text("✅ شما قبلاً آزاد شده‌اید!")
-            return
-        
-        remaining = jail_until - datetime.now()
-        minutes = remaining.seconds // 60
-        seconds = remaining.seconds % 60
-        
-        await query.message.edit_text(
-            f"⏳ **شما تصمیم به ماندن در زندان گرفتید.**\n"
-            f"━━━━━━━━━━━━━━━━━━━\n\n"
-            f"⏱ زمان باقیمانده: {minutes} دقیقه و {seconds} ثانیه\n\n"
-            f"پس از پایان زمان، به طور خودکار آزاد خواهید شد.\n"
-            f"برای اطلاع از وضعیت، دوباره `زندان` را وارد کنید."
-        )
-
-
-# ----------------- توابع عضویت اجباری -----------------
-async def check_user_membership(bot, user_id: int) -> bool:
-    for ch in REQUIRED_CHANNELS:
-        try:
-            member = await bot.get_chat_member(
-                chat_id=ch["username"], user_id=user_id
-            )
-            if member.status in ["left", "kicked"]:
-                return False
-        except BadRequest:
-            continue
-        except Exception as e:
-            logging.error(f"خطا در بررسی عضویت کانال {ch['username']}: {e}")
-            return False
-    return True
-
-
-def get_join_keyboard():
-    buttons = []
-    for ch in REQUIRED_CHANNELS:
-        buttons.append(
-            [
-                InlineKeyboardButton(
-                    f"عضویت در {ch['name']}",
-                    callback_data=f"channel_{ch['username']}",
-                    style="danger"
-                )
-            ]
-        )
-    buttons.append(
-        [
-            InlineKeyboardButton(
-                "عضو شدم، بررسی کن!",
-                callback_data="check_join_status",
-                style="success"
-            )
-        ]
-    )
-    return InlineKeyboardMarkup(buttons)
-
-
-async def send_must_join_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_first_name = update.effective_user.first_name
-    channels_list = "\n".join([f"• {ch['name']}" for ch in REQUIRED_CHANNELS])
-
-    text = (
-        f"⛔️ عزیز {user_first_name}!\n\n"
-        f"برای استفاده از ربات هاپ‌داگ، ابتدا باید عضو این کانال‌ها بشی:\n\n"
-        f"{channels_list}\n\n"
-        f"👇 روی دکمه‌ها کلیک کن، عضو بشو، بعد «عضو شدم» رو بزن:"
-    )
-
-    if update.message:
-        await update.message.reply_text(text, parse_mode=None, reply_markup=get_join_keyboard())
-    elif update.callback_query:
-        await update.callback_query.message.reply_text(text, parse_mode=None, reply_markup=get_join_keyboard())
-
-
-# ----------------- سیستم محاسباتی هاپ -----------------
-def hops_needed_for_level(level):
+def hops_needed_for_level(level: int) -> int:
     return 10 + (level - 1) * 5
 
-
-def calculate_hop_reward(level):
+def calculate_hop_reward(level: int) -> int:
     base_min = 10 * (1.5 ** (level - 1))
     base_max = 25 * (1.5 ** (level - 1))
     return random.randint(int(base_min), int(base_max))
 
+def catch_random_fish():
+    """انتخاب تصادفی ماهی بر اساس شانس و محاسبه وزن و ارزش قیمت"""
+    weights_list = [f["chance"] for f in FISH_TYPES]
+    selected = random.choices(FISH_TYPES, weights=weights_list, k=1)[0]
 
-# ==================== لیدربرد ====================
-async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    weight = round(random.uniform(selected["min_w"], selected["max_w"]), 2)
+    base_price = int(weight * selected["mult"] * 1000)
 
-    is_joined = await check_user_membership(context.bot, user_id)
-    if not is_joined:
-        await send_must_join_message(update, context)
-        return
-
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        SELECT user_id, username, points, level 
-        FROM users 
-        ORDER BY points DESC 
-        LIMIT 10
-    """)
-    top_users = cursor.fetchall()
-    
-    cursor.execute("""
-        SELECT COUNT(*) + 1 
-        FROM users 
-        WHERE points > (SELECT COALESCE(points, 0) FROM users WHERE user_id = ?)
-    """, (user_id,))
-    rank_result = cursor.fetchone()
-    user_rank = rank_result[0] if rank_result and rank_result[0] else 1
-    
-    cursor.execute("""
-        SELECT user_id, username, points, level 
-        FROM users 
-        WHERE user_id = ?
-    """, (user_id,))
-    user_data = cursor.fetchone()
-    conn.close()
-
-    if not top_users:
-        await update.message.reply_text("📊 هنوز کاربری در سیستم ثبت‌نام نکرده است!")
-        return
-
-    text = "🏆 لیدربرد برترین های هاپو 🏆\n"
-    text += "━━━━━━━━━━━━━━━━━━━\n\n"
-
-    medals = ["🥇", "🥈", "🥉"]
-
-    for i, user in enumerate(top_users, 1):
-        user_id_db, username, points, level = user
-        medal = medals[i-1] if i <= 3 else f"{i}."
-        name = username or f"کاربر {user_id_db}"
-        text += f"{medal} {name}\n"
-        text += f"   💰 {points:,} هاپو | سطح {level}\n"
-        text += "━━━━━━━━━━━━━━━━━━━\n"
-
-    if user_data:
-        user_points = user_data[2] if user_data[2] else 0
-        user_level = user_data[3] if user_data[3] else 1
-        text += f"\n📊 رتبه شما: #{user_rank}\n"
-        text += f"   💰 {user_points:,} هاپو | سطح {user_level}"
-
-    await update.message.reply_text(text, parse_mode=None)
-
-
-# ==================== انبار ====================
-async def warehouse_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    # بررسی زندان
-    in_jail, _ = is_user_in_jail(user_id)
-    if in_jail:
-        await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
-        return
-    
-    is_joined = await check_user_membership(context.bot, user_id)
-    if not is_joined:
-        await send_must_join_message(update, context)
-        return
-    
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT 
-            inventory_clothes, inventory_food, inventory_toy, inventory_house,
-            inventory_cig, inventory_diamond, inventory_gold, inventory_car,
-            points, level
-        FROM users WHERE user_id = ?
-    """, (user_id,))
-    result = cursor.fetchone()
-    conn.close()
-    
-    if not result:
-        await update.message.reply_text("❌ کاربر پیدا نشد!")
-        return
-    
-    clothes, food, toy, house, cig, diamond, gold, car, points, level = result
-    
-    text = (
-        f"📦 انبار شما\n"
-        f"━━━━━━━━━━━━━━━━━━━\n\n"
-        f"💰 هاپو پوینت: {points:,} | سطح {level}\n\n"
-        f"محصولات کارخانه:\n"
-        f"👕 لباس هاپویی: {clothes} عدد\n"
-        f"🦴 غذای ویژه: {food} عدد\n"
-        f"🎾 توپ بازی: {toy} عدد\n"
-        f"🏠 لانه شیک: {house} عدد\n\n"
-        f"محصولات قاچاق:\n"
-        f"🚬 سیگار قاچاق: {cig} عدد\n"
-        f"💎 الماس سیاه: {diamond} عدد\n"
-        f"🪙 شمش طلا: {gold} عدد\n"
-        f"🏎 خودروی قاچاق: {car} عدد"
-    )
-    
-    await update.message.reply_text(text, parse_mode=None)
-
-
-# ==================== فروش محصولات ====================
-async def sell_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    # بررسی زندان
-    in_jail, _ = is_user_in_jail(user_id)
-    if in_jail:
-        await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
-        return
-    
-    is_joined = await check_user_membership(context.bot, user_id)
-    if not is_joined:
-        await send_must_join_message(update, context)
-        return
-    
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT inventory_clothes, inventory_food, inventory_toy, inventory_house 
-        FROM users WHERE user_id = ?
-    """, (user_id,))
-    result = cursor.fetchone()
-    conn.close()
-    
-    if not result:
-        await update.message.reply_text("❌ کاربر پیدا نشد!")
-        return
-    
-    clothes, food, toy, house = result
-    
-    update_market_prices()
-    
-    price_clothes = get_product_price("clothes")
-    price_food = get_product_price("food")
-    price_toy = get_product_price("toy")
-    price_house = get_product_price("house")
-    
-    buy_clothes = market_prices["clothes"]["buy_price"]
-    buy_food = market_prices["food"]["buy_price"]
-    buy_toy = market_prices["toy"]["buy_price"]
-    buy_house = market_prices["house"]["buy_price"]
-    
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(
-            f"لباس ({clothes} عدد) - {price_clothes} هاپ", 
-            callback_data=f"sell_clothes_flex"
-        )],
-        [InlineKeyboardButton(
-            f"غذا ({food} عدد) - {price_food} هاپ", 
-            callback_data=f"sell_food_flex"
-        )],
-        [InlineKeyboardButton(
-            f"توپ ({toy} عدد) - {price_toy} هاپ", 
-            callback_data=f"sell_toy_flex"
-        )],
-        [InlineKeyboardButton(
-            f"لانه ({house} عدد) - {price_house} هاپ", 
-            callback_data=f"sell_house_flex"
-        )],
-        [InlineKeyboardButton("بازگشت", callback_data="back_from_sell")]
-    ])
-    
-    text = (
-        f"💰 بازار فروش محصولات\n"
-        f"━━━━━━━━━━━━━━━━━━━\n\n"
-        f"قیمت‌های لحظه‌ای:\n"
-        f"👕 لباس: {price_clothes} هاپ (خرید: {buy_clothes} هاپ)\n"
-        f"🦴 غذا: {price_food} هاپ (خرید: {buy_food} هاپ)\n"
-        f"🎾 توپ: {price_toy} هاپ (خرید: {buy_toy} هاپ)\n"
-        f"🏠 لانه: {price_house} هاپ (خرید: {buy_house} هاپ)\n\n"
-        f"موجودی انبار شما:\n"
-        f"👕 لباس: {clothes} عدد\n"
-        f"🦴 غذا: {food} عدد\n"
-        f"🎾 توپ: {toy} عدد\n"
-        f"🏠 لانه: {house} عدد\n\n"
-        f"نکته: قیمت‌ها هر ساعت بر اساس میزان فروش تغییر میکنند!"
-    )
-    
-    await update.message.reply_text(text, parse_mode=None, reply_markup=keyboard)
-
-
-async def sell_product_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    user_id = query.from_user.id
-    data = query.data
-    
-    product_type = data.replace("sell_", "").replace("_flex", "")
-    
-    field_name = f"inventory_{product_type}"
-    current_count = db.get_user_field(user_id, field_name) or 0
-    
-    if current_count <= 0:
-        await query.message.reply_text("❌ شما هیچ محصولی برای فروش ندارید!")
-        return
-    
-    price = get_product_price(product_type)
-    record_sale(product_type)
-    
-    db.update_field(user_id, field_name, -1, relative=True)
-    db.update_field(user_id, "points", price, relative=True)
-    
-    new_count = db.get_user_field(user_id, field_name) or 0
-    new_points = db.get_user_field(user_id, "points") or 0
-    
-    product_names = {
-        "clothes": "لباس",
-        "food": "غذا",
-        "toy": "توپ",
-        "house": "لانه"
+    return {
+        "rarity": selected["rarity"],
+        "weight": weight,
+        "value": base_price,
+        "food": selected["food"]
     }
-    
-    await query.message.reply_text(
-        f"✅ فروش موفق!\n"
-        f"━━━━━━━━━━━━━━━━━━━\n\n"
-        f"محصول: {product_names.get(product_type, product_type)}\n"
-        f"💰 قیمت فروش: {price} هاپ\n"
-        f"📊 موجودی باقی‌مانده: {new_count} عدد\n"
-        f"💰 موجودی کیف: {new_points:,} هاپ"
+
+# ----------------- توابع اصلی سیستم -----------------
+
+async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    target_user = user
+    if update.message and update.message.reply_to_message:
+        reply_user = update.message.reply_to_message.from_user
+        target_user = db.get_user(reply_user.id, reply_user.username or reply_user.first_name)
+
+    user_id = target_user[0] if target_user else update.effective_user.id
+    username = (target_user[1] if target_user else update.effective_user.username) or "کاربر"
+    points = db.get_user_field(user_id, "points") or 0
+    level = db.get_user_field(user_id, "level") or 1
+    bank_balance = db.get_user_field(user_id, "bank_balance") or 0
+
+    has_dog = db.get_user_field(user_id, "has_dog")
+    dog_status = "دارای سگ" if has_dog else "بدون سگ"
+    acc_num = db.get_or_create_account_number(user_id)
+
+    formatted_points = format_balance(points)
+    formatted_bank = format_balance(bank_balance)
+
+    msg = (
+        f"👤 **پروفایل و مشخصات هاپو**\n\n"
+        f"🔹 کاربر: {username}\n"
+        f"🆔 شناسه: {user_id}\n"
+        f"⭐ سطح (لول): {level}\n"
+        f"💳 شماره حساب: {acc_num}\n\n"
+        f"💰 موجودی کیف پول: {formatted_points}\n"
+        f"🏦 موجودی بانک: {formatted_bank}\n\n"
+        f"🐕 وضعیت سگ: {dog_status}\n"
     )
 
+    await update.message.reply_text(msg, parse_mode='Markdown')
 
-# ==================== گردونه شانس ====================
-async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    user_id = update.effective_user.id if not user else user[0]
+    username = update.effective_user.first_name
     
-    # بررسی زندان
-    in_jail, _ = is_user_in_jail(user_id)
-    if in_jail:
-        await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
-        return
+    last_hop_str = db.get_user_field(user_id, "last_hop")
+    now = datetime.now()
+    COOLDOWN_MINUTES = 5
     
-    now = time.time()
-
-    is_joined = await check_user_membership(context.bot, user_id)
-    if not is_joined:
-        await send_must_join_message(update, context)
-        return
-
-    last_spin = user_last_spin.get(user_id, 0)
-    if now - last_spin < SPIN_COOLDOWN:
-        remaining = int(SPIN_COOLDOWN - (now - last_spin))
-        hours = remaining // 3600
-        minutes = (remaining % 3600) // 60
-        await update.message.reply_text(
-            f"⏳ هنوز {hours} ساعت و {minutes} دقیقه مونده تا گردونه بعدی!"
-        )
-        return
-
-    user_last_spin[user_id] = now
-
-    msg = await update.message.reply_text(
-        "🎡 گردونه در حال چرخش...",
-        reply_to_message_id=update.message.message_id
-    )
-
-    steps = [
-        "🎡 گردونه در حال چرخش...",
-        "🎡 چرخش ادامه داره...",
-        "🎡 تقریباً ایستاد...",
-        "🎡 لحظاتی دیگر...",
-    ]
-
-    for step in steps:
-        await asyncio.sleep(0.8)
+    if last_hop_str:
         try:
-            await msg.edit_text(step)
-        except:
+            last_hop_time = datetime.strptime(last_hop_str, "%Y-%m-%d %H:%M:%S")
+            time_passed = now - last_hop_time
+            
+            if time_passed < timedelta(minutes=COOLDOWN_MINUTES):
+                remaining = timedelta(minutes=COOLDOWN_MINUTES) - time_passed
+                minutes, seconds = divmod(remaining.seconds, 60)
+                
+                await update.message.reply_text(
+                    f"⏳ صبر کن {username} جان!\n\n"
+                    f"شما تازگی هاپ زدید. برای هاپ بعدی باید {minutes} دقیقه و {seconds} ثانیه صبر کنید.",
+                    parse_mode='Markdown'
+                )
+                return
+        except Exception:
             pass
 
-    prize = get_spin_prize()
-    db.update_field(user_id, "points", prize, relative=True)
-
-    final_text = (
-        f"🎉 تبریک!\n"
-        f"💰 شما {prize:,} هاپ پوینت برنده شدید!\n\n"
-        f"⏳ گردونه بعدی: ۱۲ ساعت دیگر"
-    )
-    await msg.edit_text(final_text, parse_mode=None)
-
-
-# ==================== انتقال هاپ پوینت ====================
-async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    # بررسی زندان
-    in_jail, _ = is_user_in_jail(user_id)
-    if in_jail:
-        await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
-        return
-    
-    is_joined = await check_user_membership(context.bot, user_id)
-    if not is_joined:
-        await send_must_join_message(update, context)
-        return
-    
-    if not update.message.reply_to_message:
-        await update.message.reply_text(
-            "❌ فرمت اشتباه!\n\n"
-            "برای انتقال هاپ پوینت، روی پیام کاربر ریپلای کنید و بنویسید:\n"
-            "انتقال هاپ پوینت [مبلغ]\n\n"
-            "مثال: انتقال هاپ پوینت 100"
-        )
-        return
-    
-    parts = update.message.text.split()
-    if len(parts) < 4:
-        await update.message.reply_text(
-            "❌ فرمت اشتباه!\n\n"
-            "فرمت صحیح:\n"
-            "انتقال هاپ پوینت [مبلغ]\n\n"
-            "مثال: انتقال هاپ پوینت 100"
-        )
-        return
-    
-    if parts[0] != "انتقال" or parts[1] != "هاپ" or parts[2] != "پوینت":
-        await update.message.reply_text(
-            "❌ فرمت اشتباه!\n\n"
-            "فرمت صحیح:\n"
-            "انتقال هاپ پوینت [مبلغ]\n\n"
-            "مثال: انتقال هاپ پوینت 100"
-        )
-        return
-    
-    amount_str = parts[3]
-    
-    persian_to_english = {
-        '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4',
-        '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9'
-    }
-    
-    for persian, english in persian_to_english.items():
-        amount_str = amount_str.replace(persian, english)
-    
-    amount_str = amount_str.replace(",", "").replace(" ", "")
-    
-    try:
-        amount = int(amount_str)
-    except ValueError:
-        await update.message.reply_text(
-            "❌ مبلغ باید عدد باشد!\n\n"
-            "مثال: انتقال هاپ پوینت 100\n"
-            "یا انتقال هاپ پوینت ۱,۰۰۰"
-        )
-        return
-    
-    if amount <= 0:
-        await update.message.reply_text("❌ مبلغ باید بیشتر از صفر باشد!")
-        return
-    
-    target_id = update.message.reply_to_message.from_user.id
-    target_name = update.message.reply_to_message.from_user.first_name
-    target_username = update.message.reply_to_message.from_user.username
-    
-    if target_id == user_id:
-        await update.message.reply_text("❌ نمی‌توانید به خودتان انتقال دهید!")
-        return
-    
-    sender_data = db.get_user(user_id)
-    sender_points = sender_data[2] if sender_data[2] else 0
-    sender_name = update.effective_user.first_name
-    
-    if sender_points < amount:
-        await update.message.reply_text(
-            f"❌ موجودی کافی نیست!\n"
-            f"💰 موجودی شما: {sender_points:,} هاپ پوینت"
-        )
-        return
-    
-    target_data = db.get_user(target_id)
-    if not target_data:
-        await update.message.reply_text("❌ کاربر مورد نظر در ربات ثبت‌نام نکرده است!")
-        return
-    
-    transfer_id = f"{user_id}_{target_id}_{int(time.time())}"
-    
-    pending_transfers[transfer_id] = {
-        "sender_id": user_id,
-        "target_id": target_id,
-        "amount": amount,
-        "sender_name": sender_name,
-        "target_name": target_name,
-        "target_username": target_username,
-        "sender_points": sender_points,
-        "target_points": target_data[2] if target_data[2] else 0,
-        "status": "pending"
-    }
-    
-    target_display = f"@{target_username}" if target_username else target_name
-    
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "تایید و ارسال",
-                callback_data=f"transfer_accept_{transfer_id}",
-                style="success"
-            ),
-            InlineKeyboardButton(
-                "لغو",
-                callback_data=f"transfer_reject_{transfer_id}",
-                style="danger"
-            )
-        ]
-    ])
-    
-    await update.message.reply_text(
-        f"📨 تایید انتقال هاپ پوینت\n"
-        f"━━━━━━━━━━━━━━━━━━━\n\n"
-        f"💰 مبلغ: {amount:,} هاپ پوینت\n"
-        f"👤 به: {target_display}\n"
-        f"📊 موجودی شما: {sender_points:,} هاپ پوینت\n"
-        f"📊 موجودی پس از انتقال: {sender_points - amount:,} هاپ پوینت\n\n"
-        f"⚠️ لطفا تایید یا لغو کنید:",
-        parse_mode=None,
-        reply_markup=keyboard,
-        reply_to_message_id=update.message.message_id
-    )
-    
-    try:
-        await context.bot.send_message(
-            chat_id=target_id,
-            text=(
-                f"📨 درخواست دریافت هاپ پوینت\n"
-                f"━━━━━━━━━━━━━━━━━━━\n\n"
-                f"👤 از طرف: {sender_name}\n"
-                f"💰 مبلغ: {amount:,} هاپ پوینت\n\n"
-                f"⏳ در انتظار تایید فرستنده..."
-            ),
-            parse_mode=None
-        )
-    except Exception:
-        pass
-
-
-async def transfer_accept(callback: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
-    transfer_id = callback.data.replace("transfer_accept_", "")
-    transfer = pending_transfers.get(transfer_id)
-    
-    if not transfer:
-        await callback.answer("❌ درخواست منقضی شده است!", show_alert=True)
-        await callback.message.edit_text("❌ این درخواست انتقال منقضی شده است.")
-        return
-    
-    if transfer["status"] != "pending":
-        await callback.answer("❌ این درخواست قبلاً پردازش شده!", show_alert=True)
-        return
-    
-    user_id = callback.from_user.id
-    
-    if user_id != transfer["sender_id"]:
-        await callback.answer("❌ فقط فرستنده می‌تواند تایید کند!", show_alert=True)
-        return
-    
-    sender_data = db.get_user(transfer["sender_id"])
-    if sender_data[2] < transfer["amount"]:
-        await callback.answer("❌ موجودی شما کافی نیست!", show_alert=True)
-        await callback.message.edit_text(
-            f"❌ انتقال ناموفق!\n"
-            f"━━━━━━━━━━━━━━━━━━━\n\n"
-            f"💰 موجودی شما کافی نیست!\n"
-            f"📊 موجودی: {sender_data[2]:,} هاپ پوینت"
-        )
-        del pending_transfers[transfer_id]
-        return
-    
-    transfer["status"] = "completed"
-    
-    db.update_field(transfer["sender_id"], "points", -transfer["amount"], relative=True)
-    db.update_field(transfer["target_id"], "points", transfer["amount"], relative=True)
-    
-    new_sender_points = transfer["sender_points"] - transfer["amount"]
-    new_target_points = transfer["target_points"] + transfer["amount"]
-    
-    target_display = f"@{transfer['target_username']}" if transfer['target_username'] else transfer['target_name']
-    
-    await callback.message.edit_text(
-        f"✅ انتقال با موفقیت انجام شد!\n"
-        f"━━━━━━━━━━━━━━━━━━━\n\n"
-        f"💰 مبلغ: {transfer['amount']:,} هاپ پوینت\n"
-        f"👤 به: {target_display}\n"
-        f"📊 موجودی جدید شما: {new_sender_points:,} هاپ پوینت"
-    )
-    
-    try:
-        await context.bot.send_message(
-            chat_id=transfer["target_id"],
-            text=(
-                f"✅ دریافت هاپ پوینت!\n"
-                f"━━━━━━━━━━━━━━━━━━━\n\n"
-                f"👤 از طرف: {transfer['sender_name']}\n"
-                f"💰 مبلغ: {transfer['amount']:,} هاپ پوینت\n"
-                f"📊 موجودی جدید شما: {new_target_points:,} هاپ پوینت"
-            )
-        )
-    except Exception:
-        pass
-    
-    del pending_transfers[transfer_id]
-    await callback.answer("✅ انتقال با موفقیت انجام شد!")
-
-
-async def transfer_reject(callback: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
-    transfer_id = callback.data.replace("transfer_reject_", "")
-    transfer = pending_transfers.get(transfer_id)
-    
-    if not transfer:
-        await callback.answer("❌ درخواست منقضی شده است!", show_alert=True)
-        await callback.message.edit_text("❌ این درخواست انتقال منقضی شده است.")
-        return
-    
-    if transfer["status"] != "pending":
-        await callback.answer("❌ این درخواست قبلاً پردازش شده!", show_alert=True)
-        return
-    
-    user_id = callback.from_user.id
-    
-    if user_id != transfer["sender_id"]:
-        await callback.answer("❌ فقط فرستنده می‌تواند لغو کند!", show_alert=True)
-        return
-    
-    transfer["status"] = "rejected"
-    
-    target_display = f"@{transfer['target_username']}" if transfer['target_username'] else transfer['target_name']
-    
-    await callback.message.edit_text(
-        f"❌ انتقال لغو شد!\n"
-        f"━━━━━━━━━━━━━━━━━━━\n\n"
-        f"💰 مبلغ: {transfer['amount']:,} هاپ پوینت\n"
-        f"👤 به: {target_display}\n\n"
-        f"شما این درخواست را لغو کردید."
-    )
-    
-    try:
-        await context.bot.send_message(
-            chat_id=transfer["target_id"],
-            text=(
-                f"❌ درخواست انتقال لغو شد!\n"
-                f"━━━━━━━━━━━━━━━━━━━\n\n"
-                f"👤 از طرف: {transfer['sender_name']}\n"
-                f"💰 مبلغ: {transfer['amount']:,} هاپ پوینت\n\n"
-                f"فرستنده درخواست را لغو کرد."
-            )
-        )
-    except Exception:
-        pass
-    
-    del pending_transfers[transfer_id]
-    await callback.answer("❌ انتقال لغو شد!")
-
-
-# ==================== دستور هاپ ====================
-async def hop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    # بررسی زندان
-    in_jail, _ = is_user_in_jail(user_id)
-    if in_jail:
-        await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
-        return
-    
-    # بررسی اسپم
-    if check_hop_spam(user_id):
-        # زندان ۱۵ دقیقه
-        put_user_in_jail(user_id, minutes=15, reason="اسپم در هاپ (۶ بار در ۱۰ ثانیه)")
-        await update.message.reply_text(
-            f"🚨 **شما به دلیل اسپم به زندان افتادید!**\n"
-            f"━━━━━━━━━━━━━━━━━━━\n\n"
-            f"⚠️ دلیل: اسپم در دستور هاپ\n"
-            f"⏱ مدت: ۱۵ دقیقه\n\n"
-            f"برای اطلاع از وضعیت، دستور `زندان` را وارد کنید."
-        )
-        return
-    
-    # ادامه کد هاپ عادی
-    is_joined = await check_user_membership(context.bot, user_id)
-    if not is_joined:
-        await send_must_join_message(update, context)
-        return
-    
-    current_time = int(time.time())
-    last_hop_time = db.get_user_field(user_id, "last_hop_time") or 0
-    cooldown = 300
-    
-    if current_time - last_hop_time < cooldown:
-        remaining = cooldown - (current_time - last_hop_time)
-        minutes = remaining // 60
-        seconds = remaining % 60
-        await update.message.reply_text(
-            f"⏳ سگ شما خسته است! لطفا {minutes} دقیقه و {seconds} ثانیه صبر کنید."
-        )
-        return
-    
-    level = db.get_user_field(user_id, "level") or 1
+    user_level = db.get_user_field(user_id, "level") or 1
     progress = db.get_user_field(user_id, "level_hops_progress") or 0
-    
-    reward = calculate_hop_reward(level)
-    needed = hops_needed_for_level(level)
+
+    reward = calculate_hop_reward(user_level)
+    needed = hops_needed_for_level(user_level)
     progress += 1
-    
+
     db.update_field(user_id, "points", reward, relative=True)
     db.update_field(user_id, "hops", 1, relative=True)
-    db.update_field(user_id, "last_hop_time", current_time, relative=False)
-    
+    db.update_field(user_id, "last_hop", now.strftime("%Y-%m-%d %H:%M:%S"), relative=False)
+
     level_up_msg = ""
     if progress >= needed:
-        level += 1
+        user_level += 1
         progress = 0
         db.update_field(user_id, "level", 1, relative=True)
         db.update_field(user_id, "level_hops_progress", 0, relative=False)
-        level_up_msg = f"\n🎉 تبریک! شما به سطح {level} ارتقا یافتید!"
+        level_up_msg = f"\n\n🎉 تبریک! شما به سطح {user_level} ارتقا یافتید! 🚀"
     else:
         db.update_field(user_id, "level_hops_progress", progress, relative=False)
-    
-    await update.message.reply_text(
-        f"🐕 هاپ! هاپ!\n\n"
-        f"💰 پاداش دریافتی: {reward:,} سکه\n"
-        f"📊 پیشرفت سطح {level}: [{progress}/{needed}] هاپ{level_up_msg}",
-        parse_mode=None,
+
+    current_points = db.get_user_field(user_id, "points") or 0
+
+    msg = (
+        f"🐾 **هاپ با موفقیت انجام شد!**\n\n"
+        f"👤 کاربر: {update.effective_user.mention_markdown()}\n"
+        f"🎁 پاداش دریافتی: +{format_balance(reward)}\n"
+        f"💰 موجودی کل: {format_balance(current_points)}\n"
+        f"📊 پیشرفت سطح {user_level}: [{progress}/{needed}] هاپ{level_up_msg}\n\n"
+        f"_۵ دقیقه دیگر می‌توانید دوباره هاپ بزنید._"
     )
 
+    await update.message.reply_text(msg, parse_mode='Markdown')
 
-# ----------------- دستورات ربات -----------------
-async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ----------------- بخش اختصاصی سگ -----------------
+
+async def buy_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     user_id = update.effective_user.id
     
-    # بررسی زندان
-    in_jail, _ = is_user_in_jail(user_id)
-    if in_jail:
-        await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
+    has_dog = db.get_user_field(user_id, "has_dog")
+    if has_dog:
+        await update.message.reply_text("قبلا سگ خریداری شده برای دیدن سگ دستور سگ را تایپ کنید.")
         return
-    
-    bot_username = context.bot.username
 
-    ref_count = db.get_referral_stats(user_id) if hasattr(db, "get_referral_stats") else 0
-    total_earned = ref_count * REFERRAL_REWARD
-    referral_link = f"https://t.me/{bot_username}?start={user_id}"
+    cost = 500
+    points = db.get_user_field(user_id, "points") or 0
+
+    if points < cost:
+        await update.message.reply_text(f"❌ برای خرید سگ به {cost} سکه نیاز دارید!")
+        return
+
+    db.update_field(user_id, "points", -cost, relative=True)
+    db.update_field(user_id, "has_dog", True, relative=False)
+    db.update_field(user_id, "dog_name", "انتخاب نشده", relative=False)
+    db.update_field(user_id, "dog_level", 1, relative=False)
+    db.update_field(user_id, "dog_hunger", 0, relative=False)
+    db.update_field(user_id, "dog_last_claim", int(time.time()), relative=False)
+    db.update_field(user_id, "dog_unclaimed_points", 0, relative=False)
+
+    await update.message.reply_text("✅ سگ با موفقیت خریداری شد.")
+
+async def show_dog_panel(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    """نمایش یا به‌روزرسانی پنل اصلی سگ"""
+    user_id = update.effective_user.id
+    user_first_name = update.effective_user.first_name
+    has_dog = db.get_user_field(user_id, "has_dog")
+
+    if not has_dog:
+        await update.message.reply_text("❌ شما هنوز سگ ندارید! با ارسال دستور خرید سگ یک سگ بخرید.")
+        return
+
+    dog_name = db.get_user_field(user_id, "dog_name") or "انتخاب نشده"
+    level = int(db.get_user_field(user_id, "dog_level") or 1)
+    hunger = int(db.get_user_field(user_id, "dog_hunger") or 0)
+    last_claim = int(db.get_user_field(user_id, "dog_last_claim") or time.time())
+    stored_points = float(db.get_user_field(user_id, "dog_unclaimed_points") or 0)
+
+    level_data = DOG_LEVELS.get(level, DOG_LEVELS[30])
+    rate = level_data["rate"]
+    capacity = level_data["capacity"]
+
+    now = time.time()
+    elapsed = now - last_claim
+    
+    if hunger <= 0:
+        generated = 0
+        hunger_status = "🔴 گشنمه و دیگه کار نمیکنم!"
+    else:
+        generated = elapsed * rate
+        hunger_status = f"🟢 ({hunger} / 10)"
+
+    total_unclaimed = min(capacity, stored_points + generated)
+
+    rank_cost = RANK_UPGRADE_COSTS.get(level, level_data["upgrade_cost"])
+    rank_title = get_rank_name(level)
 
     text = (
-        f"👥 سیستم دعوت و زیرمجموعه‌گیری\n\n"
-        f"با دعوت دوستان خود به ربات، پاداش دریافت کنید!\n\n"
-        f"🎁 پاداش هر دعوت: {REFERRAL_REWARD:,} سکه\n"
-        f"📊 تعداد دعوت‌های شما: {ref_count} نفر\n"
-        f"💰 مجموع درآمد از دعوت: {total_earned:,} سکه\n\n"
-        f"🔗 لینک اختصاصی شما:\n"
-        f"{referral_link}"
+        f"🐶 **هاپوی {user_first_name}**\n\n"
+        f"🏷 نام: {dog_name}\n"
+        f"🍖 شکم: {hunger_status}\n\n"
+        f"🎖 مقام: {rank_title}\n"
+        f"⭐ سطح: {level} / 30\n\n"
+        f"💎 هاپ پوینت‌های تولید شده: {int(total_unclaimed):,}\n"
+        f"⚡ تولید هاپ پوینت در ثانیه: {rate}\n"
+        f"📦 ظرفیت سگ: {capacity:,}\n\n"
+        f"💰 هزینه ارتقا مقام: {rank_cost:,}"
     )
 
-    share_url = f"https://t.me/share/url?url={referral_link}&text=بیا%20تو%20این%20ربات%20باهم%20بازی%20کنیم!"
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("اشتراک‌گذاری لینک", url=share_url)]
+        [InlineKeyboardButton("📥 برداشت هاپ پوینت‌ها", callback_data=f"dog_claim:{user_id}")],
+        [InlineKeyboardButton("⬆️ ارتقا مقام", callback_data=f"dog_upgrade:{user_id}")],
+        [InlineKeyboardButton("✏️ انتخاب اسم سگ", callback_data=f"dog_rename:{user_id}")]
     ])
 
-    if update.callback_query:
-        await update.callback_query.message.reply_text(text, parse_mode=None, reply_markup=keyboard)
-    else:
-        await update.message.reply_text(text, parse_mode=None, reply_markup=keyboard)
+    try:
+        if update.callback_query:
+            await update.callback_query.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
+        else:
+            await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
+    except RetryAfter:
+        pass
+    except Exception:
+        pass
 
+async def handle_dog_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """مدیریت کلیک روی دکمه‌های پنل سگ"""
+    query = update.callback_query
+    user_id = query.from_user.id
+    data = query.data.split(":")[0]
 
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    username = update.effective_user.username or "کاربر"
+    level = int(db.get_user_field(user_id, "dog_level") or 1)
+    hunger = int(db.get_user_field(user_id, "dog_hunger") or 0)
+    last_claim = int(db.get_user_field(user_id, "dog_last_claim") or time.time())
+    stored_points = float(db.get_user_field(user_id, "dog_unclaimed_points") or 0)
 
-    db.get_user(user_id, username)
+    level_data = DOG_LEVELS.get(level, DOG_LEVELS[30])
+    rate = level_data["rate"]
+    capacity = level_data["capacity"]
 
-    if context.args and context.args[0].isdigit():
-        inviter_id = int(context.args[0])
-        if hasattr(db, "set_inviter") and db.set_inviter(user_id, inviter_id):
-            db.update_field(inviter_id, "points", REFERRAL_REWARD, relative=True)
-            try:
-                await context.bot.send_message(
-                    chat_id=inviter_id,
-                    text=f"🎉 یک کاربر جدید با لینک شما وارد ربات شد!\n🎁 مبلغ {REFERRAL_REWARD:,} سکه به حساب شما اضافه شد.",
-                    parse_mode=None,
-                )
-            except Exception:
-                pass
+    if data == "dog_claim":
+        if hunger <= 0:
+            await query.answer("❌ سگ شما گشنه است و هاپ پوینتی تولید نکرده! اول بهش غذا بدید.", show_alert=True)
+            return
 
-    is_joined = await check_user_membership(context.bot, user_id)
-    if not is_joined:
-        await send_must_join_message(update, context)
+        now = time.time()
+        elapsed = now - last_claim
+        generated = elapsed * rate
+        total_unclaimed = min(capacity, stored_points + generated)
+
+        if total_unclaimed < 1:
+            await query.answer("⚠️ هنوز پوینتی برای برداشت آماده نشده است!", show_alert=True)
+            return
+
+        new_hunger = max(0, hunger - 1)
+        db.update_field(user_id, "dog_hunger", new_hunger, relative=False)
+
+        db.update_field(user_id, "points", int(total_unclaimed), relative=True)
+        db.update_field(user_id, "dog_last_claim", int(now), relative=False)
+        db.update_field(user_id, "dog_unclaimed_points", 0, relative=False)
+
+        await query.answer(f"✅ مقدار {int(total_unclaimed):,} هاپ پوینت با موفقیت برداشت شد.", show_alert=True)
+        await show_dog_panel(update, context)
+
+    elif data == "dog_upgrade":
+        if level >= 30:
+            await query.answer("⭐ سگ شما در حداکثر سطح قرار دارد!", show_alert=True)
+            return
+
+        cost = RANK_UPGRADE_COSTS.get(level, level_data["upgrade_cost"])
+        user_points = int(db.get_user_field(user_id, "points") or 0)
+
+        if user_points < cost:
+            await query.answer(f"❌ موجودی کافی نیست! هزینه ارتقا: {cost:,} پوینت", show_alert=True)
+            return
+
+        db.update_field(user_id, "points", -cost, relative=True)
+        db.update_field(user_id, "dog_level", level + 1, relative=False)
+
+        await query.answer()
+
+        try:
+            await query.message.edit_text(
+                f"🎉 تبریک! سگ شما به سطح {level + 1} ارتقا پیدا کرد!", 
+                parse_mode="Markdown"
+            )
+        except Exception:
+            pass
+
+        await asyncio.sleep(3)
+        await show_dog_panel(update, context)
+
+    elif data == "dog_rename":
+        await query.answer()
+        context.user_data['state'] = "WAITING_FOR_DOG_NAME"
+        await query.message.reply_text("✍️ لطفاً نام جدید سگ خود را تایپ و ارسال کنید:")
+
+async def handle_dog_rename_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """دریافت نام جدید، ذخیره آن و باز کردن مجدد پنل سگ"""
+    if context.user_data.get('state') == "WAITING_FOR_DOG_NAME":
+        new_name = update.message.text.strip()
+        user_id = update.effective_user.id
+        
+        db.update_field(user_id, "dog_name", new_name, relative=False)
+        context.user_data['state'] = None
+        
+        await update.message.reply_text(f"✅ نام سگ با موفقیت به {new_name} تغییر یافت.")
+        await show_dog_panel(update, context)
+        return True
+    return False
+
+# ----------------- بخش غذا و ماهیگیری -----------------
+
+async def feed_dog(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    """مدیریت کامل ماهیگیری و غذا دادن به سگ"""
+    user_id = update.effective_user.id if not user else user[0]
+    
+    has_dog = db.get_user_field(user_id, "has_dog")
+    if not has_dog:
+        await update.message.reply_text("❌ شما سگ ندارید! ابتدا سگ خریداری کنید.")
         return
 
-    main_keyboard = ReplyKeyboardMarkup(
-        [
-            ["پروفایل", "هاپ"],
-            ["پنل سگ", "خرید سگ", "غذا"],
-            ["کارخونه", "شهر"],
-            ["بانک", "زیرمجموعه‌گیری"],
-            ["فروش محصولات", "انبار"],
-            ["گردونه", "لیدربرد"],
-            ["زندان", "راهنما"],
-        ],
-        resize_keyboard=True,
-    )
+    last_feed = db.get_user_field(user_id, "last_feed_time") or 0
+    current_time = int(time.time())
+    cooldown = 3600  # ۱ ساعت
 
-    inline_keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("دریافت لینک زیرمجموعه‌گیری", callback_data="get_referral_link")]
+    if current_time - last_feed < cooldown:
+        remaining = cooldown - (current_time - last_feed)
+        mins = remaining // 60
+        secs = remaining % 60
+        await update.message.reply_text(f"⏳ شما تازه ماهیگیری کرده‌اید! لطفاً {mins} دقیقه و {secs} ثانیه صبر کنید.")
+        return
+
+    try:
+        if FISHING_STICKERS:
+            sticker_id = random.choice(FISHING_STICKERS)
+            await update.message.reply_sticker(sticker=sticker_id, reply_to_message_id=update.message.message_id)
+    except Exception:
+        pass
+
+    fish = catch_random_fish()
+    context.user_data['temp_fish'] = fish
+    db.update_field(user_id, "last_feed_time", current_time, relative=False)
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💰 فروش طعمه", callback_data=f"fish_sell:{user_id}")],
+        [InlineKeyboardButton("🍖 بده هاپو بخوره", callback_data=f"fish_feed:{user_id}")]
     ])
 
-    start_text = (
-        f"سلام {update.effective_user.first_name} عزیز!\n"
-        f"به ربات خوش آمدید.\n\n"
-        f"برای گرفتن لینک دعوت می‌توانید از دکمه شیشه‌ای زیر یا دکمه زیرمجموعه‌گیری در کیبورد استفاده کنید.\n\n"
-        f"⚠️ هشدار: اسپم کردن یا قاچاق باعث زندان میشود!\n"
-        f"🔒 برای مشاهده وضعیت زندان از دکمه زندان استفاده کنید."
+    text = (
+        f"🎣 **شما با موفقیت صید کردید...**\n\n"
+        f"🏷 سطح کمیاب: {fish['rarity']}\n"
+        f"⚖️ وزن: {fish['weight']} کیلو\n"
+        f"💵 ارزش: {fish['value']:,} سکه\n"
+        f"🍖 ارزش غذایی: {fish['food']}\n\n"
+        f"⏱ _شما ۶۰ ثانیه فرصت تصمیم‌گیری دارید._"
     )
 
-    await update.message.reply_text(start_text, reply_markup=main_keyboard, parse_mode=None)
-    await update.message.reply_text("منوی سریع زیرمجموعه‌گیری:", reply_markup=inline_keyboard)
+    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
-
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    logging.error(f"خطایی در پردازش رخ داد: {context.error}", exc_info=context.error)
-
-
-async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
-        return
-
-    text = update.message.text.strip()
-    user_id = update.effective_user.id
-
-    is_joined = await check_user_membership(context.bot, user_id)
-    if not is_joined:
-        await send_must_join_message(update, context)
-        return
-
-    if hasattr(pet, "handle_dog_rename_text"):
-        is_handled = await pet.handle_dog_rename_text(update, context)
-        if is_handled:
-            return
-
-    context.args = text.split()[1:]
-
-    if hasattr(economy, "handle_factory_and_smuggle_text"):
-        handled = await economy.handle_factory_and_smuggle_text(update, context)
-        if handled:
-            return
-
-    username = update.effective_user.username or update.effective_user.first_name
-    user = db.get_user(user_id, username)
-    clean_text = text.split("@")[0].lower()
-
-    # ===== زندان =====
-    if clean_text in ["زندان", "jail"]:
-        await jail_command(update, context)
-        return
-
-    # بررسی زندان برای بقیه دستورات
-    in_jail, _ = is_user_in_jail(user_id)
-    if in_jail:
-        await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
-        return
-
-    # ===== فروش محصولات =====
-    if clean_text in ["فروش محصولات", "فروش", "بازار"]:
-        await sell_products_command(update, context)
-        return
-
-    # ===== انبار =====
-    if clean_text in ["انبار", "warehouse"]:
-        await warehouse_command(update, context)
-        return
-
-    # ===== هاپ =====
-    if clean_text in ["هاپ", "hop"]:
-        await hop_command(update, context)
-        return
-
-    # ===== انتقال هاپ پوینت =====
-    if clean_text.startswith("انتقال هاپ پوینت") or clean_text.startswith("انتقال"):
-        await transfer_command(update, context)
-        return
-
-    # ===== گردونه شانس =====
-    if clean_text in ["گردونه", "چرخونه", "گلدونه"]:
-        await spin_command(update, context)
-        return
-
-    # ===== لیدربرد =====
-    if clean_text in ["لیدربرد", "leaderboard"]:
-        await leaderboard_command(update, context)
-        return
-
-    # ===== بقیه دستورات =====
-    if clean_text in ["پروفایل", "هاپوهام", "هاپوهاش"]:
-        await pet.show_profile(update, context, user)
-    elif clean_text in ["پنل سگ", "سگ من", "سگ"]:
-        if hasattr(pet, "show_dog_panel"):
-            await pet.show_dog_panel(update, context, user)
-        elif hasattr(pet, "show_profile"):
-            await pet.show_profile(update, context, user)
-    elif clean_text in ["راهنما", "help"]:
-        await pet.show_help(update, context)
-    elif clean_text in ["خرید سگ"]:
-        await pet.buy_dog(update, context, user)
-    elif clean_text in ["غذا"]:
-        await pet.feed_dog(update, context, user)
-    elif clean_text in ["زیرمجموعه‌گیری", "زیرمجموعه", "دعوت", "رفرال"]:
-        await referral_command(update, context)
-    elif clean_text in ["بانک"]:
-        if hasattr(economy, "bank_status"):
-            await economy.bank_status(update, context, user)
-    elif clean_text in ["کارخونه"]:
-        await economy.show_factory(update, context)
-    elif clean_text in ["قاچاق", "قاچاقچی"]:
-        await economy.show_contraband(update, context)
-    elif clean_text.startswith("قمار"):
-        await economy.start_gamble(update, context)
-    elif clean_text in ["شهر"]:
-        await economy.city_status(update, context, user)
-    elif clean_text.startswith("اهدا"):
-        await economy.donate_city(update, context, user)
-    elif user_id in config.ADMIN_IDS:
-        if text.startswith("افزایش پوینت"):
-            await admin.add_points(update, context)
-        elif text.startswith("کاهش پوینت"):
-            await admin.remove_points(update, context)
-        elif text.startswith("افزایش لول"):
-            await admin.add_level(update, context)
-        elif text.startswith("کاهش لول"):
-            await admin.remove_level(update, context)
-        elif text.startswith("همگانی"):
-            await admin.broadcast(update, context)
-
-
-async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_fish_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """پردازش دکمه‌های فروش طعمه یا دادن غذا به هاپو"""
     query = update.callback_query
     user_id = query.from_user.id
     data = query.data
 
-    # ===== زندان =====
-    if data.startswith("jail_pay_") or data.startswith("jail_stay_"):
-        await jail_callback(update, context)
+    action, owner_id = data.split(":")
+    if int(owner_id) != user_id:
+        await query.answer("❌ این پنل متعلق به شما نیست!", show_alert=True)
         return
 
-    # ===== فروش محصولات =====
-    if data in ["sell_clothes_flex", "sell_food_flex", "sell_toy_flex", "sell_house_flex"]:
-        await sell_product_callback(update, context)
+    fish = context.user_data.get('temp_fish')
+    if not fish:
+        await query.answer("⚠️ زمان تصمیم‌گیری منقضی شده است!", show_alert=True)
         return
 
-    if data == "back_from_sell":
-        await query.message.delete()
-        await query.answer()
-        return
+    if action == "fish_sell":
+        db.update_field(user_id, "points", fish['value'], relative=True)
+        context.user_data['temp_fish'] = None
+        await query.edit_message_text(f"✅ طعمه شما فروخته شد و مبلغ {fish['value']:,} سکه به کیف پول شما واریز شد.")
 
-    # ===== انتقال =====
-    if data.startswith("transfer_accept_"):
-        await transfer_accept(query, context)
-        return
-    
-    if data.startswith("transfer_reject_"):
-        await transfer_reject(query, context)
-        return
+    elif action == "fish_feed":
+        current_hunger = int(db.get_user_field(user_id, "dog_hunger") or 0)
+        new_hunger = min(10, current_hunger + fish['food'])
+        
+        db.update_field(user_id, "dog_hunger", new_hunger, relative=False)
+        context.user_data['temp_fish'] = None
+        
+        await query.edit_message_text(
+            f"🍖 طعمه به هاپو داده شد!\n"
+            f"📊 میزان شکم سگ: {new_hunger}/10"
+        )
 
-    # ===== کانال‌ها =====
-    if data.startswith("channel_"):
-        username = data.replace("channel_", "")
-        for ch in REQUIRED_CHANNELS:
-            if ch["username"] == username:
-                try:
-                    await query.message.delete()
-                except Exception:
-                    pass
-                await query.message.reply_text(
-                    f"برای عضویت در {ch['name']} روی لینک زیر کلیک کنید:\n{ch['url']}"
-                )
-                await query.answer()
-                return
-        return
+# ----------------- راهنما -----------------
 
-    if data == "check_join_status":
-        is_joined = await check_user_membership(context.bot, user_id)
-        if is_joined:
-            await query.answer("عضویت شما تایید شد.", show_alert=True)
-            try:
-                await query.message.delete()
-            except Exception:
-                pass
-        else:
-            await query.answer("هنوز عضو نشده‌اید!", show_alert=True)
-        return
+# ==================== راهنما ====================
 
-    if ":" in data:
-        parts = data.split(":")
-        action = parts[0]
-        owner_id = int(parts[1]) if parts[1].isdigit() else None
-        if owner_id and user_id != owner_id:
-            await query.answer("این پنل برای شما نیست!", show_alert=True)
-            return
+async def show_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = (
+        "📖 **راهنمای کامل ربات هاپو** 🐾\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        "🔹 **دستورات اصلی:**\n"
+        "┌─────────────────────\n"
+        "│ • `هاپ` : دریافت پوینت رایگان (هر ۵ دقیقه)\n"
+        "│ • `پروفایل` : مشاهده وضعیت حساب و سگ\n"
+        "│ • `لیدربرد` : مشاهده ۱۰ کاربر برتر\n"
+        "└─────────────────────\n\n"
+        
+        "🔹 **گردونه شانس:** 🎡\n"
+        "┌─────────────────────\n"
+        "│ • هر ۱۲ ساعت یک بار می‌توانید استفاده کنید\n"
+        "│ • با هر بار چرخش، یکی از جوایز زیر برنده می‌شوید:\n"
+        "│   🔹 ۱۰۰ هاپ (۳۵٪ شانس)\n"
+        "│   🔹 ۲۰۰ هاپ (۳۰٪ شانس)\n"
+        "│   🔹 ۳۰۰ هاپ (۲۵٪ شانس)\n"
+        "│   🔹 ۵۰۰ هاپ (۱۵٪ شانس)\n"
+        "│   🔹 ۱,۰۰۰ هاپ (۱۰٪ شانس)\n"
+        "│   🔹 ۲,۰۰۰ هاپ (۷٪ شانس)\n"
+        "│   🔹 ۵,۰۰۰ هاپ (۴٪ شانس)\n"
+        "│   🔹 ۱۰,۰۰۰ هاپ (۲٪ شانس)\n"
+        "│   🔹 ۵۰,۰۰۰ هاپ (۱٪ شانس)\n"
+        "│   🔹 ۱۰۰,۰۰۰ هاپ (۰.۵٪ شانس) ⭐ جکپات!\n"
+        "└─────────────────────\n\n"
+        
+        "🔹 **سگ و نگهداری:** 🐶\n"
+        "┌─────────────────────\n"
+        "│ • `خرید سگ` : خرید سگ جدید (۵۰۰ هاپ)\n"
+        "│ • `پنل سگ` : باز کردن پنل اختصاصی سگ\n"
+        "│ • `غذا` : ماهیگیری و افزایش سیر بودن سگ\n"
+        "└─────────────────────\n\n"
+        
+        "🔹 **سیستم بانک:** 🏦\n"
+        "┌─────────────────────\n"
+        "│ • `بانک` : مشاهده پنل بانک\n"
+        "│ • `سپرده [مبلغ]` : واریز پوینت به بانک\n"
+        "│ • `برداشت [مبلغ]` : برداشت پوینت از بانک\n"
+        "│ • سود روزانه ۳٪ (هر ۲۴ ساعت)\n"
+        "└─────────────────────\n\n"
+        
+        "🔹 **اقتصاد و کسب درآمد:** 💰\n"
+        "┌─────────────────────\n"
+        "│ • `کارخونه` : خرید محصولات کارخانه\n"
+        "│   👕 لباس (۵۰ هاپ) | 🦴 غذا (۱۰۰ هاپ)\n"
+        "│   🎾 توپ (۳۰ هاپ) | 🏠 لانه (۱۰۰۰ هاپ)\n"
+        "│ • `فروش محصولات` : فروش محصولات با قیمت متغیر\n"
+        "│   👕 لباس (۴۰-۶۰ هاپ) | 🦴 غذا (۷۰-۱۲۰ هاپ)\n"
+        "│   🎾 توپ (۲۵-۴۰ هاپ) | 🏠 لانه (۸۰۰-۱۵۰۰ هاپ)\n"
+        "│ • `انبار` : مشاهده همه محصولات و قاچاق\n"
+        "│ • `قاچاق` : کسب سود سریع با ریسک ⚠️\n"
+        "│ • `قمار [مبلغ] [تعداد]` : قمار آنلاین 🎲\n"
+        "│ • `شهر` : مشاهده وضعیت شهر\n"
+        "│ • `اهدا [مبلغ]` : کمک به خزانه شهر\n"
+        "└─────────────────────\n\n"
+        
+        "🔹 **انتقال هاپ پوینت:** 🔄\n"
+        "┌─────────────────────\n"
+        "│ • روی پیام کاربر ریپلای کنید\n"
+        "│ • بنویسید: `انتقال هاپ پوینت [مبلغ]`\n"
+        "│ • مثال: `انتقال هاپ پوینت 100`\n"
+        "│ • فرستنده تایید کند → انتقال انجام میشود\n"
+        "└─────────────────────\n\n"
+        
+        "🔹 **سیستم دعوت:** 👥\n"
+        "┌─────────────────────\n"
+        "│ • `زیرمجموعه‌گیری` : دریافت لینک دعوت اختصاصی\n"
+        "│ • پاداش هر دعوت: ۵۰۰ سکه 🎁\n"
+        "└─────────────────────\n\n"
+        
+        "🔹 **لیدربرد:** 🏆\n"
+        "┌─────────────────────\n"
+        "│ • `لیدربرد` : مشاهده ۱۰ کاربر برتر\n"
+        "│ • بر اساس بیشترین هاپو پوینت\n"
+        "│ • رتبه شخصی شما هم نمایش داده میشود\n"
+        "└─────────────────────\n\n"
+        
+        "🔹 **قیمت‌های فروش محصولات:** 📊\n"
+        "┌─────────────────────\n"
+        "│ 👕 لباس هاپویی: ۴۰ تا ۶۰ هاپ\n"
+        "│ 🦴 غذای ویژه: ۷۰ تا ۱۲۰ هاپ\n"
+        "│ 🎾 توپ بازی: ۲۵ تا ۴۰ هاپ\n"
+        "│ 🏠 لانه شیک: ۸۰۰ تا ۱۵۰۰ هاپ\n"
+        "│ 📌 قیمت‌ها هر ساعت بروزرسانی میشوند\n"
+        "└─────────────────────\n\n"
+        
+        "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "💡 **نکته:** برای اطلاعات بیشتر به ربات پیوی بروید."
+    )
+
+    if update.callback_query:
+        await update.callback_query.message.reply_text(help_text, parse_mode="Markdown")
     else:
-        action = data
-
-    is_joined = await check_user_membership(context.bot, user_id)
-    if not is_joined:
-        await query.answer("ابتدا عضو کانال‌ها شوید!", show_alert=True)
-        await send_must_join_message(update, context)
-        return
-
-    if action == "get_referral_link":
-        await referral_command(update, context)
-        await query.answer()
-    elif action in ["fish_sell", "fish_feed"]:
-        if hasattr(pet, "handle_fish_callback"):
-            await pet.handle_fish_callback(update, context)
-        else:
-            await query.answer()
-    elif action.startswith("dog_") or action.startswith("pet_") or action == "dog_panel":
-        if hasattr(pet, "handle_dog_callback"):
-            await pet.handle_dog_callback(update, context)
-        elif hasattr(pet, "dog_callback"):
-            await pet.dog_callback(update, context)
-        else:
-            await query.answer()
-    elif action.startswith("bank_"):
-        if hasattr(economy, "handle_bank_callback"):
-            await economy.handle_bank_callback(update, context)
-    elif action.startswith("buy_fac_") or action.startswith("fac_"):
-        if hasattr(economy, "factory_callback"):
-            await economy.factory_callback(update, context)
-        elif hasattr(economy, "handle_factory_callback"):
-            await economy.handle_factory_callback(update, context)
-    elif action.startswith("select_contra_") or action in ["start_smuggling", "pay_bail"]:
-        if hasattr(economy, "handle_smuggle_callback"):
-            await economy.handle_smuggle_callback(update, context)
-    elif action.startswith("sell_"):
-        if hasattr(economy, "sell_callback"):
-            await economy.sell_callback(update, context)
-    elif action.startswith("join_gamble"):
-        if hasattr(economy, "join_gamble_callback"):
-            await economy.join_gamble_callback(update, context)
-
-
-def main():
-    db.init_db()
-
-    request_config = HTTPXRequest(
-        connection_pool_size=8, read_timeout=60.0, write_timeout=60.0
-    )
-
-    app = (
-        ApplicationBuilder()
-        .token(config.BOT_TOKEN)
-        .request(request_config)
-        .build()
-    )
-
-    app.add_error_handler(error_handler)
-
-    app.add_handler(CommandHandler("start", start_command))
-    if hasattr(economy, "bank_status"):
-        app.add_handler(CommandHandler("bank", economy.bank_status))
-    app.add_handler(CommandHandler(["referral", "sub"], referral_command))
-    app.add_handler(CommandHandler(["leaderboard", "liderboard"], leaderboard_command))
-
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, router_message))
-    app.add_handler(CallbackQueryHandler(callback_router))
-
-    print("🤖 Bot is active...")
-    app.run_polling()
-
-
-if __name__ == "__main__":
-    main()
+        await update.message.reply_text(help_text, parse_mode="Markdown")
