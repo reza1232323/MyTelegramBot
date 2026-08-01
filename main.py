@@ -61,17 +61,17 @@ async def check_user_membership(bot, user_id: int) -> bool:
 
 
 def get_join_keyboard():
-    """ساخت کیبورد شیشه‌ای عضویت اجباری با دکمه‌های قرمز"""
+    """ساخت کیبورد شیشه‌ای عضویت اجباری"""
     buttons = []
     
-    # ===== دکمه‌های کانال (قرمز با style="danger") =====
+    # ===== دکمه‌های کانال (قرمز با callback_data) =====
     for ch in REQUIRED_CHANNELS:
         buttons.append(
             [
                 InlineKeyboardButton(
-                    f"📢 عضویت در {ch['name']}",
+                    f"🔴 عضویت در {ch['name']}",
                     callback_data=f"channel_{ch['username']}",
-                    style="danger"  # 🔴 قرمز
+                    style="danger"
                 )
             ]
         )
@@ -82,7 +82,7 @@ def get_join_keyboard():
             InlineKeyboardButton(
                 "✅ عضو شدم، بررسی کن!",
                 callback_data="check_join_status",
-                style="success"  # 🟢 سبز
+                style="success"
             )
         ]
     )
@@ -128,6 +128,63 @@ def calculate_hop_reward(level):
     base_min = 10 * (1.5 ** (level - 1))
     base_max = 25 * (1.5 ** (level - 1))
     return random.randint(int(base_min), int(base_max))
+
+
+# ==================== لیدربرد ====================
+async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمایش جدول برترین کاربران بر اساس هاپو پوینت"""
+    user_id = update.effective_user.id
+    
+    # بررسی عضویت در کانال
+    is_joined = await check_user_membership(context.bot, user_id)
+    if not is_joined:
+        await send_must_join_message(update, context)
+        return
+    
+    # دریافت ۱۰ کاربر برتر از دیتابیس
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT user_id, username, points, level 
+        FROM users 
+        ORDER BY points DESC 
+        LIMIT 10
+    """)
+    top_users = cursor.fetchall()
+    conn.close()
+    
+    if not top_users:
+        await update.message.reply_text("📊 هنوز کاربری در سیستم ثبت‌نام نکرده است!")
+        return
+    
+    # ساخت متن لیدربرد
+    text = "🏆 **لیدربرد برترین های هاپو** 🏆\n"
+    text += "━━━━━━━━━━━━━━━━━━━\n\n"
+    
+    medals = ["🥇", "🥈", "🥉"]
+    
+    for i, user in enumerate(top_users, 1):
+        user_id_db, username, points, level = user
+        medal = medals[i-1] if i <= 3 else f"{i}."
+        name = username or f"کاربر {user_id_db}"
+        
+        # محدود کردن اسم به ۱۵ کاراکتر
+        if len(name) > 15:
+            name = name[:15] + "..."
+        
+        text += f"{medal} **{name}**\n"
+        text += f"   💰 {points:,} هاپو | 🎯 سطح {level}\n"
+        text += "━━━━━━━━━━━━━━━━━━━\n"
+    
+    # نمایش امتیاز خود کاربر
+    user_data = db.get_user(user_id)
+    if user_data:
+        user_points = user_data[2]  # points
+        user_level = user_data[3]   # level
+        text += f"\n📊 **رتبه شما:**\n"
+        text += f"   💰 {user_points:,} هاپو | 🎯 سطح {user_level}"
+    
+    await update.message.reply_text(text, parse_mode="Markdown")
 
 
 # ----------------- دستورات ربات -----------------
@@ -203,7 +260,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ["🐶 پنل سگ", "🛒 خرید سگ", "🍖 غذا"],
             ["🏭 کارخونه", "🌆 شهر"],
             ["🏦 بانک", "👥 زیرمجموعه‌گیری"],
-            ["📖 راهنما"],
+            ["🏆 لیدربرد", "📖 راهنما"],
         ],
         resize_keyboard=True,
     )
@@ -220,7 +277,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     start_text = (
         f"سلام {update.effective_user.first_name} عزیز! 👋\n"
         f"به ربات خوش آمدید.\n\n"
-        f"💡 برای گرفتن لینک دعوت می‌توانید از دکمه شیشه‌ای زیر یا دکمه 👥 زیرمجموعه‌گیری در کیبورد استفاده کنید."
+        f"💡 برای گرفتن لینک دعوت می‌توانید از دکمه شیشه‌ای زیر یا دکمه 👥 زیرمجموعه‌گیری در کیبورد استفاده کنید.\n\n"
+        f"🏆 برای مشاهده لیدربرد از دکمه لیدربرد استفاده کنید."
     )
 
     await update.message.reply_text(start_text, reply_markup=main_keyboard)
@@ -319,6 +377,11 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     clean_text = text.split("@")[0].lower()
 
+    # ===== لیدربرد =====
+    if clean_text in ["لیدربرد", "🏆 لیدربرد", "leaderboard", "/leaderboard"]:
+        await leaderboard_command(update, context)
+        return
+
     if clean_text in ["پروفایل", "هاپوهام", "هاپوهاش", "/profile"]:
         await pet.show_profile(update, context, user)
     elif clean_text in [
@@ -398,10 +461,15 @@ async def callback_router(
         username = data.replace("channel_", "")
         for ch in REQUIRED_CHANNELS:
             if ch["username"] == username:
-                await query.answer()
+                try:
+                    await query.message.delete()
+                except Exception:
+                    pass
+                
                 await query.message.reply_text(
                     f"🔗 برای عضویت در {ch['name']} روی لینک زیر کلیک کنید:\n{ch['url']}"
                 )
+                await query.answer()
                 return
         return
 
@@ -505,6 +573,7 @@ def main():
     if hasattr(economy, "bank_status"):
         app.add_handler(CommandHandler("bank", economy.bank_status))
     app.add_handler(CommandHandler(["referral", "sub"], referral_command))
+    app.add_handler(CommandHandler(["leaderboard", "liderboard"], leaderboard_command))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, router))
     app.add_handler(CallbackQueryHandler(callback_router))
