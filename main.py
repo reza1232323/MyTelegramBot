@@ -424,7 +424,6 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def warehouse_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
-    # ===== بررسی زندان =====
     in_jail, _ = is_user_in_jail(user_id)
     if in_jail:
         await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
@@ -476,7 +475,6 @@ async def warehouse_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def sell_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
-    # ===== بررسی زندان =====
     in_jail, _ = is_user_in_jail(user_id)
     if in_jail:
         await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
@@ -599,7 +597,6 @@ async def sell_product_callback(update: Update, context: ContextTypes.DEFAULT_TY
 async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
-    # ===== بررسی زندان =====
     in_jail, _ = is_user_in_jail(user_id)
     if in_jail:
         await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
@@ -658,7 +655,6 @@ async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
-    # ===== بررسی زندان =====
     in_jail, _ = is_user_in_jail(user_id)
     if in_jail:
         await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
@@ -927,7 +923,6 @@ async def transfer_reject(callback: CallbackQuery, context: ContextTypes.DEFAULT
 async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
-    # ===== بررسی زندان =====
     in_jail, _ = is_user_in_jail(user_id)
     if in_jail:
         await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
@@ -992,7 +987,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ["بانک", "زیرمجموعه‌گیری"],
             ["فروش محصولات", "انبار"],
             ["گردونه", "لیدربرد"],
-            ["زندان", "راهنما"],  # ← زندان اضافه شد
+            ["زندان", "راهنما"],
         ],
         resize_keyboard=True,
     )
@@ -1016,6 +1011,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("منوی سریع زیرمجموعه‌گیری:", reply_markup=inline_keyboard)
 
 
+# ==================== هاپ (سیستم خودت) ====================
 async def handle_hop_internal(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     user_id = update.effective_user.id
     
@@ -1036,7 +1032,7 @@ async def handle_hop_internal(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return
     
-    # ===== ادامه کد هاپ عادی =====
+    # ===== ادامه کد هاپ (همون سیستم خودت) =====
     current_time = int(time.time())
 
     last_hop_time = db.get_user_field(user_id, "last_hop_time") or 0
@@ -1072,11 +1068,16 @@ async def handle_hop_internal(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         db.update_field(user_id, "level_hops_progress", progress, relative=False)
 
+    current_points = db.get_user_field(user_id, "points") or 0
+
     await update.message.reply_text(
-        f"🐕 هاپ! هاپ!\n\n"
-        f"💰 پاداش دریافتی: {reward:,} سکه\n"
-        f"📊 پیشرفت سطح {level}: [{progress}/{needed}] هاپ{level_up_msg}",
-        parse_mode=None,
+        f"🐾 **هاپ با موفقیت انجام شد!**\n\n"
+        f"👤 کاربر: {update.effective_user.first_name}\n"
+        f"🎁 پاداش دریافتی: +{reward:,} دونه\n"
+        f"💰 موجودی کل: {current_points:,} دونه\n"
+        f"📊 پیشرفت سطح {level}: [{progress}/{needed}] هاپ{level_up_msg}\n\n"
+        f"_۵ دقیقه دیگر می‌توانید دوباره هاپ بزنید._",
+        parse_mode='Markdown'
     )
 
 
@@ -1148,7 +1149,7 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await leaderboard_command(update, context)
         return
 
-    # ===== هاپ (با اسپم) =====
+    # ===== هاپ =====
     if clean_text in ["هاپ", "hop"]:
         await handle_hop_internal(update, context, user)
         return
