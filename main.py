@@ -239,6 +239,7 @@ async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==================== انتقال هاپ پوینت (با دکمه‌های رنگی) ====================
+# ==================== انتقال هاپ پوینت (با دکمه‌های رنگی) ====================
 async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """انتقال هاپ پوینت به کاربر دیگر با ریپلای و دکمه‌های رنگی"""
     user_id = update.effective_user.id
@@ -354,6 +355,7 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     target_display = f"@{target_username}" if target_username else target_name
     
+    # ===== دکمه‌های رنگی برای گیرنده =====
     keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
@@ -369,6 +371,7 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     ])
     
+    # ===== پیام به گیرنده با دکمه =====
     try:
         await context.bot.send_message(
             chat_id=target_id,
@@ -390,124 +393,16 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         del pending_transfers[transfer_id]
         return
     
+    # ===== پیام به فرستنده (با ریپلای به پیام خودش) =====
     await update.message.reply_text(
         f"📤 **درخواست انتقال ارسال شد!**\n"
         f"━━━━━━━━━━━━━━━━━━━\n\n"
         f"💰 مبلغ: **{amount:,}** هاپ پوینت\n"
         f"👤 به: {target_display}\n\n"
         f"⏳ در انتظار تایید گیرنده...",
-        parse_mode="Markdown"
+        parse_mode="Markdown",
+        reply_to_message_id=update.message.message_id  # ریپلای به پیام خودش
     )
-
-
-async def transfer_accept(callback: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
-    transfer_id = callback.data.replace("transfer_accept_", "")
-    transfer = pending_transfers.get(transfer_id)
-    
-    if not transfer:
-        await callback.answer("❌ درخواست منقضی شده است!", show_alert=True)
-        await callback.message.edit_text("❌ این درخواست انتقال منقضی شده است.")
-        return
-    
-    if transfer["status"] != "pending":
-        await callback.answer("❌ این درخواست قبلاً پردازش شده!", show_alert=True)
-        return
-    
-    user_id = callback.from_user.id
-    
-    if user_id != transfer["target_id"]:
-        await callback.answer("❌ این درخواست برای شما نیست!", show_alert=True)
-        return
-    
-    transfer["status"] = "completed"
-    
-    db.update_field(transfer["sender_id"], "points", -transfer["amount"], relative=True)
-    db.update_field(transfer["target_id"], "points", transfer["amount"], relative=True)
-    
-    new_sender_points = transfer["sender_points"] - transfer["amount"]
-    new_target_points = transfer["target_points"] + transfer["amount"]
-    
-    target_display = f"@{transfer['target_username']}" if transfer['target_username'] else transfer['target_name']
-    
-    await callback.message.edit_text(
-        f"✅ **انتقال تایید شد!**\n"
-        f"━━━━━━━━━━━━━━━━━━━\n\n"
-        f"💰 مبلغ: **{transfer['amount']:,}** هاپ پوینت\n"
-        f"👤 از: **{transfer['sender_name']}**\n\n"
-        f"📊 موجودی جدید شما: **{new_target_points:,}** هاپ پوینت",
-        parse_mode="Markdown"
-    )
-    
-    try:
-        await context.bot.send_message(
-            chat_id=transfer["sender_id"],
-            text=(
-                f"✅ **انتقال با موفقیت انجام شد!**\n"
-                f"━━━━━━━━━━━━━━━━━━━\n\n"
-                f"💰 مبلغ: **{transfer['amount']:,}** هاپ پوینت\n"
-                f"👤 به: {target_display}\n\n"
-                f"📊 موجودی جدید شما: **{new_sender_points:,}** هاپ پوینت"
-            ),
-            parse_mode="Markdown"
-        )
-    except Exception:
-        pass
-    
-    del pending_transfers[transfer_id]
-    await callback.answer("✅ انتقال با موفقیت انجام شد!")
-
-
-async def transfer_reject(callback: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
-    transfer_id = callback.data.replace("transfer_reject_", "")
-    transfer = pending_transfers.get(transfer_id)
-    
-    if not transfer:
-        await callback.answer("❌ درخواست منقضی شده است!", show_alert=True)
-        await callback.message.edit_text("❌ این درخواست انتقال منقضی شده است.")
-        return
-    
-    if transfer["status"] != "pending":
-        await callback.answer("❌ این درخواست قبلاً پردازش شده!", show_alert=True)
-        return
-    
-    user_id = callback.from_user.id
-    
-    if user_id != transfer["target_id"]:
-        await callback.answer("❌ این درخواست برای شما نیست!", show_alert=True)
-        return
-    
-    transfer["status"] = "rejected"
-    
-    target_display = f"@{transfer['target_username']}" if transfer['target_username'] else transfer['target_name']
-    
-    await callback.message.edit_text(
-        f"❌ **انتقال لغو شد!**\n"
-        f"━━━━━━━━━━━━━━━━━━━\n\n"
-        f"💰 مبلغ: **{transfer['amount']:,}** هاپ پوینت\n"
-        f"👤 از: **{transfer['sender_name']}**\n\n"
-        f"شما این درخواست را لغو کردید.",
-        parse_mode="Markdown"
-    )
-    
-    try:
-        await context.bot.send_message(
-            chat_id=transfer["sender_id"],
-            text=(
-                f"❌ **درخواست انتقال لغو شد!**\n"
-                f"━━━━━━━━━━━━━━━━━━━\n\n"
-                f"💰 مبلغ: **{transfer['amount']:,}** هاپ پوینت\n"
-                f"👤 به: {target_display}\n\n"
-                f"گیرنده درخواست را لغو کرد."
-            ),
-            parse_mode="Markdown"
-        )
-    except Exception:
-        pass
-    
-    del pending_transfers[transfer_id]
-    await callback.answer("❌ انتقال لغو شد!")
-
-
 # ----------------- دستورات ربات -----------------
 async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
