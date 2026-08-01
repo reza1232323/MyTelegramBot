@@ -358,76 +358,6 @@ def calculate_hop_reward(level):
     return random.randint(int(base_min), int(base_max))
 
 
-# ==================== دستور هاپ (با سیستم زندان) ====================
-async def hop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    # بررسی زندان
-    in_jail, _ = is_user_in_jail(user_id)
-    if in_jail:
-        await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
-        return
-    
-    # بررسی اسپم
-    if check_hop_spam(user_id):
-        put_user_in_jail(user_id, minutes=15, reason="اسپم در هاپ (۶ بار در ۱۰ ثانیه)")
-        await update.message.reply_text(
-            f"🚨 **شما به دلیل اسپم به زندان افتادید!**\n"
-            f"━━━━━━━━━━━━━━━━━━━\n\n"
-            f"⚠️ دلیل: اسپم در دستور هاپ\n"
-            f"⏱ مدت: ۱۵ دقیقه\n\n"
-            f"برای اطلاع از وضعیت، دستور `زندان` را وارد کنید."
-        )
-        return
-    
-    # ادامه کد هاپ عادی
-    is_joined = await check_user_membership(context.bot, user_id)
-    if not is_joined:
-        await send_must_join_message(update, context)
-        return
-    
-    current_time = int(time.time())
-    last_hop_time = db.get_user_field(user_id, "last_hop_time") or 0
-    cooldown = 300
-    
-    if current_time - last_hop_time < cooldown:
-        remaining = cooldown - (current_time - last_hop_time)
-        minutes = remaining // 60
-        seconds = remaining % 60
-        await update.message.reply_text(
-            f"⏳ سگ شما خسته است! لطفا {minutes} دقیقه و {seconds} ثانیه صبر کنید."
-        )
-        return
-    
-    level = db.get_user_field(user_id, "level") or 1
-    progress = db.get_user_field(user_id, "level_hops_progress") or 0
-    
-    reward = calculate_hop_reward(level)
-    needed = hops_needed_for_level(level)
-    progress += 1
-    
-    db.update_field(user_id, "points", reward, relative=True)
-    db.update_field(user_id, "hops", 1, relative=True)
-    db.update_field(user_id, "last_hop_time", current_time, relative=False)
-    
-    level_up_msg = ""
-    if progress >= needed:
-        level += 1
-        progress = 0
-        db.update_field(user_id, "level", 1, relative=True)
-        db.update_field(user_id, "level_hops_progress", 0, relative=False)
-        level_up_msg = f"\n🎉 تبریک! شما به سطح {level} ارتقا یافتید!"
-    else:
-        db.update_field(user_id, "level_hops_progress", progress, relative=False)
-    
-    await update.message.reply_text(
-        f"🐕 هاپ! هاپ!\n\n"
-        f"💰 پاداش دریافتی: {reward:,} سکه\n"
-        f"📊 پیشرفت سطح {level}: [{progress}/{needed}] هاپ{level_up_msg}",
-        parse_mode=None,
-    )
-
-
 # ==================== لیدربرد ====================
 async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -494,7 +424,7 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def warehouse_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
-    # بررسی زندان
+    # ===== بررسی زندان =====
     in_jail, _ = is_user_in_jail(user_id)
     if in_jail:
         await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
@@ -546,7 +476,7 @@ async def warehouse_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def sell_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
-    # بررسی زندان
+    # ===== بررسی زندان =====
     in_jail, _ = is_user_in_jail(user_id)
     if in_jail:
         await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
@@ -669,7 +599,7 @@ async def sell_product_callback(update: Update, context: ContextTypes.DEFAULT_TY
 async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
-    # بررسی زندان
+    # ===== بررسی زندان =====
     in_jail, _ = is_user_in_jail(user_id)
     if in_jail:
         await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
@@ -728,7 +658,7 @@ async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
-    # بررسی زندان
+    # ===== بررسی زندان =====
     in_jail, _ = is_user_in_jail(user_id)
     if in_jail:
         await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
@@ -997,7 +927,7 @@ async def transfer_reject(callback: CallbackQuery, context: ContextTypes.DEFAULT
 async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
-    # بررسی زندان
+    # ===== بررسی زندان =====
     in_jail, _ = is_user_in_jail(user_id)
     if in_jail:
         await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
@@ -1062,7 +992,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ["بانک", "زیرمجموعه‌گیری"],
             ["فروش محصولات", "انبار"],
             ["گردونه", "لیدربرد"],
-            ["زندان", "راهنما"],
+            ["زندان", "راهنما"],  # ← زندان اضافه شد
         ],
         resize_keyboard=True,
     )
@@ -1075,12 +1005,79 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"سلام {update.effective_user.first_name} عزیز!\n"
         f"به ربات خوش آمدید.\n\n"
         f"برای گرفتن لینک دعوت می‌توانید از دکمه شیشه‌ای زیر یا دکمه زیرمجموعه‌گیری در کیبورد استفاده کنید.\n\n"
-        f"⚠️ هشدار: اسپم کردن یا قاچاق باعث زندان میشود!\n"
-        f"🔒 برای مشاهده وضعیت زندان از دکمه زندان استفاده کنید."
+        f"گردونه شانس: هر ۱۲ ساعت یک بار\n"
+        f"لیدربرد: مشاهده برترین‌ها\n\n"
+        f"⚠️ هشدار: قاچاق و اسپم باعث زندان میشود!\n"
+        f"برای انتقال هاپ پوینت، روی پیام کاربر ریپلای کنید و بنویسید:\n"
+        f"انتقال هاپ پوینت [مبلغ]"
     )
 
     await update.message.reply_text(start_text, reply_markup=main_keyboard, parse_mode=None)
     await update.message.reply_text("منوی سریع زیرمجموعه‌گیری:", reply_markup=inline_keyboard)
+
+
+async def handle_hop_internal(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
+    user_id = update.effective_user.id
+    
+    # ===== بررسی زندان و اسپم =====
+    in_jail, _ = is_user_in_jail(user_id)
+    if in_jail:
+        await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
+        return
+    
+    if check_hop_spam(user_id):
+        put_user_in_jail(user_id, minutes=15, reason="اسپم در هاپ (۶ بار در ۱۰ ثانیه)")
+        await update.message.reply_text(
+            f"🚨 **شما به دلیل اسپم به زندان افتادید!**\n"
+            f"━━━━━━━━━━━━━━━━━━━\n\n"
+            f"⚠️ دلیل: اسپم در دستور هاپ\n"
+            f"⏱ مدت: ۱۵ دقیقه\n\n"
+            f"برای اطلاع از وضعیت، دستور `زندان` را وارد کنید."
+        )
+        return
+    
+    # ===== ادامه کد هاپ عادی =====
+    current_time = int(time.time())
+
+    last_hop_time = db.get_user_field(user_id, "last_hop_time") or 0
+    cooldown = 300
+
+    if current_time - last_hop_time < cooldown:
+        remaining = cooldown - (current_time - last_hop_time)
+        minutes = remaining // 60
+        seconds = remaining % 60
+        await update.message.reply_text(
+            f"⏳ سگ شما خسته است! لطفا {minutes} دقیقه و {seconds} ثانیه صبر کنید."
+        )
+        return
+
+    level = db.get_user_field(user_id, "level") or 1
+    progress = db.get_user_field(user_id, "level_hops_progress") or 0
+
+    reward = calculate_hop_reward(level)
+    needed = hops_needed_for_level(level)
+    progress += 1
+
+    db.update_field(user_id, "points", reward, relative=True)
+    db.update_field(user_id, "hops", 1, relative=True)
+    db.update_field(user_id, "last_hop_time", current_time, relative=False)
+
+    level_up_msg = ""
+    if progress >= needed:
+        level += 1
+        progress = 0
+        db.update_field(user_id, "level", 1, relative=True)
+        db.update_field(user_id, "level_hops_progress", 0, relative=False)
+        level_up_msg = f"\n🎉 تبریک! شما به سطح {level} ارتقا یافتید!"
+    else:
+        db.update_field(user_id, "level_hops_progress", progress, relative=False)
+
+    await update.message.reply_text(
+        f"🐕 هاپ! هاپ!\n\n"
+        f"💰 پاداش دریافتی: {reward:,} سکه\n"
+        f"📊 پیشرفت سطح {level}: [{progress}/{needed}] هاپ{level_up_msg}",
+        parse_mode=None,
+    )
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
@@ -1120,15 +1117,10 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await jail_command(update, context)
         return
 
-    # ===== بررسی زندان برای بقیه دستورات =====
+    # ===== بررسی زندان =====
     in_jail, _ = is_user_in_jail(user_id)
     if in_jail:
         await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
-        return
-
-    # ===== هاپ =====
-    if clean_text in ["هاپ", "hop"]:
-        await hop_command(update, context)
         return
 
     # ===== فروش محصولات =====
@@ -1156,6 +1148,11 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await leaderboard_command(update, context)
         return
 
+    # ===== هاپ (با اسپم) =====
+    if clean_text in ["هاپ", "hop"]:
+        await handle_hop_internal(update, context, user)
+        return
+
     # ===== بقیه دستورات =====
     if clean_text in ["پروفایل", "هاپوهام", "هاپوهاش"]:
         await pet.show_profile(update, context, user)
@@ -1179,6 +1176,9 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await economy.show_factory(update, context)
     elif clean_text in ["قاچاق", "قاچاقچی"]:
         await economy.show_contraband(update, context)
+    elif clean_text.startswith("زندان"):
+        if hasattr(economy, "jail_status"):
+            await economy.jail_status(update, context, user)
     elif clean_text.startswith("قمار"):
         await economy.start_gamble(update, context)
     elif clean_text in ["شهر"]:
