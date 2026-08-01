@@ -370,6 +370,7 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     ])
     
+    # ===== ارسال پیام به گیرنده با try/except =====
     try:
         await context.bot.send_message(
             chat_id=target_id,
@@ -384,10 +385,13 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard
         )
     except Exception as e:
+        # اگر کاربر ربات رو بلاک کرده باشه
         await update.message.reply_text(
             f"❌ ارسال پیام به {target_display} امکان‌پذیر نیست!\n"
             f"کاربر مورد نظر ربات را بلاک کرده است."
         )
+        # حذف از pending_transfers
+        del pending_transfers[transfer_id]
         return
     
     await update.message.reply_text(
@@ -439,6 +443,7 @@ async def transfer_accept(callback: CallbackQuery, context: ContextTypes.DEFAULT
         parse_mode="Markdown"
     )
     
+    # ===== ارسال پیام به فرستنده با try/except =====
     try:
         await context.bot.send_message(
             chat_id=transfer["sender_id"],
@@ -491,6 +496,7 @@ async def transfer_reject(callback: CallbackQuery, context: ContextTypes.DEFAULT
         parse_mode="Markdown"
     )
     
+    # ===== ارسال پیام به فرستنده با try/except =====
     try:
         await context.bot.send_message(
             chat_id=transfer["sender_id"],
