@@ -64,7 +64,6 @@ def get_join_keyboard():
     """ساخت کیبورد شیشه‌ای عضویت اجباری"""
     buttons = []
     
-    # ===== دکمه‌های کانال (قرمز با callback_data) =====
     for ch in REQUIRED_CHANNELS:
         buttons.append(
             [
@@ -76,7 +75,6 @@ def get_join_keyboard():
             ]
         )
     
-    # ===== دکمه سبز بررسی عضویت =====
     buttons.append(
         [
             InlineKeyboardButton(
@@ -119,12 +117,10 @@ async def send_must_join_message(
 
 # ----------------- سیستم محاسباتی هاپ -----------------
 def hops_needed_for_level(level):
-    """تعداد هاپ مورد نیاز برای رسیدن به لول بعدی"""
     return 10 + (level - 1) * 5
 
 
 def calculate_hop_reward(level):
-    """محاسبه سکه پاداش بر اساس لول کاربر"""
     base_min = 10 * (1.5 ** (level - 1))
     base_max = 25 * (1.5 ** (level - 1))
     return random.randint(int(base_min), int(base_max))
@@ -135,13 +131,11 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     """نمایش جدول برترین کاربران بر اساس هاپو پوینت"""
     user_id = update.effective_user.id
     
-    # بررسی عضویت در کانال
     is_joined = await check_user_membership(context.bot, user_id)
     if not is_joined:
         await send_must_join_message(update, context)
         return
     
-    # دریافت ۱۰ کاربر برتر از دیتابیس
     conn = db.get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -157,7 +151,6 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("📊 هنوز کاربری در سیستم ثبت‌نام نکرده است!")
         return
     
-    # ساخت متن لیدربرد
     text = "🏆 **لیدربرد برترین های هاپو** 🏆\n"
     text += "━━━━━━━━━━━━━━━━━━━\n\n"
     
@@ -168,19 +161,19 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         medal = medals[i-1] if i <= 3 else f"{i}."
         name = username or f"کاربر {user_id_db}"
         
-        # محدود کردن اسم به ۱۵ کاراکتر
         if len(name) > 15:
             name = name[:15] + "..."
         
-        text += f"{medal} **{name}**\n"
+        # ===== رفع مشکل مارک‌داون =====
+        # اسم رو با `code` میذاریم تا کاراکترهای خاص خراب نکنن
+        text += f"{medal} `{name}`\n"
         text += f"   💰 {points:,} هاپو | 🎯 سطح {level}\n"
         text += "━━━━━━━━━━━━━━━━━━━\n"
     
-    # نمایش امتیاز خود کاربر
     user_data = db.get_user(user_id)
     if user_data:
-        user_points = user_data[2]  # points
-        user_level = user_data[3]   # level
+        user_points = user_data[2]
+        user_level = user_data[3]
         text += f"\n📊 **رتبه شما:**\n"
         text += f"   💰 {user_points:,} هاپو | 🎯 سطح {user_level}"
     
@@ -189,7 +182,6 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 # ----------------- دستورات ربات -----------------
 async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش لینک و آمار زیرمجموعه‌گیری کاربر"""
     user_id = update.effective_user.id
     bot_username = context.bot.username
 
@@ -290,12 +282,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_hop_internal(
     update: Update, context: ContextTypes.DEFAULT_TYPE, user=None
 ):
-    """مدیریت فرایند هاپ در صورتی که در فایل pet.py تابع claim_hop تعریف نشده باشد"""
     user_id = update.effective_user.id
     current_time = int(time.time())
 
     last_hop_time = db.get_user_field(user_id, "last_hop_time") or 0
-    cooldown = 300  # ۵ دقیقه
+    cooldown = 300
 
     if current_time - last_hop_time < cooldown:
         remaining = cooldown - (current_time - last_hop_time)
@@ -338,7 +329,6 @@ async def handle_hop_internal(
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    """ثبت دقیق تمام خطارهای ثبت نشده"""
     logging.error(
         f"خطایی در پردازش رخ داد: {context.error}", exc_info=context.error
     )
@@ -456,7 +446,6 @@ async def callback_router(
     user_id = query.from_user.id
     data = query.data
 
-    # ===== مدیریت کلیک روی دکمه کانال (قرمز) =====
     if data.startswith("channel_"):
         username = data.replace("channel_", "")
         for ch in REQUIRED_CHANNELS:
@@ -473,7 +462,6 @@ async def callback_router(
                 return
         return
 
-    # ===== بررسی عضویت (سبز) =====
     if data == "check_join_status":
         is_joined = await check_user_membership(context.bot, user_id)
         if is_joined:
