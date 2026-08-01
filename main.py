@@ -234,6 +234,119 @@ async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.edit_text(final_text, parse_mode="Markdown")
 
 
+# ==================== انتقال هاپو (با ریپلای) ====================
+async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """انتقال هاپو به کاربر دیگر با ریپلای"""
+    user_id = update.effective_user.id
+    
+    # بررسی عضویت در کانال
+    is_joined = await check_user_membership(context.bot, user_id)
+    if not is_joined:
+        await send_must_join_message(update, context)
+        return
+    
+    # بررسی اینکه روی پیام ریپلای شده یا نه
+    if not update.message.reply_to_message:
+        await update.message.reply_text(
+            "❌ **فرمت اشتباه!**\n\n"
+            "برای انتقال هاپو، روی پیام کاربر مورد نظر **ریپلای** کنید و بنویسید:\n"
+            "`انتقال [مبلغ]`\n\n"
+            "مثال: `انتقال 100`",
+            parse_mode="Markdown"
+        )
+        return
+    
+    # بررسی فرمت پیام
+    parts = update.message.text.split()
+    if len(parts) < 2:
+        await update.message.reply_text(
+            "❌ **فرمت اشتباه!**\n\n"
+            "فرمت صحیح:\n"
+            "`انتقال [مبلغ]`\n\n"
+            "مثال: `انتقال 100`",
+            parse_mode="Markdown"
+        )
+        return
+    
+    # دریافت مبلغ
+    try:
+        amount = int(parts[1])
+    except ValueError:
+        await update.message.reply_text("❌ مبلغ باید عدد باشد!")
+        return
+    
+    if amount <= 0:
+        await update.message.reply_text("❌ مبلغ باید بیشتر از صفر باشد!")
+        return
+    
+    # دریافت کاربر هدف (کسی که روش ریپلای شده)
+    target_id = update.message.reply_to_message.from_user.id
+    target_name = update.message.reply_to_message.from_user.first_name
+    target_username = update.message.reply_to_message.from_user.username
+    
+    # جلوگیری از انتقال به خودش
+    if target_id == user_id:
+        await update.message.reply_text("❌ نمی‌توانید به خودتان انتقال دهید!")
+        return
+    
+    # بررسی موجودی کاربر
+    sender_data = db.get_user(user_id)
+    sender_points = sender_data[2]  # points
+    sender_name = update.effective_user.first_name
+    
+    if sender_points < amount:
+        await update.message.reply_text(
+            f"❌ موجودی کافی نیست!\n"
+            f"💰 موجودی شما: {sender_points:,} هاپو"
+        )
+        return
+    
+    # بررسی وجود کاربر هدف در دیتابیس
+    target_data = db.get_user(target_id)
+    if not target_data:
+        await update.message.reply_text("❌ کاربر مورد نظر در ربات ثبت‌نام نکرده است!")
+        return
+    
+    # انجام انتقال
+    db.update_field(user_id, "points", -amount, relative=True)  # کم کردن از فرستنده
+    db.update_field(target_id, "points", amount, relative=True)  # اضافه کردن به گیرنده
+    
+    # دریافت موجودی جدید
+    new_sender_points = sender_points - amount
+    new_target_points = target_data[2] + amount
+    
+    # ساخت پیام با فرمت زیبا
+    target_display = f"@{target_username}" if target_username else target_name
+    
+    transfer_text = (
+        f"🔄 **انتقال هاپویی**\n"
+        f"━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💰 مبلغ انتقال یافته: **{amount:,}** 🪙\n"
+        f"🔺 از **{sender_name}** به **{target_display}**\n\n"
+        f"🔻 با موفقیت انتقال یافت ✅\n\n"
+        f"📊 موجودی **{sender_name}**: {new_sender_points:,} هاپو"
+    )
+    
+    # ارسال پیام تایید
+    await update.message.reply_text(transfer_text, parse_mode="Markdown")
+    
+    # ارسال پیام به گیرنده (اگه ربات دسترسی داشته باشه)
+    try:
+        await context.bot.send_message(
+            chat_id=target_id,
+            text=(
+                f"🎉 **دریافت هاپو!**\n"
+                f"━━━━━━━━━━━━━━━━━━━\n\n"
+                f"👤 از طرف: **{sender_name}**\n"
+                f"💰 مبلغ: **{amount:,}** هاپو\n"
+                f"📊 موجودی جدید شما: **{new_target_points:,}** هاپو"
+            ),
+            parse_mode="Markdown"
+        )
+    except Exception:
+        pass  # اگر کاربر ربات رو بلاک کرده باشد
+
+
 # ----------------- دستورات ربات -----------------
 async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -295,7 +408,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ["🏭 کارخونه", "🌆 شهر"],
             ["🏦 بانک", "👥 زیرمجموعه‌گیری"],
             ["🎡 گردونه", "🏆 لیدربرد"],
-            ["📖 راهنما"],
+            ["💰 انتقال", "📖 راهنما"],
         ],
         resize_keyboard=True,
     )
@@ -309,10 +422,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"به ربات خوش آمدید.\n\n"
         f"💡 برای گرفتن لینک دعوت می‌توانید از دکمه شیشه‌ای زیر یا دکمه 👥 زیرمجموعه‌گیری در کیبورد استفاده کنید.\n\n"
         f"🎡 برای گردونه شانس از دکمه گردونه استفاده کنید.\n"
-        f"🏆 برای مشاهده لیدربرد از دکمه لیدربرد استفاده کنید."
+        f"🏆 برای مشاهده لیدربرد از دکمه لیدربرد استفاده کنید.\n\n"
+        f"💰 برای انتقال هاپو، روی پیام کاربر ریپلای کنید و بنویسید:\n"
+        f"`انتقال [مبلغ]`"
     )
 
-    await update.message.reply_text(start_text, reply_markup=main_keyboard)
+    await update.message.reply_text(start_text, reply_markup=main_keyboard, parse_mode="Markdown")
     await update.message.reply_text("منوی سریع زیرمجموعه‌گیری:", reply_markup=inline_keyboard)
 
 
@@ -392,6 +507,11 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.effective_user.username or update.effective_user.first_name
     user = db.get_user(user_id, username)
     clean_text = text.split("@")[0].lower()
+
+    # ===== انتقال (اولویت بالا) =====
+    if clean_text.startswith("انتقال"):
+        await transfer_command(update, context)
+        return
 
     # ===== گردونه شانس =====
     if clean_text in ["گردونه", "🎡 گردونه", "چرخونه", "گلدونه"]:
