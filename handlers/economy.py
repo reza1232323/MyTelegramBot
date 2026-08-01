@@ -1,10 +1,8 @@
 import asyncio
 import random
-import time
-from datetime import datetime, timedelta
+import database as db
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-import database as db
 
 # تابع کمکی برای فرمت‌دهی به موجودی
 def format_balance(amount):
@@ -40,43 +38,13 @@ FACTORY_PRODUCTS = {
 }
 
 CONTRABAND_PRODUCTS = {
-    "cig": {"name": "🚬 سیگار قاچاق", "cost": 500, "profit": 1500, "db_field": "inventory_cig", "risk": 0.20},
-    "diamond": {"name": "💎 الماس سیاه", "cost": 2000, "profit": 6000, "db_field": "inventory_diamond", "risk": 0.30},
-    "gold": {"name": "🪙 شمش طلا", "cost": 5000, "profit": 15000, "db_field": "inventory_gold", "risk": 0.40},
-    "car": {"name": "🏎 خودروی قاچاق", "cost": 10000, "profit": 35000, "db_field": "inventory_car", "risk": 0.55},
+    "cig": {"name": "🚬 سیگار قاچاق", "cost": 500, "profit": 1500, "db_field": "inventory_cig"},
+    "diamond": {"name": "💎 الماس سیاه", "cost": 2000, "profit": 6000, "db_field": "inventory_diamond"},
+    "gold": {"name": "🪙 شمش طلا", "cost": 5000, "profit": 15000, "db_field": "inventory_gold"},
+    "car": {"name": "🏎 خودروی قاچاق", "cost": 10000, "profit": 35000, "db_field": "inventory_car"},
 }
 
 active_gambles = {}
-
-# ==================== سیستم زندان ====================
-def is_user_in_jail(user_id):
-    """بررسی اینکه کاربر در زندان هست یا نه"""
-    jail_until = db.get_user_field(user_id, "jail_until")
-    if jail_until:
-        try:
-            jail_time = datetime.strptime(jail_until, "%Y-%m-%d %H:%M:%S")
-            if datetime.now() < jail_time:
-                return True, jail_time
-        except:
-            pass
-    db.update_field(user_id, "in_jail", 0, relative=False)
-    db.update_field(user_id, "jail_until", None, relative=False)
-    return False, None
-
-def put_user_in_jail(user_id, minutes=15, reason="قاچاق"):
-    """قرار دادن کاربر در زندان"""
-    jail_until = datetime.now() + timedelta(minutes=minutes)
-    db.update_field(user_id, "in_jail", 1, relative=False)
-    db.update_field(user_id, "jail_until", jail_until.strftime("%Y-%m-%d %H:%M:%S"), relative=False)
-    db.update_field(user_id, "jail_reason", reason, relative=False)
-    return jail_until
-
-def release_from_jail(user_id):
-    """آزاد کردن کاربر از زندان"""
-    db.update_field(user_id, "in_jail", 0, relative=False)
-    db.update_field(user_id, "jail_until", None, relative=False)
-    db.update_field(user_id, "jail_reason", None, relative=False)
-
 
 # ----------------- ۰. بخش بانک -----------------
 
@@ -145,7 +113,6 @@ async def handle_bank_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     elif data == "bank_withdraw":
         context.user_data['state'] = "WAITING_FOR_BANK_WITHDRAW"
         await query.message.reply_text("🏧 لطفاً مبلغی که می‌خواهید از بانک برداشت کنید را وارد کنید (یا بنویسید همه):")
-    
     elif data == "bank_claim_profit":
         if hasattr(db, "claim_daily_interest"):
             success, message, profit = db.claim_daily_interest(user_id, interest_rate=0.03)
@@ -157,13 +124,11 @@ async def handle_bank_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data['state'] = "WAITING_FOR_NEW_ACCOUNT_NUM"
         await query.message.reply_text("💳 لطفاً شماره حساب جدید خود را وارد کنید:")
 
-
 # ----------------- ۱. بخش کارخانه -----------------
 
 async def show_factory(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    
-    in_jail, _ = is_user_in_jail(user_id)
+    in_jail = db.is_in_jail(user_id)[0] if hasattr(db, "is_in_jail") else False
     if in_jail:
         await update.message.reply_text("🔒 شما در زندان هستید و به کارخانه دسترسی ندارید!")
         return
@@ -193,23 +158,20 @@ async def factory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data['state'] = "WAITING_FOR_FACTORY_QTY"
 
-
-# ----------------- ۲. بخش قاچاق (با سیستم زندان) -----------------
+# ----------------- ۲. بخش قاچاق -----------------
 
 async def show_contraband(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
-    in_jail, jail_until = is_user_in_jail(user_id)
+    in_jail, jail_until = db.is_in_jail(user_id) if hasattr(db, "is_in_jail") else (False, None)
     if in_jail:
-        keyboard = [[InlineKeyboardButton("🔓 آزادی فوری (۲۰,۰۰۰ هاپ)", callback_data=f"pay_bail:{user_id}")]]
+        keyboard = [[InlineKeyboardButton("🔓 آزادی فوری (۲۰,۰۰۰ میو/هاپ)", callback_data=f"pay_bail:{user_id}")]]
         time_str = jail_until.strftime('%H:%M') if jail_until else "۱۵ دقیقه"
         await update.message.reply_text(
-            f"🚨 **شما در زندان هستید!**\n"
-            f"━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🚨 شما در زندان هستید!\n"
             f"⏱ زمان آزادی: تا {time_str}\n"
-            f"می‌توانید ۱۵ دقیقه صبر کنید یا با پرداخت ۲۰,۰۰۰ هاپ فوراً آزاد شوید.",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown"
+            f"می‌توانید ۱۵ دقیقه صبر کنید یا با پرداخت ۲۰,۰۰۰ وثیقه فوراً آزاد شوید.",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
 
@@ -217,22 +179,15 @@ async def show_contraband(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for code, item in CONTRABAND_PRODUCTS.items():
         cost_str = format_balance(item['cost'])
         profit_str = format_balance(item['profit'])
-        risk_percent = int(item['risk'] * 100)
-        keyboard.append([InlineKeyboardButton(
-            f"{item['name']} (هزینه: {cost_str} | سود: {profit_str} | ریسک: {risk_percent}%)", 
-            callback_data=f"select_contra_{code}:{user_id}"
-        )])
+        keyboard.append([InlineKeyboardButton(f"{item['name']} (هزینه: {cost_str} | سود: {profit_str})", callback_data=f"select_contra_{code}:{user_id}")])
     
     keyboard.append([InlineKeyboardButton("🚀 شروع عملیات قاچاق", callback_data=f"start_smuggling:{user_id}")])
-    keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data=f"contra_back:{user_id}")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        f"🕵️‍♂️ **پنل قاچاقچیان**\n"
-        f"━━━━━━━━━━━━━━━━━━━\n\n"
-        f"جنس‌های مورد نظر خود را انتخاب کرده و تعداد را مشخص کنید.\n\n"
-        f"⚠️ **هشدار:** ریسک گیر افتادن و ۱۵ دقیقه زندان وجود دارد!\n"
-        f"💰 جریمه آزادی: ۲۰,۰۰۰ هاپ",
+        "🕵️‍♂️ پنل قاچاقچیان\n"
+        "جنس‌های مورد نظر خود را انتخاب کرده و تعداد را مشخص کنید.\n"
+        "⚠️ هشدار: ریسک گیر افتادن و ۱۵ دقیقه زندان وجود دارد!",
         reply_markup=reply_markup,
         parse_mode="Markdown"
     )
@@ -246,17 +201,13 @@ async def handle_smuggle_callback(update: Update, context: ContextTypes.DEFAULT_
     if data == "pay_bail":
         points = int(db.get_user_field(user_id, "points") or 0)
         if points < 20000:
-            await query.message.reply_text("❌ شما ۲۰,۰۰۰ هاپ برای وثیقه ندارید!")
+            await query.message.reply_text("❌ شما ۲۰,۰۰۰ موجودی برای وثیقه ندارید!")
             return
         
         db.update_field(user_id, "points", -20000, relative=True)
-        release_from_jail(user_id)
-        await query.message.reply_text(
-            f"🔓 **شما از زندان آزاد شدید!**\n"
-            f"━━━━━━━━━━━━━━━━━━━\n\n"
-            f"💰 جریمه پرداخت شده: ۲۰,۰۰۰ هاپ\n"
-            f"✅ وضعیت: آزاد"
-        )
+        if hasattr(db, "release_from_jail"):
+            db.release_from_jail(user_id)
+        await query.message.reply_text("🔓 شما با پرداخت ۲۰,۰۰۰ وثیقه از زندان آزاد شدید!")
         return
 
     if data.startswith("select_contra_"):
@@ -283,45 +234,26 @@ async def handle_smuggle_callback(update: Update, context: ContextTypes.DEFAULT_
             await query.message.reply_text(f"❌ موجودی کافی نیست! هزینه کل: {format_balance(total_cost)}")
             return
 
-        # محاسبه ریسک کلی بر اساس کالاها
-        total_risk = sum(CONTRABAND_PRODUCTS[code]['risk'] * qty for code, qty in cart.items())
-        avg_risk = total_risk / sum(cart.values()) if cart else 0
-        
         db.update_field(user_id, "points", -total_cost, relative=True)
         context.user_data['contra_cart'] = {}
         context.user_data['is_smuggling_active'] = True
         
-        await query.message.reply_text(
-            f"🚚 **عملیات قاچاق آغاز شد!**\n"
-            f"━━━━━━━━━━━━━━━━━━━\n\n"
-            f"📦 تعداد کالا: {sum(cart.values())} عدد\n"
-            f"💰 هزینه کل: {format_balance(total_cost)}\n"
-            f"⚠️ ریسک: {int(avg_risk * 100)}%\n\n"
-            f"⏳ نتیجه تا ۳۰ دقیقه دیگر مشخص می‌شود..."
-        )
+        await query.message.reply_text("🚚 عملیات قاچاق آغاز شد! محموله ارسال شد. نتیجه تا ۳۰ دقیقه دیگر مشخص می‌شود...")
 
-        asyncio.create_task(process_smuggling_result(context, user_id, total_cost, cart, avg_risk))
+        asyncio.create_task(process_smuggling_result(context, user_id, total_cost, cart))
 
-async def process_smuggling_result(context, user_id, total_cost, cart, avg_risk):
-    await asyncio.sleep(30)  # برای تست ۳۰ ثانیه، در واقعیت ۱۸۰۰ ثانیه (۳۰ دقیقه)
+async def process_smuggling_result(context, user_id, total_cost, cart):
+    await asyncio.sleep(1800)
     
     context.user_data['is_smuggling_active'] = False
-    
-    # شانس دستگیری بر اساس ریسک
-    is_busted = random.random() < avg_risk
+    is_busted = random.random() < 0.35
 
     if is_busted:
-        put_user_in_jail(user_id, minutes=15, reason="قاچاق (گیر افتادن)")
+        if hasattr(db, "set_jail"):
+            db.set_jail(user_id, minutes=15)
         await context.bot.send_message(
             chat_id=user_id,
-            text=(
-                f"🚨 **خبر بد!**\n"
-                f"━━━━━━━━━━━━━━━━━━━\n\n"
-                f"محموله قاچاق شما توسط پلیس لو رفت!\n\n"
-                f"🔒 شما به مدت **۱۵ دقیقه** وارد زندان شدید.\n"
-                f"💰 می‌توانید ۲۰,۰۰۰ هاپ جریمه بپردازید و آزاد شوید.\n\n"
-                f"برای اطلاع بیشتر دستور `زندان` را وارد کنید."
-            )
+            text="🚨 خبر بد! محموله قاچاق شما توسط پلیس لو رفت! شما به مدت ۱۵ دقیقه وارد زندان شدید یا می‌توانید ۲۰,۰۰۰ جریمه بپردازید."
         )
     else:
         total_profit = sum(CONTRABAND_PRODUCTS[code]['profit'] * qty for code, qty in cart.items())
@@ -334,15 +266,8 @@ async def process_smuggling_result(context, user_id, total_cost, cart, avg_risk)
         profit_str = format_balance(total_profit)
         await context.bot.send_message(
             chat_id=user_id,
-            text=(
-                f"🎉 **موفقیت!**\n"
-                f"━━━━━━━━━━━━━━━━━━━\n\n"
-                f"عملیات قاچاق با موفقیت انجام شد!\n\n"
-                f"💰 سود خالص: **{profit_str}** هاپ\n"
-                f"📦 کالاها به انبار شما اضافه شدند."
-            )
+            text=f"🎉 موفقیت! عملیات قاچاق انجام شد.\nسود خالص: {profit_str} به کیف پول شما اضافه شد!"
         )
-
 
 # ----------------- ۳. سیستم قمار چندنفره -----------------
 
@@ -457,7 +382,6 @@ async def join_gamble_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(updated_text, reply_markup=keyboard, parse_mode="Markdown")
         await query.answer("✅ شما با موفقیت وارد قمار شدید!")
 
-
 # ----------------- ۴. دریافت ورودی‌های متنی -----------------
 
 async def handle_factory_and_smuggle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -561,7 +485,6 @@ async def handle_factory_and_smuggle_text(update: Update, context: ContextTypes.
 
     return False
 
-
 # ----------------- ۵. نمایش کارخونه من -----------------
 
 async def show_my_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
@@ -591,7 +514,6 @@ async def show_my_factory(update: Update, context: ContextTypes.DEFAULT_TYPE, us
     )
     
     await update.message.reply_text(text, parse_mode="Markdown")
-
 
 # ----------------- ۶. بخش فروش محصولات انبار -----------------
 
@@ -642,7 +564,6 @@ async def sell_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✅ ۱ عدد {item['name']} با موفقیت فروخته شد!\n"
             f"💵 مبلغ {item['price']} به کیف پول شما اضافه شد."
         )
-
 
 # ----------------- ۷. بخش شهر و اهدا -----------------
 
