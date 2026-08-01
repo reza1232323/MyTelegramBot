@@ -364,7 +364,7 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(transfer_text, parse_mode="Markdown")
     
-    # ارسال پیام به گیرنده
+    # ===== ارسال پیام به گیرنده (با try/except) =====
     try:
         await context.bot.send_message(
             chat_id=target_id,
@@ -377,7 +377,11 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ),
             parse_mode="Markdown"
         )
-    except Exception:
+    except Exception as e:
+        # اگر کاربر ربات رو بلاک کرده باشه یا دسترسی نباشه
+        # فقط لاگ میگیریم و به کاربر چیزی نمیگیم
+        logging.warning(f"نمی‌توان به کاربر {target_id} پیام داد: {e}")
+        pass
         pass
 
 
