@@ -239,13 +239,31 @@ async def jail_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def jail_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """مدیریت دکمه‌های زندان"""
+    """مدیریت دکمه‌های زندان - فقط صاحب پنل میتواند کلیک کند"""
     query = update.callback_query
     user_id = query.from_user.id
     data = query.data
     
     await query.answer()
     
+    # ===== استخراج owner_id از دکمه =====
+    # فرمت: jail_pay_123456789 یا jail_stay_123456789
+    parts = data.split("_")
+    owner_id = int(parts[2])  # آیدی صاحب زندان
+    
+    # ===== بررسی اینکه فقط خود کاربر بتونه کلیک کنه =====
+    if user_id != owner_id:
+        await query.answer("❌ این پنل برای شما نیست!", show_alert=True)
+        # پیام رو هم برای اون شخص میفرستیم
+        await query.message.reply_text(
+            f"⛔️ **دسترسی غیرمجاز!**\n"
+            f"━━━━━━━━━━━━━━━━━━━\n\n"
+            f"این پنل مخصوص {query.message.chat.first_name} است.\n"
+            f"شما نمی‌توانید از این پنل استفاده کنید."
+        )
+        return
+    
+    # ===== ادامه کد (فقط برای صاحب پنل) =====
     if data.startswith("jail_pay_"):
         user_points = db.get_user_field(user_id, "points") or 0
         
