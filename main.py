@@ -17,12 +17,16 @@ from telegram.ext import (
     ContextTypes,
     MessageHandler,
     filters,
+    Router,
 )
 from telegram.request import HTTPXRequest
 
 import config
 import database as db
 from handlers import admin, economy, pet
+
+# ==================== تعریف Router ====================
+router = Router()
 
 # مقدار پاداش دعوت (سکه/پوینت)
 REFERRAL_REWARD = 500
@@ -138,6 +142,7 @@ def calculate_hop_reward(level):
 
 
 # ==================== لیدربرد ====================
+@router.message
 async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -187,6 +192,7 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 # ==================== گردونه شانس ====================
+@router.message
 async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     now = time.time()
@@ -239,6 +245,7 @@ async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==================== انتقال هاپ پوینت (با دکمه‌های رنگی) ====================
+@router.message
 async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """انتقال هاپ پوینت به کاربر دیگر با ریپلای و دکمه‌های رنگی"""
     user_id = update.effective_user.id
@@ -273,7 +280,7 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "❌ **فرمت اشتباه!**\n\n"
             "فرمت صحیح:\n"
-            "`انتقال هاپ پوین트 [مبلغ]`\n\n"
+            "`انتقال هاپ پوینت [مبلغ]`\n\n"
             "مثال: `انتقال هاپ پوینت 100`",
             parse_mode="Markdown"
         )
@@ -355,7 +362,6 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_display = f"@{target_username}" if target_username else target_name
     
     # ===== دکمه‌های رنگی =====
-    # سبز برای تایید، قرمز برای لغو
     keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
@@ -514,6 +520,7 @@ async def transfer_reject(callback: CallbackQuery, context: ContextTypes.DEFAULT
 
 
 # ----------------- دستورات ربات -----------------
+@router.message
 async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     bot_username = context.bot.username
@@ -543,6 +550,7 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 
+@router.message
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or "کاربر"
@@ -597,6 +605,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("منوی سریع زیرمجموعه‌گیری:", reply_markup=inline_keyboard)
 
 
+@router.message
 async def handle_hop_internal(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     user_id = update.effective_user.id
     current_time = int(time.time())
@@ -646,7 +655,8 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logging.error(f"خطایی در پردازش رخ داد: {context.error}", exc_info=context.error)
 
 
-async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+@router.message
+async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
 
@@ -743,6 +753,7 @@ async def router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await admin.broadcast(update, context)
 
 
+@router.callback_query
 async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -841,13 +852,15 @@ def main():
 
     app.add_error_handler(error_handler)
 
+    # ===== اضافه کردن هندلرها =====
     app.add_handler(CommandHandler("start", start_command))
     if hasattr(economy, "bank_status"):
         app.add_handler(CommandHandler("bank", economy.bank_status))
     app.add_handler(CommandHandler(["referral", "sub"], referral_command))
     app.add_handler(CommandHandler(["leaderboard", "liderboard"], leaderboard_command))
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, router))
+    # ===== اضافه کردن router =====
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, router_message))
     app.add_handler(CallbackQueryHandler(callback_router))
 
     print("🤖 Bot is active...")
