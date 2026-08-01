@@ -239,8 +239,9 @@ async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==================== انتقال هاپ پوینت (با دکمه‌های رنگی) ====================
+# ==================== انتقال هاپ پوینت (با تایید فرستنده) ====================
 async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """انتقال هاپ پوینت به کاربر دیگر با ریپلای و دکمه‌های رنگی"""
+    """انتقال هاپ پوینت به کاربر دیگر با تایید فرستنده"""
     user_id = update.effective_user.id
     
     is_joined = await check_user_membership(context.bot, user_id)
@@ -314,6 +315,7 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ مبلغ باید بیشتر از صفر باشد!")
         return
     
+    # دریافت کاربر هدف (کسی که روش ریپلای شده)
     target_id = update.message.reply_to_message.from_user.id
     target_name = update.message.reply_to_message.from_user.first_name
     target_username = update.message.reply_to_message.from_user.username
@@ -322,6 +324,7 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ نمی‌توانید به خودتان انتقال دهید!")
         return
     
+    # بررسی موجودی فرستنده
     sender_data = db.get_user(user_id)
     sender_points = sender_data[2]
     sender_name = update.effective_user.first_name
@@ -333,6 +336,7 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
+    # بررسی وجود کاربر هدف
     target_data = db.get_user(target_id)
     if not target_data:
         await update.message.reply_text("❌ کاربر مورد نظر در ربات ثبت‌نام نکرده است!")
@@ -354,11 +358,11 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     target_display = f"@{target_username}" if target_username else target_name
     
-    # ===== دکمه‌های رنگی برای گیرنده =====
+    # ===== دکمه‌های تایید/لغو برای فرستنده =====
     keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
-                "✅ تایید",
+                "✅ تایید و ارسال",
                 callback_data=f"transfer_accept_{transfer_id}",
                 style="success"
             ),
@@ -370,40 +374,38 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
     ])
     
-    # ===== پیام به گیرنده با parse_mode=None =====
+    # ===== پیام تایید به فرستنده =====
+    await update.message.reply_text(
+        f"📨 **تایید انتقال هاپ پوینت**\n"
+        f"━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💰 مبلغ: **{amount:,}** هاپ پوینت\n"
+        f"👤 به: {target_display}\n"
+        f"📊 موجودی شما: {sender_points:,} هاپ پوینت\n"
+        f"📊 موجودی پس از انتقال: {sender_points - amount:,} هاپ پوینت\n\n"
+        f"⚠️ لطفا تایید یا لغو کنید:",
+        parse_mode="Markdown",
+        reply_markup=keyboard,
+        reply_to_message_id=update.message.message_id
+    )
+    
+    # ===== اطلاع به گیرنده =====
     try:
         await context.bot.send_message(
             chat_id=target_id,
             text=(
-                f"📨 درخواست انتقال هاپ پوینت\n"
+                f"📨 **درخواست دریافت هاپ پوینت**\n"
                 f"━━━━━━━━━━━━━━━━━━━\n\n"
                 f"👤 از طرف: {sender_name}\n"
                 f"💰 مبلغ: {amount:,} هاپ پوینت\n\n"
-                f"لطفا تایید یا لغو کنید:"
+                f"⏳ در انتظار تایید فرستنده..."
             ),
-            parse_mode=None,  # <--- برای جلوگیری از خطای مارک‌داون
-            reply_markup=keyboard
+            parse_mode=None
         )
     except Exception:
-        await update.message.reply_text(
-            f"❌ ارسال پیام به {target_display} امکان‌پذیر نیست!\n"
-            f"کاربر مورد نظر ربات را بلاک کرده است."
-        )
-        del pending_transfers[transfer_id]
-        return
-    
-    # ===== پیام به فرستنده با parse_mode=None =====
-    await update.message.reply_text(
-        f"📤 درخواست انتقال ارسال شد!\n"
-        f"━━━━━━━━━━━━━━━━━━━\n\n"
-        f"💰 مبلغ: {amount:,} هاپ پوینت\n"
-        f"👤 به: {target_display}\n\n"
-        f"⏳ در انتظار تایید گیرنده...",
-        parse_mode=None,
-        reply_to_message_id=update.message.message_id
-    )
+        pass  # اگه گیرنده بلاک کرده باشه، پیام نمیره
 
 
+# ==================== تایید انتقال توسط فرستنده ====================
 async def transfer_accept(callback: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
     transfer_id = callback.data.replace("transfer_accept_", "")
     transfer = pending_transfers.get(transfer_id)
@@ -419,12 +421,27 @@ async def transfer_accept(callback: CallbackQuery, context: ContextTypes.DEFAULT
     
     user_id = callback.from_user.id
     
-    if user_id != transfer["target_id"]:
-        await callback.answer("❌ این درخواست برای شما نیست!", show_alert=True)
+    # فقط فرستنده می‌تونه تایید کنه
+    if user_id != transfer["sender_id"]:
+        await callback.answer("❌ فقط فرستنده می‌تواند تایید کند!", show_alert=True)
+        return
+    
+    # بررسی مجدد موجودی
+    sender_data = db.get_user(transfer["sender_id"])
+    if sender_data[2] < transfer["amount"]:
+        await callback.answer("❌ موجودی شما کافی نیست!", show_alert=True)
+        await callback.message.edit_text(
+            f"❌ **انتقال ناموفق!**\n"
+            f"━━━━━━━━━━━━━━━━━━━\n\n"
+            f"💰 موجودی شما کافی نیست!\n"
+            f"📊 موجودی: {sender_data[2]:,} هاپ پوینت"
+        )
+        del pending_transfers[transfer_id]
         return
     
     transfer["status"] = "completed"
     
+    # انجام انتقال
     db.update_field(transfer["sender_id"], "points", -transfer["amount"], relative=True)
     db.update_field(transfer["target_id"], "points", transfer["amount"], relative=True)
     
@@ -433,24 +450,26 @@ async def transfer_accept(callback: CallbackQuery, context: ContextTypes.DEFAULT
     
     target_display = f"@{transfer['target_username']}" if transfer['target_username'] else transfer['target_name']
     
+    # ===== ویرایش پیام فرستنده =====
     await callback.message.edit_text(
-        f"✅ انتقال تایید شد!\n"
+        f"✅ **انتقال با موفقیت انجام شد!**\n"
         f"━━━━━━━━━━━━━━━━━━━\n\n"
         f"💰 مبلغ: {transfer['amount']:,} هاپ پوینت\n"
-        f"👤 از: {transfer['sender_name']}\n\n"
-        f"📊 موجودی جدید شما: {new_target_points:,} هاپ پوینت",
+        f"👤 به: {target_display}\n"
+        f"📊 موجودی جدید شما: {new_sender_points:,} هاپ پوینت",
         parse_mode=None
     )
     
+    # ===== پیام به گیرنده =====
     try:
         await context.bot.send_message(
-            chat_id=transfer["sender_id"],
+            chat_id=transfer["target_id"],
             text=(
-                f"✅ انتقال با موفقیت انجام شد!\n"
+                f"✅ **دریافت هاپ پوینت!**\n"
                 f"━━━━━━━━━━━━━━━━━━━\n\n"
+                f"👤 از طرف: {transfer['sender_name']}\n"
                 f"💰 مبلغ: {transfer['amount']:,} هاپ پوینت\n"
-                f"👤 به: {target_display}\n\n"
-                f"📊 موجودی جدید شما: {new_sender_points:,} هاپ پوینت"
+                f"📊 موجودی جدید شما: {new_target_points:,} هاپ پوینت"
             ),
             parse_mode=None
         )
@@ -461,6 +480,7 @@ async def transfer_accept(callback: CallbackQuery, context: ContextTypes.DEFAULT
     await callback.answer("✅ انتقال با موفقیت انجام شد!")
 
 
+# ==================== لغو انتقال توسط فرستنده ====================
 async def transfer_reject(callback: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
     transfer_id = callback.data.replace("transfer_reject_", "")
     transfer = pending_transfers.get(transfer_id)
@@ -476,8 +496,9 @@ async def transfer_reject(callback: CallbackQuery, context: ContextTypes.DEFAULT
     
     user_id = callback.from_user.id
     
-    if user_id != transfer["target_id"]:
-        await callback.answer("❌ این درخواست برای شما نیست!", show_alert=True)
+    # فقط فرستنده می‌تونه لغو کنه
+    if user_id != transfer["sender_id"]:
+        await callback.answer("❌ فقط فرستنده می‌تواند لغو کند!", show_alert=True)
         return
     
     transfer["status"] = "rejected"
@@ -485,23 +506,24 @@ async def transfer_reject(callback: CallbackQuery, context: ContextTypes.DEFAULT
     target_display = f"@{transfer['target_username']}" if transfer['target_username'] else transfer['target_name']
     
     await callback.message.edit_text(
-        f"❌ انتقال لغو شد!\n"
+        f"❌ **انتقال لغو شد!**\n"
         f"━━━━━━━━━━━━━━━━━━━\n\n"
         f"💰 مبلغ: {transfer['amount']:,} هاپ پوینت\n"
-        f"👤 از: {transfer['sender_name']}\n\n"
+        f"👤 به: {target_display}\n\n"
         f"شما این درخواست را لغو کردید.",
         parse_mode=None
     )
     
+    # ===== اطلاع به گیرنده =====
     try:
         await context.bot.send_message(
-            chat_id=transfer["sender_id"],
+            chat_id=transfer["target_id"],
             text=(
-                f"❌ درخواست انتقال لغو شد!\n"
+                f"❌ **درخواست انتقال لغو شد!**\n"
                 f"━━━━━━━━━━━━━━━━━━━\n\n"
-                f"💰 مبلغ: {transfer['amount']:,} هاپ پوینت\n"
-                f"👤 به: {target_display}\n\n"
-                f"گیرنده درخواست را لغو کرد."
+                f"👤 از طرف: {transfer['sender_name']}\n"
+                f"💰 مبلغ: {transfer['amount']:,} هاپ پوینت\n\n"
+                f"فرستنده درخواست را لغو کرد."
             ),
             parse_mode=None
         )
@@ -510,7 +532,6 @@ async def transfer_reject(callback: CallbackQuery, context: ContextTypes.DEFAULT
     
     del pending_transfers[transfer_id]
     await callback.answer("❌ انتقال لغو شد!")
-
 
 # ----------------- دستورات ربات -----------------
 async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
