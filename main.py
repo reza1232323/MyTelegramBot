@@ -354,23 +354,21 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     target_display = f"@{target_username}" if target_username else target_name
     
-    # ===== دکمه‌های رنگی =====
     keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
                 "✅ تایید",
                 callback_data=f"transfer_accept_{transfer_id}",
-                style="success"  # 🟢 سبز
+                style="success"
             ),
             InlineKeyboardButton(
                 "❌ لغو",
                 callback_data=f"transfer_reject_{transfer_id}",
-                style="danger"  # 🔴 قرمز
+                style="danger"
             )
         ]
     ])
     
-    # ===== ارسال پیام به گیرنده با try/except =====
     try:
         await context.bot.send_message(
             chat_id=target_id,
@@ -384,13 +382,11 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown",
             reply_markup=keyboard
         )
-    except Exception as e:
-        # اگر کاربر ربات رو بلاک کرده باشه
+    except Exception:
         await update.message.reply_text(
             f"❌ ارسال پیام به {target_display} امکان‌پذیر نیست!\n"
             f"کاربر مورد نظر ربات را بلاک کرده است."
         )
-        # حذف از pending_transfers
         del pending_transfers[transfer_id]
         return
     
@@ -404,7 +400,6 @@ async def transfer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# ==================== دکمه تایید انتقال (سبز) ====================
 async def transfer_accept(callback: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
     transfer_id = callback.data.replace("transfer_accept_", "")
     transfer = pending_transfers.get(transfer_id)
@@ -443,7 +438,6 @@ async def transfer_accept(callback: CallbackQuery, context: ContextTypes.DEFAULT
         parse_mode="Markdown"
     )
     
-    # ===== ارسال پیام به فرستنده با try/except =====
     try:
         await context.bot.send_message(
             chat_id=transfer["sender_id"],
@@ -463,7 +457,6 @@ async def transfer_accept(callback: CallbackQuery, context: ContextTypes.DEFAULT
     await callback.answer("✅ انتقال با موفقیت انجام شد!")
 
 
-# ==================== دکمه لغو انتقال (قرمز) ====================
 async def transfer_reject(callback: CallbackQuery, context: ContextTypes.DEFAULT_TYPE):
     transfer_id = callback.data.replace("transfer_reject_", "")
     transfer = pending_transfers.get(transfer_id)
@@ -496,7 +489,6 @@ async def transfer_reject(callback: CallbackQuery, context: ContextTypes.DEFAULT
         parse_mode="Markdown"
     )
     
-    # ===== ارسال پیام به فرستنده با try/except =====
     try:
         await context.bot.send_message(
             chat_id=transfer["sender_id"],
