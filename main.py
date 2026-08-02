@@ -59,6 +59,7 @@ SPIN_PRIZES = [
     {"amount": 10000, "weight": 2},
     {"amount": 50000, "weight": 1},
     {"amount": 100000, "weight": 0.5},
+    {"gem": 1, "weight": 0.01},  # ← اضافه شد: ۱ جم با شانس ۰.۰۱%
 ]
 
 # ==================== دیکشنری انتقال‌های در انتظار ====================
@@ -105,7 +106,12 @@ market_prices = {
 
 def get_spin_prize():
     weights = [p["weight"] for p in SPIN_PRIZES]
-    return random.choices(SPIN_PRIZES, weights=weights, k=1)[0]["amount"]
+    selected = random.choices(SPIN_PRIZES, weights=weights, k=1)[0]
+    
+    if "gem" in selected:
+        return {"type": "gem", "amount": selected["gem"]}
+    else:
+        return {"type": "point", "amount": selected["amount"]}
 
 def update_market_prices():
     current_time = time.time()
@@ -611,7 +617,7 @@ async def sell_product_callback(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
 
-# ==================== گردونه شانس ====================
+# ==================== گردونه شانس (با جم) ====================
 async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -659,14 +665,94 @@ async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
     prize = get_spin_prize()
-    db.update_field(user_id, "points", prize, relative=True)
-
-    final_text = (
-        f"🎉 تبریک!\n"
-        f"💰 شما {prize:,} هاپ پوینت برنده شدید!\n\n"
-        f"⏳ گردونه بعدی: ۱۲ ساعت دیگر"
-    )
+    
+    if prize["type"] == "gem":
+        db.update_field(user_id, "hop_gem", prize["amount"], relative=True)
+        new_gem = db.get_user_field(user_id, "hop_gem") or 0
+        final_text = (
+            f"🎉 **تبریک!**\n"
+            f"💎 شما **{prize['amount']}** جم برنده شدید!\n"
+            f"✨ این یک جایزه نادر است!\n\n"
+            f"📊 جم شما: {new_gem:,}\n"
+            f"⏳ گردونه بعدی: ۱۲ ساعت دیگر"
+        )
+    else:
+        db.update_field(user_id, "points", prize["amount"], relative=True)
+        new_points = db.get_user_field(user_id, "points") or 0
+        final_text = (
+            f"🎉 **تبریک!**\n"
+            f"💰 شما **{prize['amount']:,}** هاپ پوینت برنده شدید!\n\n"
+            f"📊 هاپ پوینت شما: {new_points:,}\n"
+            f"⏳ گردونه بعدی: ۱۲ ساعت دیگر"
+        )
+    
     await msg.edit_text(final_text, parse_mode=None)
+
+
+# ==================== تبدیل جم به هاپ پوینت ====================
+async def convert_gem_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تبدیل جم به هاپ پوینت (هر ۱ جم = ۱۰,۰۰۰,۰۰۰ هاپ پوینت)"""
+    user_id = update.effective_user.id
+    
+    in_jail, _ = is_user_in_jail(user_id)
+    if in_jail:
+        await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
+        return
+    
+    is_joined = await check_user_membership(context.bot, user_id)
+    if not is_joined:
+        await send_must_join_message(update, context)
+        return
+    
+    parts = update.message.text.split()
+    if len(parts) < 2:
+        await update.message.reply_text(
+            "❌ **فرمت اشتباه!**\n\n"
+            "فرمت صحیح:\n"
+            "`تبدیل جم [تعداد]`\n\n"
+            "مثال: `تبدیل جم 5`\n\n"
+            "📊 هر ۱ جم = ۱۰,۰۰۰,۰۰۰ هاپ پوینت"
+        )
+        return
+    
+    try:
+        amount = int(parts[1])
+    except ValueError:
+        await update.message.reply_text("❌ تعداد جم باید عدد باشد!")
+        return
+    
+    if amount <= 0:
+        await update.message.reply_text("❌ تعداد جم باید بیشتر از صفر باشد!")
+        return
+    
+    user_gem = db.get_user_field(user_id, "hop_gem") or 0
+    
+    if user_gem < amount:
+        await update.message.reply_text(
+            f"❌ **جم کافی ندارید!**\n"
+            f"━━━━━━━━━━━━━━━━━━━\n\n"
+            f"💎 جم شما: {user_gem:,}\n"
+            f"💎 جم مورد نیاز: {amount:,}"
+        )
+        return
+    
+    hop_amount = amount * 10_000_000
+    
+    db.update_field(user_id, "hop_gem", -amount, relative=True)
+    db.update_field(user_id, "points", hop_amount, relative=True)
+    
+    new_gem = db.get_user_field(user_id, "hop_gem") or 0
+    new_points = db.get_user_field(user_id, "points") or 0
+    
+    await update.message.reply_text(
+        f"✅ **تبدیل انجام شد!**\n"
+        f"━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💎 جم تبدیل شده: {amount:,}\n"
+        f"💰 هاپ پوینت دریافت شده: {hop_amount:,}\n\n"
+        f"📊 موجودی جدید:\n"
+        f"💎 جم: {new_gem:,}\n"
+        f"💰 هاپ پوینت: {new_points:,}"
+    )
 
 
 # ==================== انتقال هاپ پوینت ====================
@@ -1004,8 +1090,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ["کارخونه", "شهر"],
             ["بانک", "زیرمجموعه‌گیری"],
             ["فروش محصولات", "انبار"],
-            ["گردونه", "لیدربرد"],
-            ["زندان", "راهنما"],
+            ["تبدیل جم", "گردونه"],  # ← تبدیل جم اضافه شد
+            ["لیدربرد", "زندان"],
+            ["راهنما"],
         ],
         resize_keyboard=True,
     )
@@ -1018,8 +1105,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"سلام {update.effective_user.first_name} عزیز!\n"
         f"به ربات خوش آمدید.\n\n"
         f"برای گرفتن لینک دعوت می‌توانید از دکمه شیشه‌ای زیر یا دکمه زیرمجموعه‌گیری در کیبورد استفاده کنید.\n\n"
-        f"گردونه شانس: هر ۱۲ ساعت یک بار\n"
-        f"لیدربرد: مشاهده برترین‌ها\n\n"
+        f"💎 هر ۱ جم = ۱۰,۰۰۰,۰۰۰ هاپ پوینت\n"
+        f"🎡 گردونه شانس: هر ۱۲ ساعت یک بار\n"
+        f"🏆 لیدربرد: مشاهده برترین‌ها\n\n"
         f"⚠️ هشدار: قاچاق و اسپم باعث زندان میشود!\n"
         f"برای انتقال هاپ پوینت، روی پیام کاربر ریپلای کنید و بنویسید:\n"
         f"انتقال هاپ پوینت [مبلغ]"
@@ -1140,6 +1228,11 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     in_jail, _ = is_user_in_jail(user_id)
     if in_jail:
         await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
+        return
+
+    # ===== تبدیل جم =====
+    if clean_text in ["تبدیل جم", "تبدیل"]:
+        await convert_gem_command(update, context)
         return
 
     # ===== فروش محصولات =====
