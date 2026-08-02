@@ -69,7 +69,7 @@ pending_transfers = {}
 hop_spam = {}
 
 # ==================== دیکشنری فروش محصولات ====================
-user_sell_data = {}  # {user_id: {"product": "clothes", "quantity": 0, "price": 50}}
+user_sell_data = {}  # {user_id: {"product": "clothes", "quantity": 0, "price": 50, "message_id": 0, "chat_id": 0}}
 
 # ==================== قیمت‌های بازار ====================
 market_prices = {
@@ -487,11 +487,7 @@ async def warehouse_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode=None)
 
 
-# ==================== فروش محصولات (نسخه ویرایش پیام) ====================
-
-# دیکشنری برای ذخیره وضعیت فروش کاربران و message_id
-user_sell_data = {}  # {user_id: {"product": "clothes", "quantity": 0, "price": 50, "message_id": 0, "chat_id": 0}}
-
+# ==================== فروش محصولات ====================
 async def sell_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -615,7 +611,6 @@ async def sell_select_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         [InlineKeyboardButton("❌ لغو", callback_data="sell_cancel")]
     ])
     
-    # ===== ویرایش پیام =====
     text = (
         f"🛒 **فروش {product_names.get(product_type, product_type)}**\n"
         f"━━━━━━━━━━━━━━━━━━━\n\n"
@@ -632,21 +627,22 @@ async def handle_sell_quantity(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id = update.effective_user.id
     text = update.message.text.strip()
     
+    # چک کن کاربر در حال فروش هست یا نه
     if user_id not in user_sell_data or user_sell_data[user_id].get("product") is None:
-        return
+        return False
     
     if context.user_data.get('state') == "WAITING_FOR_DOG_NAME":
-        return
+        return False
     
     try:
         quantity = int(text)
     except ValueError:
         await update.message.reply_text("❌ لطفاً یک عدد معتبر وارد کنید!")
-        return
+        return True
     
     if quantity <= 0:
         await update.message.reply_text("❌ تعداد باید بیشتر از صفر باشد!")
-        return
+        return True
     
     sell_data = user_sell_data[user_id]
     product_type = sell_data["product"]
@@ -655,7 +651,7 @@ async def handle_sell_quantity(update: Update, context: ContextTypes.DEFAULT_TYP
     
     if quantity > current_count:
         await update.message.reply_text(f"❌ شما فقط {current_count} عدد از این محصول دارید!")
-        return
+        return True
     
     sell_data["quantity"] = quantity
     total_price = quantity * sell_data["price"]
@@ -674,7 +670,6 @@ async def handle_sell_quantity(update: Update, context: ContextTypes.DEFAULT_TYP
         ]
     ])
     
-    # ===== ویرایش پیام (همون پیام قبلی) =====
     text = (
         f"🔄 **تایید فروش**\n"
         f"━━━━━━━━━━━━━━━━━━━\n\n"
@@ -685,7 +680,6 @@ async def handle_sell_quantity(update: Update, context: ContextTypes.DEFAULT_TYP
         f"⚠️ آیا از فروش مطمئن هستید؟"
     )
     
-    # ویرایش پیام قبلی
     try:
         await context.bot.edit_message_text(
             text,
@@ -695,8 +689,9 @@ async def handle_sell_quantity(update: Update, context: ContextTypes.DEFAULT_TYP
             reply_markup=keyboard
         )
     except Exception as e:
-        # اگه ویرایش نشد، پیام جدید بفرست
         await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
+    
+    return True
 
 
 async def sell_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -723,7 +718,6 @@ async def sell_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TY
     price = sell_data["price"]
     field_name = f"inventory_{product_type}"
     
-    # انجام فروش
     db.update_field(user_id, field_name, -quantity, relative=True)
     total_price = quantity * price
     db.update_field(user_id, "points", total_price, relative=True)
@@ -740,7 +734,6 @@ async def sell_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TY
         "house": "🏠 لانه شیک"
     }
     
-    # ===== ویرایش پیام با نتیجه =====
     text = (
         f"✅ **فروش موفق!**\n"
         f"━━━━━━━━━━━━━━━━━━━\n\n"
@@ -754,7 +747,6 @@ async def sell_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TY
     
     await query.message.edit_text(text, parse_mode="Markdown")
     
-    # پاک کردن دیکشنری
     if user_id in user_sell_data:
         del user_sell_data[user_id]
 
@@ -765,13 +757,12 @@ async def sell_cancel_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     
     await query.answer()
     
-    # ===== برگشت به منوی فروش =====
     if user_id in user_sell_data:
-        # بازگرداندن به منوی اصلی فروش
         del user_sell_data[user_id]
-        await sell_products_command(update, context)
-    else:
-        await query.message.edit_text("❌ فروش لغو شد!")
+    
+    await query.message.edit_text("❌ فروش لغو شد!")
+
+
 # ==================== گردونه شانس ====================
 async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -1373,6 +1364,13 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_must_join_message(update, context)
         return
 
+    # ===== اول چک کن که کاربر در حال فروش هست یا نه (قبل از همه) =====
+    if user_id in user_sell_data and user_sell_data[user_id].get("product") is not None:
+        # اگه کاربر در حال فروش هست، تعداد رو پردازش کن
+        handled = await handle_sell_quantity(update, context)
+        if handled:
+            return
+
     if hasattr(pet, "handle_dog_rename_text"):
         is_handled = await pet.handle_dog_rename_text(update, context)
         if is_handled:
@@ -1494,11 +1492,11 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await jail_callback(update, context)
         return
 
-  # ===== فروش محصولات =====
+    # ===== فروش محصولات =====
     if data == "back_from_sell":
-       await query.message.delete()
-       await query.answer()
-       return
+        await query.message.delete()
+        await query.answer()
+        return
     
     if data in ["sell_select_clothes", "sell_select_food", "sell_select_toy", "sell_select_house"]:
         await sell_select_callback(update, context)
