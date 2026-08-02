@@ -1250,7 +1250,7 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ===== تبدیل جم =====
-    if clean_text in ["تبدیل جم", "تبدیل"]:
+    if clean_text.startswith("تبدیل جم") or clean_text == "تبدیل":
         await convert_gem_command(update, context)
         return
 
@@ -1327,7 +1327,6 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await admin.remove_level(update, context)
         elif text.startswith("همگانی"):
             await admin.broadcast(update, context)
-
 
 async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
