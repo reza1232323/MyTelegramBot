@@ -167,8 +167,7 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, user=
     )
 
     await update.message.reply_text(msg, parse_mode=None)
-
-    await update.message.reply_text(msg, parse_mode=None)
+    
 async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     user_id = update.effective_user.id if not user else user[0]
     username = update.effective_user.first_name
