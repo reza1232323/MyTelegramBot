@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 import database as db
-import config  # ← این رو اضافه کن
+import config
 
 async def add_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.reply_to_message:
@@ -13,7 +13,7 @@ async def add_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     target_id = update.message.reply_to_message.from_user.id
     amt = int(text[2])
-    db.update_field(target_id, "points", amt)
+    db.update_field(target_id, "points", amt, relative=True)  # ← relative=True اضافه شد
     await update.message.reply_text(f"✅ **{amt:,}** پوینت به کاربر اضافه شد.")
 
 async def remove_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -26,7 +26,7 @@ async def remove_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     target_id = update.message.reply_to_message.from_user.id
     amt = int(text[2])
-    db.update_field(target_id, "points", -amt)
+    db.update_field(target_id, "points", -amt, relative=True)  # ← relative=True اضافه شد
     await update.message.reply_text(f"✅ **{amt:,}** پوینت از کاربر کسر شد.")
 
 async def add_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -36,7 +36,7 @@ async def add_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.split()
     amt = int(text[2]) if len(text) >= 3 and text[2].isdigit() else 1
     target_id = update.message.reply_to_message.from_user.id
-    db.update_field(target_id, "level", amt)
+    db.update_field(target_id, "level", amt, relative=True)  # ← relative=True اضافه شد
     await update.message.reply_text(f"✅ لول کاربر **{amt}** درجه افزایش یافت.")
 
 async def remove_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -46,7 +46,7 @@ async def remove_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.split()
     amt = int(text[2]) if len(text) >= 3 and text[2].isdigit() else 1
     target_id = update.message.reply_to_message.from_user.id
-    db.update_field(target_id, "level", -amt)
+    db.update_field(target_id, "level", -amt, relative=True)  # ← relative=True اضافه شد
     await update.message.reply_text(f"✅ لول کاربر **{amt}** درجه کاهش یافت.")
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -54,7 +54,6 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not msg_text:
         await update.message.reply_text("💡 فرمت: `همگانی متن پیام`", parse_mode='Markdown')
         return
-    # ارسال پیام همگانی (ارسال به تمامی گروه‌ها و کاربران)
     await update.message.reply_text("📢 پیام همگانی ارسال شد.")
 
 # ==================== دستورات ادمین برای جم ====================
@@ -77,7 +76,10 @@ async def add_gem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_id = update.message.reply_to_message.from_user.id
     amount = int(text[2])
     
-    db.update_field(target_id, "hop_gem", amount, relative=True)
+    # ===== اصلاح: اضافه کردن به موجودی =====
+    current_gem = db.get_user_field(target_id, "hop_gem") or 0
+    db.update_field(target_id, "hop_gem", current_gem + amount, relative=False)
+    
     await update.message.reply_text(f"✅ **{amount:,}** جم به کاربر اضافه شد.")
 
 
@@ -99,5 +101,10 @@ async def remove_gem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_id = update.message.reply_to_message.from_user.id
     amount = int(text[2])
     
-    db.update_field(target_id, "hop_gem", -amount, relative=True)
+    current_gem = db.get_user_field(target_id, "hop_gem") or 0
+    if current_gem < amount:
+        await update.message.reply_text(f"❌ کاربر فقط {current_gem:,} جم دارد!")
+        return
+    
+    db.update_field(target_id, "hop_gem", current_gem - amount, relative=False)
     await update.message.reply_text(f"✅ **{amount:,}** جم از کاربر کسر شد.")
