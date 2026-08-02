@@ -153,22 +153,18 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, user=
     dog_status = "دارای سگ" if has_dog else "بدون سگ"
     acc_num = db.get_or_create_account_number(user_id)
 
-    formatted_points = format_balance(points)
-    formatted_bank = format_balance(bank_balance)
-
     msg = (
-        f"👤 **پروفایل و مشخصات هاپو**\n\n"
+        f"👤 پروفایل و مشخصات هاپو\n\n"
         f"🔹 کاربر: {username}\n"
         f"🆔 شناسه: {user_id}\n"
         f"⭐ سطح (لول): {level}\n"
         f"💳 شماره حساب: {acc_num}\n\n"
-        f"💰 موجودی کیف پول: {formatted_points}\n"
-        f"🏦 موجودی بانک: {formatted_bank}\n\n"
-        f"🐕 وضعیت سگ: {dog_status}\n"
+        f"💰 موجودی کیف پول: {points:,}\n"
+        f"🏦 موجودی بانک: {bank_balance:,}\n\n"
+        f"🐕 وضعیت سگ: {dog_status}"
     )
 
-    await update.message.reply_text(msg, parse_mode='Markdown')
-
+    await update.message.reply_text(msg, parse_mode=None)
 async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     user_id = update.effective_user.id if not user else user[0]
     username = update.effective_user.first_name
