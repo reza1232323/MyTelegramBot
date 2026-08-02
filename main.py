@@ -690,6 +690,7 @@ async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==================== تبدیل جم به هاپ پوینت ====================
+# ==================== تبدیل جم به هاپ پوینت ====================
 async def convert_gem_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تبدیل جم به هاپ پوینت (هر ۱ جم = ۱۰,۰۰۰,۰۰۰ هاپ پوینت)"""
     user_id = update.effective_user.id
@@ -715,10 +716,28 @@ async def convert_gem_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return
     
+    amount_str = parts[1]
+    
+    # ===== تبدیل اعداد فارسی به انگلیسی =====
+    persian_to_english = {
+        '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4',
+        '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9'
+    }
+    
+    for persian, english in persian_to_english.items():
+        amount_str = amount_str.replace(persian, english)
+    
+    # ===== حذف کاما و فاصله =====
+    amount_str = amount_str.replace(",", "").replace(" ", "")
+    
     try:
-        amount = int(parts[1])
+        amount = int(amount_str)
     except ValueError:
-        await update.message.reply_text("❌ تعداد جم باید عدد باشد!")
+        await update.message.reply_text(
+            "❌ **تعداد جم باید عدد باشد!**\n\n"
+            "مثال: `تبدیل جم 5`\n"
+            "یا `تبدیل جم ۱۰` (اعداد فارسی)"
+        )
         return
     
     if amount <= 0:
