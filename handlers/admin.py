@@ -58,6 +58,8 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ==================== دستورات ادمین برای جم ====================
 
+# ==================== دستورات ادمین برای جم ====================
+
 async def add_gem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """افزایش جم کاربر (ادمین)"""
     if not update.message.reply_to_message:
@@ -76,11 +78,16 @@ async def add_gem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_id = update.message.reply_to_message.from_user.id
     amount = int(text[2])
     
-    # ===== اصلاح: اضافه کردن به موجودی =====
-    current_gem = db.get_user_field(target_id, "hop_gem") or 0
-    db.update_field(target_id, "hop_gem", current_gem + amount, relative=False)
+    # ===== روش درست: استفاده از update_field با relative=True =====
+    db.update_field(target_id, "hop_gem", amount, relative=True)
     
-    await update.message.reply_text(f"✅ **{amount:,}** جم به کاربر اضافه شد.")
+    # دریافت موجودی جدید برای نمایش
+    new_gem = db.get_user_field(target_id, "hop_gem") or 0
+    
+    await update.message.reply_text(
+        f"✅ **{amount:,}** جم به کاربر اضافه شد.\n"
+        f"💎 موجودی جدید: {new_gem:,} جم"
+    )
 
 
 async def remove_gem(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -106,5 +113,11 @@ async def remove_gem(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ کاربر فقط {current_gem:,} جم دارد!")
         return
     
-    db.update_field(target_id, "hop_gem", current_gem - amount, relative=False)
-    await update.message.reply_text(f"✅ **{amount:,}** جم از کاربر کسر شد.")
+    # ===== روش درست: استفاده از update_field با relative=True =====
+    db.update_field(target_id, "hop_gem", -amount, relative=True)
+    
+    new_gem = db.get_user_field(target_id, "hop_gem") or 0
+    await update.message.reply_text(
+        f"✅ **{amount:,}** جم از کاربر کسر شد.\n"
+        f"💎 موجودی جدید: {new_gem:,} جم"
+    )
