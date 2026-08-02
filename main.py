@@ -1494,11 +1494,11 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await jail_callback(update, context)
         return
 
-    # ===== فروش محصولات =====
+  # ===== فروش محصولات =====
     if data == "back_from_sell":
-        await query.message.delete()
-        await query.answer()
-        return
+       await query.message.delete()
+       await query.answer()
+       return
     
     if data in ["sell_select_clothes", "sell_select_food", "sell_select_toy", "sell_select_house"]:
         await sell_select_callback(update, context)
