@@ -148,28 +148,25 @@ async def show_profile(update: Update, context: ContextTypes.DEFAULT_TYPE, user=
     points = db.get_user_field(user_id, "points") or 0
     level = db.get_user_field(user_id, "level") or 1
     bank_balance = db.get_user_field(user_id, "bank_balance") or 0
-    gem = db.get_user_field(user_id, "hop_gem") or 0  # ← اضافه شد
+    gem = db.get_user_field(user_id, "hop_gem") or 0
 
     has_dog = db.get_user_field(user_id, "has_dog")
     dog_status = "دارای سگ" if has_dog else "بدون سگ"
     acc_num = db.get_or_create_account_number(user_id)
 
-    formatted_points = format_balance(points)
-    formatted_bank = format_balance(bank_balance)
-
     msg = (
-        f"👤 **پروفایل و مشخصات هاپو**\n\n"
+        f"👤 پروفایل و مشخصات هاپو\n\n"
         f"🔹 کاربر: {username}\n"
         f"🆔 شناسه: {user_id}\n"
         f"⭐ سطح (لول): {level}\n"
         f"💳 شماره حساب: {acc_num}\n\n"
-        f"💰 موجودی کیف پول: {formatted_points}\n"
-        f"🏦 موجودی بانک: {formatted_bank}\n"
+        f"💰 موجودی کیف پول: {points:,}\n"
+        f"🏦 موجودی بانک: {bank_balance:,}\n"
         f"💎 موجودی جم: {gem:,}\n\n"
-        f"🐕 وضعیت سگ: {dog_status}\n"
+        f"🐕 وضعیت سگ: {dog_status}"
     )
 
-    await update.message.reply_text(msg, parse_mode='Markdown')
+    await update.message.reply_text(msg, parse_mode=None)
 
     await update.message.reply_text(msg, parse_mode=None)
 async def claim_hop(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
