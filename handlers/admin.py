@@ -55,3 +55,48 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     # ارسال پیام همگانی (ارسال به تمامی گروه‌ها و کاربران)
     await update.message.reply_text("📢 پیام همگانی ارسال شد.")
+
+# ==================== دستورات ادمین برای جم ====================
+
+async def add_gem(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """افزایش جم کاربر (ادمین)"""
+    if not update.message.reply_to_message:
+        await update.message.reply_text("❌ این دستور را باید روی پیام کاربر ریپلای کنید!")
+        return
+    
+    if update.effective_user.id not in config.ADMIN_IDS:
+        await update.message.reply_text("⛔ دسترسی ندارید!")
+        return
+    
+    text = update.message.text.split()
+    if len(text) < 3 or not text[2].isdigit():
+        await update.message.reply_text("💡 فرمت: `افزایش جم 10`")
+        return
+    
+    target_id = update.message.reply_to_message.from_user.id
+    amount = int(text[2])
+    
+    db.update_field(target_id, "hop_gem", amount, relative=True)
+    await update.message.reply_text(f"✅ **{amount:,}** جم به کاربر اضافه شد.")
+
+
+async def remove_gem(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """کاهش جم کاربر (ادمین)"""
+    if not update.message.reply_to_message:
+        await update.message.reply_text("❌ این دستور را باید روی پیام کاربر ریپلای کنید!")
+        return
+    
+    if update.effective_user.id not in config.ADMIN_IDS:
+        await update.message.reply_text("⛔ دسترسی ندارید!")
+        return
+    
+    text = update.message.text.split()
+    if len(text) < 3 or not text[2].isdigit():
+        await update.message.reply_text("💡 فرمت: `کاهش جم 10`")
+        return
+    
+    target_id = update.message.reply_to_message.from_user.id
+    amount = int(text[2])
+    
+    db.update_field(target_id, "hop_gem", -amount, relative=True)
+    await update.message.reply_text(f"✅ **{amount:,}** جم از کاربر کسر شد.")
