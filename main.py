@@ -1208,6 +1208,7 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_must_join_message(update, context)
         return
 
+    # ===== اول چک کن که کاربر در حالت تغییر نام سگ هست یا نه =====
     if hasattr(pet, "handle_dog_rename_text"):
         is_handled = await pet.handle_dog_rename_text(update, context)
         if is_handled:
@@ -1270,6 +1271,13 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_hop_internal(update, context, user)
         return
 
+    # ===== سگ (با نام) =====
+    # اگه کاربر اسم سگش رو گفت، پنل سگ باز بشه
+    dog_name = db.get_user_field(user_id, "dog_name")
+    if dog_name and clean_text == dog_name.lower():
+        await pet.show_dog_panel(update, context, user)
+        return
+
     # ===== بقیه دستورات =====
     if clean_text in ["پروفایل", "هاپوهام", "هاپوهاش"]:
         await pet.show_profile(update, context, user)
@@ -1302,7 +1310,6 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await economy.city_status(update, context, user)
     elif clean_text.startswith("اهدا"):
         await economy.donate_city(update, context, user)
-    # ===== دستورات ادمین =====
     elif user_id in config.ADMIN_IDS:
         if text.startswith("افزایش پوینت"):
             await admin.add_points(update, context)
@@ -1318,7 +1325,6 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await admin.add_gem(update, context)
         elif text.startswith("کاهش جم"):
             await admin.remove_gem(update, context)
-
 
 async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
