@@ -1303,17 +1303,20 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif clean_text.startswith("اهدا"):
         await economy.donate_city(update, context, user)
     elif user_id in config.ADMIN_IDS:
-        if text.startswith("افزایش پوینت"):
-            await admin.add_points(update, context)
-        elif text.startswith("کاهش پوینت"):
-            await admin.remove_points(update, context)
-        elif text.startswith("افزایش لول"):
-            await admin.add_level(update, context)
-        elif text.startswith("کاهش لول"):
-            await admin.remove_level(update, context)
-        elif text.startswith("همگانی"):
-            await admin.broadcast(update, context)
-
+    if text.startswith("افزایش پوینت"):
+        await admin.add_points(update, context)
+    elif text.startswith("کاهش پوینت"):
+        await admin.remove_points(update, context)
+    elif text.startswith("افزایش لول"):
+        await admin.add_level(update, context)
+    elif text.startswith("کاهش لول"):
+        await admin.remove_level(update, context)
+    elif text.startswith("همگانی"):
+        await admin.broadcast(update, context)
+    elif text.startswith("افزایش جم"):  # ← اضافه کن
+        await admin.add_gem(update, context)
+    elif text.startswith("کاهش جم"):    # ← اضافه کن
+        await admin.remove_gem(update, context)
 
 async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
