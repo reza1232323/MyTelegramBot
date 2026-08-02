@@ -9,11 +9,11 @@ async def add_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     text = update.message.text.split()
     if len(text) < 3 or not text[2].isdigit():
-        await update.message.reply_text("💡 فرمت: `افزایش پوینت 100`", parse_mode='Markdown')
+        await update.message.reply_text("💡 فرمت: `افزایش پوینت 100`")
         return
     target_id = update.message.reply_to_message.from_user.id
     amt = int(text[2])
-    db.update_field(target_id, "points", amt, relative=True)  # ← relative=True اضافه شد
+    db.update_field(target_id, "points", amt, relative=True)
     await update.message.reply_text(f"✅ **{amt:,}** پوینت به کاربر اضافه شد.")
 
 async def remove_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -22,11 +22,11 @@ async def remove_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     text = update.message.text.split()
     if len(text) < 3 or not text[2].isdigit():
-        await update.message.reply_text("💡 فرمت: `کاهش پوینت 100`", parse_mode='Markdown')
+        await update.message.reply_text("💡 فرمت: `کاهش پوینت 100`")
         return
     target_id = update.message.reply_to_message.from_user.id
     amt = int(text[2])
-    db.update_field(target_id, "points", -amt, relative=True)  # ← relative=True اضافه شد
+    db.update_field(target_id, "points", -amt, relative=True)
     await update.message.reply_text(f"✅ **{amt:,}** پوینت از کاربر کسر شد.")
 
 async def add_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -36,7 +36,7 @@ async def add_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.split()
     amt = int(text[2]) if len(text) >= 3 and text[2].isdigit() else 1
     target_id = update.message.reply_to_message.from_user.id
-    db.update_field(target_id, "level", amt, relative=True)  # ← relative=True اضافه شد
+    db.update_field(target_id, "level", amt, relative=True)
     await update.message.reply_text(f"✅ لول کاربر **{amt}** درجه افزایش یافت.")
 
 async def remove_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -46,19 +46,17 @@ async def remove_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.split()
     amt = int(text[2]) if len(text) >= 3 and text[2].isdigit() else 1
     target_id = update.message.reply_to_message.from_user.id
-    db.update_field(target_id, "level", -amt, relative=True)  # ← relative=True اضافه شد
+    db.update_field(target_id, "level", -amt, relative=True)
     await update.message.reply_text(f"✅ لول کاربر **{amt}** درجه کاهش یافت.")
 
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg_text = update.message.text.replace("همگانی", "").strip()
     if not msg_text:
-        await update.message.reply_text("💡 فرمت: `همگانی متن پیام`", parse_mode='Markdown')
+        await update.message.reply_text("💡 فرمت: `همگانی متن پیام`")
         return
     await update.message.reply_text("📢 پیام همگانی ارسال شد.")
 
-# ==================== دستورات ادمین برای جم ====================
-
-# ==================== دستورات ادمین برای جم ====================
+# ==================== دستورات ادمین برای جم (نسخه نهایی) ====================
 
 async def add_gem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """افزایش جم کاربر (ادمین)"""
@@ -78,16 +76,37 @@ async def add_gem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_id = update.message.reply_to_message.from_user.id
     amount = int(text[2])
     
-    # ===== روش درست: استفاده از update_field با relative=True =====
-    db.update_field(target_id, "hop_gem", amount, relative=True)
+    # ===== روش مستقیم با SQL =====
+    import sqlite3
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
     
-    # دریافت موجودی جدید برای نمایش
-    new_gem = db.get_user_field(target_id, "hop_gem") or 0
-    
-    await update.message.reply_text(
-        f"✅ **{amount:,}** جم به کاربر اضافه شد.\n"
-        f"💎 موجودی جدید: {new_gem:,} جم"
-    )
+    # اول ببین ستون وجود داره یا نه
+    try:
+        cursor.execute("SELECT hop_gem FROM users WHERE user_id = ?", (target_id,))
+        result = cursor.fetchone()
+        if result:
+            current = result[0] or 0
+            new_amount = current + amount
+            cursor.execute("UPDATE users SET hop_gem = ? WHERE user_id = ?", (new_amount, target_id))
+            conn.commit()
+            conn.close()
+            
+            await update.message.reply_text(
+                f"✅ **{amount:,}** جم به کاربر اضافه شد.\n"
+                f"💎 موجودی جدید: {new_amount:,} جم"
+            )
+        else:
+            conn.close()
+            await update.message.reply_text("❌ کاربر پیدا نشد!")
+    except sqlite3.OperationalError:
+        # اگه ستون وجود نداشت، اضافه کن
+        cursor.execute("ALTER TABLE users ADD COLUMN hop_gem INTEGER DEFAULT 0")
+        conn.commit()
+        cursor.execute("UPDATE users SET hop_gem = ? WHERE user_id = ?", (amount, target_id))
+        conn.commit()
+        conn.close()
+        await update.message.reply_text(f"✅ **{amount:,}** جم به کاربر اضافه شد.")
 
 
 async def remove_gem(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -108,16 +127,31 @@ async def remove_gem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_id = update.message.reply_to_message.from_user.id
     amount = int(text[2])
     
-    current_gem = db.get_user_field(target_id, "hop_gem") or 0
-    if current_gem < amount:
-        await update.message.reply_text(f"❌ کاربر فقط {current_gem:,} جم دارد!")
-        return
+    import sqlite3
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
     
-    # ===== روش درست: استفاده از update_field با relative=True =====
-    db.update_field(target_id, "hop_gem", -amount, relative=True)
-    
-    new_gem = db.get_user_field(target_id, "hop_gem") or 0
-    await update.message.reply_text(
-        f"✅ **{amount:,}** جم از کاربر کسر شد.\n"
-        f"💎 موجودی جدید: {new_gem:,} جم"
-    )
+    try:
+        cursor.execute("SELECT hop_gem FROM users WHERE user_id = ?", (target_id,))
+        result = cursor.fetchone()
+        if result:
+            current = result[0] or 0
+            if current < amount:
+                conn.close()
+                await update.message.reply_text(f"❌ کاربر فقط {current:,} جم دارد!")
+                return
+            new_amount = current - amount
+            cursor.execute("UPDATE users SET hop_gem = ? WHERE user_id = ?", (new_amount, target_id))
+            conn.commit()
+            conn.close()
+            
+            await update.message.reply_text(
+                f"✅ **{amount:,}** جم از کاربر کسر شد.\n"
+                f"💎 موجودی جدید: {new_amount:,} جم"
+            )
+        else:
+            conn.close()
+            await update.message.reply_text("❌ کاربر پیدا نشد!")
+    except sqlite3.OperationalError:
+        conn.close()
+        await update.message.reply_text("❌ ستون جم در دیتابیس وجود ندارد!")
