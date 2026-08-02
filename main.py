@@ -68,6 +68,9 @@ pending_transfers = {}
 # ==================== دیکشنری اسپم هاپ ====================
 hop_spam = {}
 
+# ==================== دیکشنری فروش محصولات ====================
+user_sell_data = {}  # {user_id: {"product": "clothes", "quantity": 0, "price": 50}}
+
 # ==================== قیمت‌های بازار ====================
 market_prices = {
     "clothes": {
@@ -484,7 +487,7 @@ async def warehouse_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode=None)
 
 
-# ==================== فروش محصولات ====================
+# ==================== فروش محصولات (نسخه جدید با انتخاب تعداد) ====================
 async def sell_products_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -527,83 +530,212 @@ async def sell_products_command(update: Update, context: ContextTypes.DEFAULT_TY
     
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(
-            f"لباس ({clothes} عدد) - {price_clothes} هاپ", 
-            callback_data=f"sell_clothes_flex"
+            f"👕 لباس ({clothes} عدد) - {price_clothes} هاپ", 
+            callback_data=f"sell_select_clothes"
         )],
         [InlineKeyboardButton(
-            f"غذا ({food} عدد) - {price_food} هاپ", 
-            callback_data=f"sell_food_flex"
+            f"🦴 غذا ({food} عدد) - {price_food} هاپ", 
+            callback_data=f"sell_select_food"
         )],
         [InlineKeyboardButton(
-            f"توپ ({toy} عدد) - {price_toy} هاپ", 
-            callback_data=f"sell_toy_flex"
+            f"🎾 توپ ({toy} عدد) - {price_toy} هاپ", 
+            callback_data=f"sell_select_toy"
         )],
         [InlineKeyboardButton(
-            f"لانه ({house} عدد) - {price_house} هاپ", 
-            callback_data=f"sell_house_flex"
+            f"🏠 لانه ({house} عدد) - {price_house} هاپ", 
+            callback_data=f"sell_select_house"
         )],
-        [InlineKeyboardButton("بازگشت", callback_data="back_from_sell")]
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="back_from_sell")]
     ])
     
     text = (
-        f"💰 بازار فروش محصولات\n"
+        f"💰 **بازار فروش محصولات**\n"
         f"━━━━━━━━━━━━━━━━━━━\n\n"
         f"قیمت‌های لحظه‌ای:\n"
         f"👕 لباس: {price_clothes} هاپ (خرید: {buy_clothes} هاپ)\n"
         f"🦴 غذا: {price_food} هاپ (خرید: {buy_food} هاپ)\n"
         f"🎾 توپ: {price_toy} هاپ (خرید: {buy_toy} هاپ)\n"
         f"🏠 لانه: {price_house} هاپ (خرید: {buy_house} هاپ)\n\n"
-        f"موجودی انبار شما:\n"
+        f"📦 **موجودی انبار شما:**\n"
         f"👕 لباس: {clothes} عدد\n"
         f"🦴 غذا: {food} عدد\n"
         f"🎾 توپ: {toy} عدد\n"
         f"🏠 لانه: {house} عدد\n\n"
-        f"نکته: قیمت‌ها هر ساعت بر اساس میزان فروش تغییر میکنند!"
+        f"💡 روی محصول مورد نظر کلیک کنید، سپس تعداد را وارد کنید."
     )
     
-    await update.message.reply_text(text, parse_mode=None, reply_markup=keyboard)
+    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
 
-async def sell_product_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def sell_select_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
-    
     user_id = query.from_user.id
     data = query.data
     
-    product_type = data.replace("sell_", "").replace("_flex", "")
+    await query.answer()
+    
+    product_type = data.replace("sell_select_", "")
+    
+    user_sell_data[user_id] = {
+        "product": product_type,
+        "quantity": 0,
+        "price": get_product_price(product_type)
+    }
+    
+    product_names = {
+        "clothes": "👕 لباس هاپویی",
+        "food": "🦴 غذای ویژه",
+        "toy": "🎾 توپ بازی",
+        "house": "🏠 لانه شیک"
+    }
     
     field_name = f"inventory_{product_type}"
     current_count = db.get_user_field(user_id, field_name) or 0
     
     if current_count <= 0:
-        await query.message.reply_text("❌ شما هیچ محصولی برای فروش ندارید!")
+        await query.message.reply_text(f"❌ شما {product_names.get(product_type, product_type)} ندارید!")
+        del user_sell_data[user_id]
         return
     
-    price = get_product_price(product_type)
-    record_sale(product_type)
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("❌ لغو", callback_data="sell_cancel")]
+    ])
     
-    db.update_field(user_id, field_name, -1, relative=True)
-    db.update_field(user_id, "points", price, relative=True)
+    await query.message.reply_text(
+        f"🛒 **فروش {product_names.get(product_type, product_type)}**\n"
+        f"━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💰 قیمت هر عدد: {user_sell_data[user_id]['price']} هاپ\n"
+        f"📦 موجودی شما: {current_count} عدد\n\n"
+        f"📝 لطفاً تعداد مورد نظر را به عدد وارد کنید:\n"
+        f"مثال: `5`",
+        reply_markup=keyboard
+    )
+
+
+async def handle_sell_quantity(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    text = update.message.text.strip()
+    
+    if user_id not in user_sell_data:
+        return
+    
+    if context.user_data.get('state') == "WAITING_FOR_DOG_NAME":
+        return
+    
+    try:
+        quantity = int(text)
+    except ValueError:
+        await update.message.reply_text("❌ لطفاً یک عدد معتبر وارد کنید!")
+        return
+    
+    if quantity <= 0:
+        await update.message.reply_text("❌ تعداد باید بیشتر از صفر باشد!")
+        return
+    
+    sell_data = user_sell_data[user_id]
+    product_type = sell_data["product"]
+    field_name = f"inventory_{product_type}"
+    current_count = db.get_user_field(user_id, field_name) or 0
+    
+    if quantity > current_count:
+        await update.message.reply_text(f"❌ شما فقط {current_count} عدد از این محصول دارید!")
+        return
+    
+    sell_data["quantity"] = quantity
+    total_price = quantity * sell_data["price"]
+    
+    product_names = {
+        "clothes": "👕 لباس هاپویی",
+        "food": "🦴 غذای ویژه",
+        "toy": "🎾 توپ بازی",
+        "house": "🏠 لانه شیک"
+    }
+    
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ تایید و فروش", callback_data=f"sell_confirm_{user_id}"),
+            InlineKeyboardButton("❌ لغو", callback_data="sell_cancel")
+        ]
+    ])
+    
+    await update.message.reply_text(
+        f"🔄 **تایید فروش**\n"
+        f"━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📦 محصول: {product_names.get(product_type, product_type)}\n"
+        f"🔢 تعداد: {quantity} عدد\n"
+        f"💰 قیمت هر عدد: {sell_data['price']} هاپ\n"
+        f"💵 مجموع: {total_price:,} هاپ\n\n"
+        f"⚠️ آیا از فروش مطمئن هستید؟",
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
+
+
+async def sell_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    data = query.data
+    
+    await query.answer()
+    
+    parts = data.split("_")
+    owner_id = int(parts[2])
+    
+    if user_id != owner_id:
+        await query.answer("❌ این پنل برای شما نیست!", show_alert=True)
+        return
+    
+    if user_id not in user_sell_data:
+        await query.message.reply_text("❌ خطا! دوباره تلاش کنید.")
+        return
+    
+    sell_data = user_sell_data[user_id]
+    product_type = sell_data["product"]
+    quantity = sell_data["quantity"]
+    price = sell_data["price"]
+    field_name = f"inventory_{product_type}"
+    
+    db.update_field(user_id, field_name, -quantity, relative=True)
+    total_price = quantity * price
+    db.update_field(user_id, "points", total_price, relative=True)
+    
+    record_sale(product_type)
     
     new_count = db.get_user_field(user_id, field_name) or 0
     new_points = db.get_user_field(user_id, "points") or 0
     
     product_names = {
-        "clothes": "لباس",
-        "food": "غذا",
-        "toy": "توپ",
-        "house": "لانه"
+        "clothes": "👕 لباس هاپویی",
+        "food": "🦴 غذای ویژه",
+        "toy": "🎾 توپ بازی",
+        "house": "🏠 لانه شیک"
     }
     
-    await query.message.reply_text(
-        f"✅ فروش موفق!\n"
+    del user_sell_data[user_id]
+    
+    await query.message.edit_text(
+        f"✅ **فروش موفق!**\n"
         f"━━━━━━━━━━━━━━━━━━━\n\n"
-        f"محصول: {product_names.get(product_type, product_type)}\n"
-        f"💰 قیمت فروش: {price} هاپ\n"
+        f"📦 محصول: {product_names.get(product_type, product_type)}\n"
+        f"🔢 تعداد فروخته شده: {quantity} عدد\n"
+        f"💰 قیمت هر عدد: {price} هاپ\n"
+        f"💵 مبلغ دریافت شده: {total_price:,} هاپ\n\n"
         f"📊 موجودی باقی‌مانده: {new_count} عدد\n"
-        f"💰 موجودی کیف: {new_points:,} هاپ"
+        f"💰 موجودی کیف: {new_points:,} هاپ",
+        parse_mode="Markdown"
     )
+
+
+async def sell_cancel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    
+    await query.answer()
+    
+    if user_id in user_sell_data:
+        del user_sell_data[user_id]
+    
+    await query.message.edit_text("❌ فروش لغو شد!")
 
 
 # ==================== گردونه شانس ====================
@@ -680,7 +812,6 @@ async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ==================== تبدیل جم به هاپ پوینت ====================
 async def convert_gem_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تبدیل جم به هاپ پوینت (هر ۱ جم = ۱۰,۰۰۰,۰۰۰ هاپ پوینت)"""
     user_id = update.effective_user.id
     
     in_jail, _ = is_user_in_jail(user_id)
@@ -1208,7 +1339,6 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_must_join_message(update, context)
         return
 
-    # ===== اول چک کن که کاربر در حالت تغییر نام سگ هست یا نه =====
     if hasattr(pet, "handle_dog_rename_text"):
         is_handled = await pet.handle_dog_rename_text(update, context)
         if is_handled:
@@ -1271,13 +1401,6 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_hop_internal(update, context, user)
         return
 
-    # ===== سگ (با نام) =====
-    # اگه کاربر اسم سگش رو گفت، پنل سگ باز بشه
-    dog_name = db.get_user_field(user_id, "dog_name")
-    if dog_name and clean_text == dog_name.lower():
-        await pet.show_dog_panel(update, context, user)
-        return
-
     # ===== بقیه دستورات =====
     if clean_text in ["پروفایل", "هاپوهام", "هاپوهاش"]:
         await pet.show_profile(update, context, user)
@@ -1326,6 +1449,7 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif text.startswith("کاهش جم"):
             await admin.remove_gem(update, context)
 
+
 async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -1337,13 +1461,21 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ===== فروش محصولات =====
-    if data in ["sell_clothes_flex", "sell_food_flex", "sell_toy_flex", "sell_house_flex"]:
-        await sell_product_callback(update, context)
-        return
-
     if data == "back_from_sell":
         await query.message.delete()
         await query.answer()
+        return
+    
+    if data in ["sell_select_clothes", "sell_select_food", "sell_select_toy", "sell_select_house"]:
+        await sell_select_callback(update, context)
+        return
+    
+    if data.startswith("sell_confirm_"):
+        await sell_confirm_callback(update, context)
+        return
+    
+    if data == "sell_cancel":
+        await sell_cancel_callback(update, context)
         return
 
     # ===== انتقال =====
