@@ -59,7 +59,7 @@ SPIN_PRIZES = [
     {"amount": 10000, "weight": 2},
     {"amount": 50000, "weight": 1},
     {"amount": 100000, "weight": 0.5},
-    {"gem": 1, "weight": 0.01},  # ← اضافه شد: ۱ جم با شانس ۰.۰۱%
+    {"gem": 1, "weight": 0.01},
 ]
 
 # ==================== دیکشنری انتقال‌های در انتظار ====================
@@ -143,7 +143,6 @@ def record_sale(product_code):
 
 # ==================== سیستم زندان ====================
 def is_user_in_jail(user_id):
-    """بررسی اینکه کاربر در زندان هست یا نه"""
     jail_until = db.get_user_field(user_id, "jail_until")
     if jail_until:
         try:
@@ -158,7 +157,6 @@ def is_user_in_jail(user_id):
     return False, None
 
 def put_user_in_jail(user_id, minutes=15, reason="قاچاق"):
-    """قرار دادن کاربر در زندان"""
     jail_until = datetime.now() + timedelta(minutes=minutes)
     db.update_field(user_id, "in_jail", 1, relative=False)
     db.update_field(user_id, "jail_until", jail_until.strftime("%Y-%m-%d %H:%M:%S"), relative=False)
@@ -166,13 +164,11 @@ def put_user_in_jail(user_id, minutes=15, reason="قاچاق"):
     return jail_until
 
 def release_from_jail(user_id):
-    """آزاد کردن کاربر از زندان"""
     db.update_field(user_id, "in_jail", 0, relative=False)
     db.update_field(user_id, "jail_until", None, relative=False)
     db.update_field(user_id, "jail_reason", None, relative=False)
 
 def check_hop_spam(user_id):
-    """بررسی اسپم هاپ (۱۰ ثانیه ۶ بار)"""
     now = time.time()
     if user_id not in hop_spam:
         hop_spam[user_id] = []
@@ -188,7 +184,6 @@ def check_hop_spam(user_id):
 
 # ==================== دستور زندان ====================
 async def jail_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش وضعیت زندان"""
     user_id = update.effective_user.id
     
     is_joined = await check_user_membership(context.bot, user_id)
@@ -245,22 +240,17 @@ async def jail_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def jail_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """مدیریت دکمه‌های زندان - فقط صاحب پنل میتواند کلیک کند"""
     query = update.callback_query
     user_id = query.from_user.id
     data = query.data
     
     await query.answer()
     
-    # ===== استخراج owner_id از دکمه =====
-    # فرمت: jail_pay_123456789 یا jail_stay_123456789
     parts = data.split("_")
-    owner_id = int(parts[2])  # آیدی صاحب زندان
+    owner_id = int(parts[2])
     
-    # ===== بررسی اینکه فقط خود کاربر بتونه کلیک کنه =====
     if user_id != owner_id:
         await query.answer("❌ این پنل برای شما نیست!", show_alert=True)
-        # پیام رو هم برای اون شخص میفرستیم
         await query.message.reply_text(
             f"⛔️ **دسترسی غیرمجاز!**\n"
             f"━━━━━━━━━━━━━━━━━━━\n\n"
@@ -269,7 +259,6 @@ async def jail_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # ===== ادامه کد (فقط برای صاحب پنل) =====
     if data.startswith("jail_pay_"):
         user_points = db.get_user_field(user_id, "points") or 0
         
@@ -617,7 +606,7 @@ async def sell_product_callback(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
 
-# ==================== گردونه شانس (با جم) ====================
+# ==================== گردونه شانس ====================
 async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -690,7 +679,6 @@ async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ==================== تبدیل جم به هاپ پوینت ====================
-# ==================== تبدیل جم به هاپ پوینت ====================
 async def convert_gem_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تبدیل جم به هاپ پوینت (هر ۱ جم = ۱۰,۰۰۰,۰۰۰ هاپ پوینت)"""
     user_id = update.effective_user.id
@@ -705,8 +693,10 @@ async def convert_gem_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await send_must_join_message(update, context)
         return
     
-    parts = update.message.text.split()
-    if len(parts) < 2:
+    text = update.message.text.strip()
+    parts = text.split()
+    
+    if len(parts) < 3:
         await update.message.reply_text(
             "❌ **فرمت اشتباه!**\n\n"
             "فرمت صحیح:\n"
@@ -716,9 +706,8 @@ async def convert_gem_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return
     
-    amount_str = parts[1]
+    amount_str = parts[2]
     
-    # ===== تبدیل اعداد فارسی به انگلیسی =====
     persian_to_english = {
         '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4',
         '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9'
@@ -727,16 +716,15 @@ async def convert_gem_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     for persian, english in persian_to_english.items():
         amount_str = amount_str.replace(persian, english)
     
-    # ===== حذف کاما و فاصله =====
-    amount_str = amount_str.replace(",", "").replace(" ", "")
+    amount_str = amount_str.replace(",", "").replace(" ", "").replace("٬", "")
     
     try:
         amount = int(amount_str)
     except ValueError:
         await update.message.reply_text(
-            "❌ **تعداد جم باید عدد باشد!**\n\n"
-            "مثال: `تبدیل جم 5`\n"
-            "یا `تبدیل جم ۱۰` (اعداد فارسی)"
+            f"❌ **تعداد جم باید عدد باشد!**\n\n"
+            f"مثال: `تبدیل جم 5`\n"
+            f"یا `تبدیل جم ۱۰` (اعداد فارسی)"
         )
         return
     
@@ -1109,7 +1097,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ["کارخونه", "شهر"],
             ["بانک", "زیرمجموعه‌گیری"],
             ["فروش محصولات", "انبار"],
-            ["تبدیل جم", "گردونه"],  # ← تبدیل جم اضافه شد
+            ["تبدیل جم", "گردونه"],
             ["لیدربرد", "زندان"],
             ["راهنما"],
         ],
@@ -1136,11 +1124,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("منوی سریع زیرمجموعه‌گیری:", reply_markup=inline_keyboard)
 
 
-# ==================== هاپ (سیستم خودت) ====================
+# ==================== هاپ ====================
 async def handle_hop_internal(update: Update, context: ContextTypes.DEFAULT_TYPE, user=None):
     user_id = update.effective_user.id
     
-    # ===== بررسی زندان و اسپم =====
     in_jail, _ = is_user_in_jail(user_id)
     if in_jail:
         await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
@@ -1157,7 +1144,6 @@ async def handle_hop_internal(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return
     
-    # ===== ادامه کد هاپ (همون سیستم خودت) =====
     current_time = int(time.time())
 
     last_hop_time = db.get_user_field(user_id, "last_hop_time") or 0
@@ -1327,6 +1313,7 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await admin.remove_level(update, context)
         elif text.startswith("همگانی"):
             await admin.broadcast(update, context)
+
 
 async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
