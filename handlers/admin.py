@@ -1,6 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 import database as db
+import config  # ← این رو اضافه کن
 
 async def add_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.reply_to_message:
