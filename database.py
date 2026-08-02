@@ -1,4 +1,3 @@
-
 from datetime import datetime, timedelta
 import sqlite3
 
@@ -39,6 +38,7 @@ def init_db():
             factory_count INTEGER DEFAULT 0,
             in_jail INTEGER DEFAULT 0,
             jail_until TEXT DEFAULT NULL,
+            jail_reason TEXT DEFAULT NULL,
             inviter_id INTEGER DEFAULT 0,
             referral_count INTEGER DEFAULT 0,
             inventory_diamond INTEGER DEFAULT 0,
@@ -62,6 +62,7 @@ def init_db():
         ("dog_hunger", "INTEGER DEFAULT 10"),
         ("dog_last_claim", "INTEGER DEFAULT 0"),
         ("dog_unclaimed_points", "REAL DEFAULT 0"),
+        ("jail_reason", "TEXT DEFAULT NULL"),  # ← اضافه شد
     ]
 
     for col_name, col_type in new_columns:
@@ -436,9 +437,6 @@ def set_inviter(user_id, inviter_id):
 
 def get_referral_stats(user_id):
     conn = get_connection()
-
-
-
     cursor = conn.cursor()
     try:
         cursor.execute(
