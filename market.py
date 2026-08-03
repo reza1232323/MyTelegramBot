@@ -5,6 +5,23 @@ from datetime import datetime
 import random
 import logging
 
+# ==================== توابع زندان ====================
+
+def is_user_in_jail(user_id):
+    """بررسی اینکه کاربر در زندان هست یا نه"""
+    jail_until = db.get_user_field(user_id, "jail_until")
+    if jail_until:
+        try:
+            jail_time = datetime.strptime(jail_until, "%Y-%m-%d %H:%M:%S")
+            if datetime.now() < jail_time:
+                return True, jail_time
+        except:
+            pass
+    db.update_field(user_id, "in_jail", 0, relative=False)
+    db.update_field(user_id, "jail_until", None, relative=False)
+    db.update_field(user_id, "jail_reason", None, relative=False)
+    return False, None
+
 # ==================== توابع مارکت ====================
 
 def init_market_table():
@@ -181,11 +198,6 @@ async def market_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     in_jail, _ = is_user_in_jail(user_id)
     if in_jail:
         await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
-        return
-    
-    is_joined = await check_user_membership(context.bot, user_id)
-    if not is_joined:
-        await send_must_join_message(update, context)
         return
     
     items = get_market_items(20)
