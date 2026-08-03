@@ -3,161 +3,173 @@ from telegram.ext import ContextTypes
 import database as db
 from datetime import datetime
 import random
-
-# ==================== دیکشنری مارکت ====================
-
-market_items = {}  # {item_id: {user_id, name, price, description, emoji, quantity, created_at}}
+import logging
 
 # ==================== توابع مارکت ====================
 
 def init_market_table():
     """ایجاد جدول مارکت در دیتابیس"""
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS market_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            item_name TEXT,
-            item_emoji TEXT,
-            price REAL,
-            description TEXT,
-            quantity INTEGER,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            is_active INTEGER DEFAULT 1
-        )
-    """)
-    conn.commit()
-    conn.close()
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS market_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                item_name TEXT,
+                item_emoji TEXT,
+                price REAL,
+                description TEXT,
+                quantity INTEGER,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                is_active INTEGER DEFAULT 1
+            )
+        """)
+        conn.commit()
+        conn.close()
+        print("✅ جدول market_items ایجاد شد!")
+    except Exception as e:
+        print(f"❌ خطا در ایجاد جدول market_items: {e}")
 
 def get_market_items(limit=20):
     """دریافت آیتم‌های فعال مارکت"""
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        SELECT id, user_id, item_name, item_emoji, price, description, quantity, created_at
-        FROM market_items 
-        WHERE is_active = 1 AND quantity > 0
-        ORDER BY created_at DESC
-        LIMIT ?
-    """, (limit,))
-    
-    items = cursor.fetchall()
-    conn.close()
-    
-    result = []
-    for item in items:
-        # دریافت نام کاربر فروشنده
-        seller = db.get_user(item[1])
-        seller_name = seller[1] if seller else "نامشخص"
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
         
-        result.append({
-            "id": item[0],
-            "user_id": item[1],
-            "seller_name": seller_name,
-            "name": item[2],
-            "emoji": item[3] or "📦",
-            "price": item[4],
-            "description": item[5] or "بدون توضیح",
-            "quantity": item[6],
-            "created_at": item[7]
-        })
-    
-    return result
+        cursor.execute("""
+            SELECT id, user_id, item_name, item_emoji, price, description, quantity, created_at
+            FROM market_items 
+            WHERE is_active = 1 AND quantity > 0
+            ORDER BY created_at DESC
+            LIMIT ?
+        """, (limit,))
+        
+        items = cursor.fetchall()
+        conn.close()
+        
+        result = []
+        for item in items:
+            seller = db.get_user(item[1])
+            seller_name = seller[1] if seller else "نامشخص"
+            
+            result.append({
+                "id": item[0],
+                "user_id": item[1],
+                "seller_name": seller_name,
+                "name": item[2],
+                "emoji": item[3] or "📦",
+                "price": item[4],
+                "description": item[5] or "بدون توضیح",
+                "quantity": item[6],
+                "created_at": item[7]
+            })
+        
+        return result
+    except Exception as e:
+        logging.error(f"Error getting market items: {e}")
+        return []
 
 def add_market_item(user_id, name, price, description, emoji="📦", quantity=1):
     """افزودن آیتم به مارکت"""
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        INSERT INTO market_items (user_id, item_name, item_emoji, price, description, quantity)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (user_id, name, emoji, price, description, quantity))
-    
-    item_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    
-    return item_id
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO market_items (user_id, item_name, item_emoji, price, description, quantity)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (user_id, name, emoji, price, description, quantity))
+        
+        item_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        return item_id
+    except Exception as e:
+        logging.error(f"Error adding market item: {e}")
+        return None
 
 def buy_market_item(user_id, item_id, quantity=1):
     """خرید آیتم از مارکت"""
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        SELECT user_id, item_name, item_emoji, price, quantity, description
-        FROM market_items WHERE id = ? AND is_active = 1
-    """, (item_id,))
-    
-    item = cursor.fetchone()
-    
-    if not item:
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT user_id, item_name, item_emoji, price, quantity, description
+            FROM market_items WHERE id = ? AND is_active = 1
+        """, (item_id,))
+        
+        item = cursor.fetchone()
+        
+        if not item:
+            conn.close()
+            return False, "❌ آیتم پیدا نشد!"
+        
+        seller_id, item_name, item_emoji, price, available_qty, description = item
+        
+        if seller_id == user_id:
+            conn.close()
+            return False, "❌ نمی‌توانید آیتم خودتان را بخرید!"
+        
+        if quantity > available_qty:
+            conn.close()
+            return False, f"❌ فقط {available_qty} عدد از این آیتم موجود است!"
+        
+        buyer_points = db.get_user_field(user_id, "points") or 0
+        total_price = price * quantity
+        
+        if buyer_points < total_price:
+            conn.close()
+            return False, f"❌ موجودی کافی نیست! نیاز به {total_price:,} هاپ پوینت دارید."
+        
+        db.update_field(user_id, "points", -total_price, relative=True)
+        db.update_field(seller_id, "points", total_price, relative=True)
+        
+        new_qty = available_qty - quantity
+        if new_qty <= 0:
+            cursor.execute("UPDATE market_items SET is_active = 0, quantity = 0 WHERE id = ?", (item_id,))
+        else:
+            cursor.execute("UPDATE market_items SET quantity = ? WHERE id = ?", (new_qty, item_id))
+        
+        conn.commit()
         conn.close()
-        return False, "❌ آیتم پیدا نشد!"
-    
-    seller_id, item_name, item_emoji, price, available_qty, description = item
-    
-    if seller_id == user_id:
-        conn.close()
-        return False, "❌ نمی‌توانید آیتم خودتان را بخرید!"
-    
-    if quantity > available_qty:
-        conn.close()
-        return False, f"❌ فقط {available_qty} عدد از این آیتم موجود است!"
-    
-    # بررسی موجودی خریدار
-    buyer_points = db.get_user_field(user_id, "points") or 0
-    total_price = price * quantity
-    
-    if buyer_points < total_price:
-        conn.close()
-        return False, f"❌ موجودی کافی نیست! نیاز به {total_price:,} هاپ پوینت دارید."
-    
-    # انجام خرید
-    db.update_field(user_id, "points", -total_price, relative=True)
-    db.update_field(seller_id, "points", total_price, relative=True)
-    
-    # کاهش موجودی
-    new_qty = available_qty - quantity
-    if new_qty <= 0:
-        cursor.execute("UPDATE market_items SET is_active = 0, quantity = 0 WHERE id = ?", (item_id,))
-    else:
-        cursor.execute("UPDATE market_items SET quantity = ? WHERE id = ?", (new_qty, item_id))
-    
-    conn.commit()
-    conn.close()
-    
-    return True, f"✅ **خرید موفق!**\n━━━━━━━━━━━━━━━━━━━\n\n{item_emoji} **{item_name}**\n📦 تعداد: {quantity} عدد\n💰 قیمت: {total_price:,} هاپ\n📝 {description}"
-
+        
+        return True, f"✅ **خرید موفق!**\n━━━━━━━━━━━━━━━━━━━\n\n{item_emoji} **{item_name}**\n📦 تعداد: {quantity} عدد\n💰 قیمت: {total_price:,} هاپ\n📝 {description}"
+    except Exception as e:
+        logging.error(f"Error buying market item: {e}")
+        return False, f"❌ خطا در خرید: {e}"
 
 def delete_market_item(user_id, item_id):
     """حذف آیتم از مارکت (فقط فروشنده)"""
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        SELECT user_id FROM market_items WHERE id = ? AND is_active = 1
-    """, (item_id,))
-    
-    item = cursor.fetchone()
-    
-    if not item:
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT user_id FROM market_items WHERE id = ? AND is_active = 1
+        """, (item_id,))
+        
+        item = cursor.fetchone()
+        
+        if not item:
+            conn.close()
+            return False, "❌ آیتم پیدا نشد!"
+        
+        if item[0] != user_id:
+            conn.close()
+            return False, "❌ شما اجازه حذف این آیتم را ندارید!"
+        
+        cursor.execute("UPDATE market_items SET is_active = 0 WHERE id = ?", (item_id,))
+        conn.commit()
         conn.close()
-        return False, "❌ آیتم پیدا نشد!"
-    
-    if item[0] != user_id:
-        conn.close()
-        return False, "❌ شما اجازه حذف این آیتم را ندارید!"
-    
-    cursor.execute("UPDATE market_items SET is_active = 0 WHERE id = ?", (item_id,))
-    conn.commit()
-    conn.close()
-    
-    return True, "✅ آیتم با موفقیت حذف شد!"
+        
+        return True, "✅ آیتم با موفقیت حذف شد!"
+    except Exception as e:
+        logging.error(f"Error deleting market item: {e}")
+        return False, f"❌ خطا در حذف: {e}"
 
 
 # ==================== دستورات مارکت ====================
@@ -179,7 +191,7 @@ async def market_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     items = get_market_items(20)
     
     if not items:
-        text = "🛒 **مارکت هاپو**\n━━━━━━━━━━━━━━━━━━━\n\n📭 هیچ آیتمی در مارکت وجود ندارد!\n\n💡 برای افزودن آیتم: `/افزودن آیتم`"
+        text = "🛒 **مارکت هاپو**\n━━━━━━━━━━━━━━━━━━━\n\n📭 هیچ آیتمی در مارکت وجود ندارد!\n\n💡 برای افزودن آیتم: **افزودن آیتم**"
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("➕ افزودن آیتم", callback_data="market_add")],
             [InlineKeyboardButton("🔄 بروزرسانی", callback_data="market_refresh")]
@@ -220,6 +232,133 @@ async def market_add_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         "📝 لطفاً نام آیتم را وارد کنید:\n"
         "مثال: `کلاه طلایی`"
     )
+
+
+async def market_my_items_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """نمایش آیتم‌های من در مارکت"""
+    query = update.callback_query
+    user_id = query.from_user.id
+    await query.answer()
+    
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, item_name, item_emoji, price, quantity, created_at
+            FROM market_items 
+            WHERE user_id = ? AND is_active = 1
+            ORDER BY created_at DESC
+        """, (user_id,))
+        
+        items = cursor.fetchall()
+        conn.close()
+        
+        if not items:
+            await query.message.edit_text(
+                "📋 **آیتم‌های من در مارکت**\n━━━━━━━━━━━━━━━━━━━\n\n"
+                "📭 شما هیچ آیتمی در مارکت ندارید!\n\n"
+                "💡 برای افزودن آیتم: **افزودن آیتم**"
+            )
+            return
+        
+        text = "📋 **آیتم‌های من در مارکت**\n━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        for item in items:
+            text += f"{item[2]} **{item[1]}**\n"
+            text += f"   💰 قیمت: {item[3]:,} هاپ\n"
+            text += f"   📦 موجودی: {item[4]} عدد\n"
+            text += f"   🆔 {item[0]}\n"
+            text += "━━━━━━━━━━━━━━━━━━━\n"
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("➕ افزودن آیتم", callback_data="market_add")],
+            [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
+        ])
+        
+        await query.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
+    except Exception as e:
+        logging.error(f"Error in market_my_items: {e}")
+        await query.message.edit_text("❌ خطا در دریافت آیتم‌های شما!")
+
+
+async def market_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بازگشت به مارکت"""
+    query = update.callback_query
+    await query.answer()
+    await market_command(update, context)
+
+
+async def market_refresh_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بروزرسانی مارکت"""
+    query = update.callback_query
+    await query.answer()
+    await market_command(update, context)
+
+
+async def market_search_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """جستجو در مارکت"""
+    query = update.callback_query
+    await query.answer()
+    
+    context.user_data['market_state'] = "waiting_search"
+    await query.message.edit_text(
+        "🔍 **جستجو در مارکت**\n━━━━━━━━━━━━━━━━━━━\n\n"
+        "📝 لطفاً نام آیتم مورد نظر را وارد کنید:"
+    )
+
+
+async def handle_market_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """جستجو و نمایش نتایج"""
+    user_id = update.effective_user.id
+    text = update.message.text.strip()
+    
+    if context.user_data.get('market_state') != "waiting_search":
+        return False
+    
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, user_id, item_name, item_emoji, price, description, quantity
+            FROM market_items 
+            WHERE is_active = 1 AND quantity > 0 AND item_name LIKE ?
+            ORDER BY created_at DESC
+            LIMIT 10
+        """, (f"%{text}%",))
+        
+        items = cursor.fetchall()
+        conn.close()
+        
+        context.user_data['market_state'] = None
+        
+        if not items:
+            await update.message.reply_text(f"🔍 **نتیجه جستجو برای `{text}`**\n━━━━━━━━━━━━━━━━━━━\n\n📭 هیچ آیتمی پیدا نشد!")
+            return True
+        
+        text_result = f"🔍 **نتیجه جستجو برای `{text}`**\n━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        for item in items:
+            seller = db.get_user(item[1])
+            seller_name = seller[1] if seller else "نامشخص"
+            
+            text_result += f"{item[3]} **{item[2]}**\n"
+            text_result += f"   👤 فروشنده: {seller_name}\n"
+            text_result += f"   💰 قیمت: {item[4]:,} هاپ\n"
+            text_result += f"   📦 موجودی: {item[6]} عدد\n"
+            text_result += f"   📝 {item[5]}\n"
+            text_result += f"   🆔 {item[0]}\n"
+            text_result += "━━━━━━━━━━━━━━━━━━━\n"
+        
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
+        ])
+        
+        await update.message.reply_text(text_result, parse_mode="Markdown", reply_markup=keyboard)
+        return True
+    except Exception as e:
+        logging.error(f"Error in market search: {e}")
+        await update.message.reply_text("❌ خطا در جستجو!")
+        return True
 
 
 async def handle_market_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -300,7 +439,6 @@ async def handle_market_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await update.message.reply_text("❌ لطفاً یک عدد معتبر وارد کنید!")
             return True
         
-        # افزودن آیتم به مارکت
         name = context.user_data.get('market_name')
         emoji = context.user_data.get('market_emoji', '📦')
         price = context.user_data.get('market_price')
@@ -308,19 +446,22 @@ async def handle_market_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         item_id = add_market_item(user_id, name, price, description, emoji, quantity)
         
-        # پاک کردن حالت
         context.user_data['market_state'] = None
         
-        await update.message.reply_text(
-            f"✅ **آیتم با موفقیت به مارکت اضافه شد!**\n"
-            f"━━━━━━━━━━━━━━━━━━━\n\n"
-            f"{emoji} **{name}**\n"
-            f"💰 قیمت: {price:,} هاپ\n"
-            f"📦 موجودی: {quantity} عدد\n"
-            f"📝 {description}\n"
-            f"🆔 {item_id}\n\n"
-            f"برای دیدن مارکت: **مارکت**"
-        )
+        if item_id:
+            await update.message.reply_text(
+                f"✅ **آیتم با موفقیت به مارکت اضافه شد!**\n"
+                f"━━━━━━━━━━━━━━━━━━━\n\n"
+                f"{emoji} **{name}**\n"
+                f"💰 قیمت: {price:,} هاپ\n"
+                f"📦 موجودی: {quantity} عدد\n"
+                f"📝 {description}\n"
+                f"🆔 {item_id}\n\n"
+                f"برای دیدن مارکت: **مارکت**"
+            )
+        else:
+            await update.message.reply_text("❌ خطا در افزودن آیتم به مارکت!")
+        
         return True
     
     return False
@@ -334,147 +475,44 @@ async def market_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     await query.answer()
     
-    # فرمت: market_buy_123
     parts = data.split("_")
     item_id = int(parts[2])
     
-    context.user_data['market_buy_item'] = item_id
-    context.user_data['market_state'] = "waiting_buy_quantity"
-    
-    # دریافت اطلاعات آیتم
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT item_name, item_emoji, price, quantity FROM market_items WHERE id = ? AND is_active = 1
-    """, (item_id,))
-    item = cursor.fetchone()
-    conn.close()
-    
-    if not item:
-        await query.message.reply_text("❌ آیتم پیدا نشد!")
-        return
-    
-    await query.message.reply_text(
-        f"🛒 **خرید آیتم**\n━━━━━━━━━━━━━━━━━━━\n\n"
-        f"{item[1]} **{item[0]}**\n"
-        f"💰 قیمت هر عدد: {item[2]:,} هاپ\n"
-        f"📦 موجودی: {item[3]} عدد\n\n"
-        f"📝 لطفاً تعداد مورد نظر را وارد کنید:"
-    )
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT item_name, item_emoji, price, quantity FROM market_items WHERE id = ? AND is_active = 1
+        """, (item_id,))
+        item = cursor.fetchone()
+        conn.close()
+        
+        if not item:
+            await query.message.reply_text("❌ آیتم پیدا نشد!")
+            return
+        
+        success, message = buy_market_item(user_id, item_id, 1)
+        
+        if success:
+            await query.message.edit_text(message, parse_mode="Markdown")
+        else:
+            await query.message.reply_text(message, parse_mode="Markdown")
+            
+    except Exception as e:
+        logging.error(f"Error in market_buy_callback: {e}")
+        await query.message.reply_text("❌ خطا در خرید آیتم!")
 
 
-async def market_my_items_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش آیتم‌های من در مارکت"""
+async def market_delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """حذف آیتم از مارکت"""
     query = update.callback_query
     user_id = query.from_user.id
+    data = query.data
+    
     await query.answer()
     
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT id, item_name, item_emoji, price, quantity, created_at
-        FROM market_items 
-        WHERE user_id = ? AND is_active = 1
-        ORDER BY created_at DESC
-    """, (user_id,))
+    parts = data.split("_")
+    item_id = int(parts[2])
     
-    items = cursor.fetchall()
-    conn.close()
-    
-    if not items:
-        await query.message.edit_text(
-            "📋 **آیتم‌های من در مارکت**\n━━━━━━━━━━━━━━━━━━━\n\n"
-            "📭 شما هیچ آیتمی در مارکت ندارید!\n\n"
-            "💡 برای افزودن آیتم: `/افزودن آیتم`"
-        )
-        return
-    
-    text = "📋 **آیتم‌های من در مارکت**\n━━━━━━━━━━━━━━━━━━━\n\n"
-    
-    for item in items:
-        text += f"{item[2]} **{item[1]}**\n"
-        text += f"   💰 قیمت: {item[3]:,} هاپ\n"
-        text += f"   📦 موجودی: {item[4]} عدد\n"
-        text += f"   🆔 {item[0]}\n"
-        text += "━━━━━━━━━━━━━━━━━━━\n"
-    
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("➕ افزودن آیتم", callback_data="market_add")],
-        [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
-    ])
-    
-    await query.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
-
-
-async def market_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بازگشت به مارکت"""
-    query = update.callback_query
-    await query.answer()
-    await market_command(update, context)
-
-
-async def market_refresh_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بروزرسانی مارکت"""
-    query = update.callback_query
-    await query.answer()
-    await market_command(update, context)
-
-
-async def market_search_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """جستجو در مارکت"""
-    query = update.callback_query
-    await query.answer()
-    
-    context.user_data['market_state'] = "waiting_search"
-    await query.message.edit_text(
-        "🔍 **جستجو در مارکت**\n━━━━━━━━━━━━━━━━━━━\n\n"
-        "📝 لطفاً نام آیتم مورد نظر را وارد کنید:"
-    )
-
-
-async def handle_market_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """جستجو و نمایش نتایج"""
-    user_id = update.effective_user.id
-    text = update.message.text.strip()
-    
-    if context.user_data.get('market_state') != "waiting_search":
-        return False
-    
-    conn = db.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT id, user_id, item_name, item_emoji, price, description, quantity
-        FROM market_items 
-        WHERE is_active = 1 AND quantity > 0 AND item_name LIKE ?
-        ORDER BY created_at DESC
-        LIMIT 10
-    """, (f"%{text}%",))
-    
-    items = cursor.fetchall()
-    conn.close()
-    
-    context.user_data['market_state'] = None
-    
-    if not items:
-        await update.message.reply_text(f"🔍 **نتیجه جستجو برای `{text}`**\n━━━━━━━━━━━━━━━━━━━\n\n📭 هیچ آیتمی پیدا نشد!")
-        return True
-    
-    text = f"🔍 **نتیجه جستجو برای `{text}`**\n━━━━━━━━━━━━━━━━━━━\n\n"
-    
-    for item in items:
-        seller = db.get_user(item[1])
-        seller_name = seller[1] if seller else "نامشخص"
-        
-        text += f"{item[3]} **{item[2]}**\n"
-        text += f"   👤 فروشنده: {seller_name}\n"
-        text += f"   💰 قیمت: {item[4]:,} هاپ\n"
-        text += f"   📦 موجودی: {item[6]} عدد\n"
-        text += f"   🆔 {item[0]}\n"
-        text += "━━━━━━━━━━━━━━━━━━━\n"
-    
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
-    ])
-    
-    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
-    return True
+    success, message = delete_market_item(user_id, item_id)
+    await query.message.edit_text(message, parse_mode="Markdown")
