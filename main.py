@@ -832,6 +832,9 @@ async def spin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⏳ گردونه بعدی: ۱۲ ساعت دیگر"
         )
     
+    # ===== بروزرسانی ماموریت گردونه =====
+    await update_missions_on_action(user_id, "spin")
+    
     await msg.edit_text(final_text, parse_mode=None)
 
 
@@ -1220,6 +1223,9 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.callback_query.message.reply_text(text, parse_mode=None, reply_markup=keyboard)
     else:
         await update.message.reply_text(text, parse_mode=None, reply_markup=keyboard)
+    
+    # ===== بروزرسانی ماموریت دعوت =====
+    await update_missions_on_action(user_id, "invite", ref_count)
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1232,6 +1238,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         inviter_id = int(context.args[0])
         if hasattr(db, "set_inviter") and db.set_inviter(user_id, inviter_id):
             db.update_field(inviter_id, "points", REFERRAL_REWARD, relative=True)
+            # ===== بروزرسانی ماموریت دعوت برای دعوت‌کننده =====
+            await update_missions_on_action(inviter_id, "invite")
             try:
                 await context.bot.send_message(
                     chat_id=inviter_id,
@@ -1292,9 +1300,6 @@ async def handle_hop_internal(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
         return
     
-    # بروزرسانی ماموریت هاپ
-    await update_missions_on_action(user_id, "hop")
-    
     if check_hop_spam(user_id):
         put_user_in_jail(user_id, minutes=15, reason="اسپم در هاپ (۶ بار در ۱۰ ثانیه)")
         await update.message.reply_text(
@@ -1343,6 +1348,9 @@ async def handle_hop_internal(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     current_points = db.get_user_field(user_id, "points") or 0
 
+    # ===== بروزرسانی ماموریت‌ها (فقط بعد از هاپ موفق) =====
+    await update_missions_on_action(user_id, "hop")
+
     await update.message.reply_text(
         f"🐾 **هاپ با موفقیت انجام شد!**\n\n"
         f"👤 کاربر: {update.effective_user.first_name}\n"
@@ -1352,29 +1360,6 @@ async def handle_hop_internal(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"_۵ دقیقه دیگر می‌توانید دوباره هاپ بزنید._",
         parse_mode='Markdown'
     )
-
-
-# ==================== تابع بروزرسانی ماموریت‌ها ====================
-
-async def update_missions_on_action(user_id, action_type, count=1):
-    """بروزرسانی ماموریت‌ها بر اساس اقدام کاربر"""
-    try:
-        if action_type == "hop":
-            update_mission_progress(user_id, "daily_hop", count)
-            update_mission_progress(user_id, "weekly_hop", count)
-        elif action_type == "spin":
-            update_mission_progress(user_id, "daily_spin", count)
-            update_mission_progress(user_id, "weekly_spin", count)
-        elif action_type == "sell":
-            update_mission_progress(user_id, "daily_sell", count)
-        elif action_type == "feed":
-            update_mission_progress(user_id, "daily_feed", count)
-        elif action_type == "factory":
-            update_mission_progress(user_id, "weekly_factory", count)
-        elif action_type == "invite":
-            update_mission_progress(user_id, "weekly_invite", count)
-    except Exception as e:
-        logging.error(f"Error updating missions: {e}")
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
@@ -1696,15 +1681,12 @@ def main():
     app.add_handler(CallbackQueryHandler(callback_router))
 
     # ===== تایمر ریست ماموریت‌ها =====
-    # روش ۱:
     loop = asyncio.get_event_loop()
     loop.create_task(reset_daily_missions())
-    
-    # یا روش ۲:
-    # asyncio.ensure_future(reset_daily_missions())
 
     print("🤖 Bot is active...")
-    app.run_polling()
+    app.run_polling(drop_pending_updates=True)
+
 
 if __name__ == "__main__":
     main()
