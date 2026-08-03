@@ -47,7 +47,6 @@ def get_user_missions(user_id):
     conn = db.get_connection()
     cursor = conn.cursor()
     
-    # ایجاد جدول ماموریت‌ها اگر وجود نداشت
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_missions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,7 +65,6 @@ def get_user_missions(user_id):
     today = datetime.now().strftime("%Y-%m-%d")
     week_start = (datetime.now() - timedelta(days=datetime.now().weekday())).strftime("%Y-%m-%d")
     
-    # دریافت ماموریت‌های روزانه
     daily_missions = []
     for mission in DAILY_MISSIONS:
         cursor.execute("""
@@ -93,7 +91,6 @@ def get_user_missions(user_id):
             "type": "daily"
         })
     
-    # دریافت ماموریت‌های هفتگی
     weekly_missions = []
     for mission in WEEKLY_MISSIONS:
         cursor.execute("""
@@ -125,52 +122,76 @@ def get_user_missions(user_id):
 
 
 def update_mission_progress(user_id, mission_id, progress_increment=1):
-    """به‌روزرسانی پیشرفت ماموریت"""
+    """به‌روزرسانی پیشرفت ماموریت (فقط وقتی اقدام موفق باشه)"""
     conn = db.get_connection()
     cursor = conn.cursor()
     
     today = datetime.now().strftime("%Y-%m-%d")
     week_start = (datetime.now() - timedelta(days=datetime.now().weekday())).strftime("%Y-%m-%d")
     
-    # بروزرسانی روزانه
     for mission in DAILY_MISSIONS:
         if mission["id"] == mission_id:
             cursor.execute("""
-                SELECT progress FROM user_missions 
+                SELECT progress, completed FROM user_missions 
                 WHERE user_id = ? AND mission_id = ? AND mission_type = 'daily' AND date = ?
             """, (user_id, mission_id, today))
             result = cursor.fetchone()
             
             if result:
-                progress = result[0]
+                progress, completed = result
+                if completed:
+                    conn.close()
+                    return True
                 new_progress = min(progress + progress_increment, mission["target"])
-                completed = 1 if new_progress >= mission["target"] else 0
+                new_completed = 1 if new_progress >= mission["target"] else 0
                 cursor.execute("""
                     UPDATE user_missions SET progress = ?, completed = ? 
                     WHERE user_id = ? AND mission_id = ? AND mission_type = 'daily' AND date = ?
-                """, (new_progress, completed, user_id, mission_id, today))
+                """, (new_progress, new_completed, user_id, mission_id, today))
+                conn.commit()
+                conn.close()
+                return new_progress >= mission["target"]
+            else:
+                new_progress = min(progress_increment, mission["target"])
+                new_completed = 1 if new_progress >= mission["target"] else 0
+                cursor.execute("""
+                    INSERT INTO user_missions (user_id, mission_id, mission_type, progress, completed, date)
+                    VALUES (?, ?, 'daily', ?, ?, ?)
+                """, (user_id, mission_id, new_progress, new_completed, today))
                 conn.commit()
                 conn.close()
                 return new_progress >= mission["target"]
             break
     
-    # بروزرسانی هفتگی
     for mission in WEEKLY_MISSIONS:
         if mission["id"] == mission_id:
             cursor.execute("""
-                SELECT progress FROM user_missions 
+                SELECT progress, completed FROM user_missions 
                 WHERE user_id = ? AND mission_id = ? AND mission_type = 'weekly' AND date >= ?
             """, (user_id, mission_id, week_start))
             result = cursor.fetchone()
             
             if result:
-                progress = result[0]
+                progress, completed = result
+                if completed:
+                    conn.close()
+                    return True
                 new_progress = min(progress + progress_increment, mission["target"])
-                completed = 1 if new_progress >= mission["target"] else 0
+                new_completed = 1 if new_progress >= mission["target"] else 0
                 cursor.execute("""
                     UPDATE user_missions SET progress = ?, completed = ? 
                     WHERE user_id = ? AND mission_id = ? AND mission_type = 'weekly' AND date >= ?
-                """, (new_progress, completed, user_id, mission_id, week_start))
+                """, (new_progress, new_completed, user_id, mission_id, week_start))
+                conn.commit()
+                conn.close()
+                return new_progress >= mission["target"]
+            else:
+                new_progress = min(progress_increment, mission["target"])
+                new_completed = 1 if new_progress >= mission["target"] else 0
+                cursor.execute("""
+                    INSERT INTO user_missions (user_id, mission_id, mission_type, progress, completed, date)
+                    VALUES (?, ?, 'weekly', ?, ?, ?)
+                """, (user_id, mission_id, new_progress, new_completed, week_start))
                 conn.commit()
                 conn.close()
                 return new_progress >= mission["target"]
@@ -189,7 +210,6 @@ def claim_mission_reward(user_id, mission_id, mission_type):
     week_start = (datetime.now() - timedelta(days=datetime.now().weekday())).strftime("%Y-%m-%d")
     
     if mission_type == "daily":
-        # پیدا کردن ماموریت روزانه
         mission_data = None
         for m in DAILY_MISSIONS:
             if m["id"] == mission_id:
@@ -220,7 +240,6 @@ def claim_mission_reward(user_id, mission_id, mission_type):
             conn.close()
             return False, "پاداش این ماموریت قبلاً دریافت شده!"
         
-        # اعطای پاداش
         if mission_data["reward_gem"] > 0:
             db.update_field(user_id, "hop_gem", mission_data["reward_gem"], relative=True)
         if mission_data["reward_point"] > 0:
@@ -235,7 +254,7 @@ def claim_mission_reward(user_id, mission_id, mission_type):
         
         return True, f"✅ پاداش دریافت شد!\n💎 {mission_data['reward_gem']} جم\n💰 {mission_data['reward_point']} هاپ پوینت"
     
-    else:  # weekly
+    else:
         mission_data = None
         for m in WEEKLY_MISSIONS:
             if m["id"] == mission_id:
@@ -291,17 +310,6 @@ async def missions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if in_jail:
         await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
         return
-    
-    # بررسی عضویت در کانال (اینجا باید از main.py import کنی)
-    # فعلاً از یه تابع placeholder استفاده میکنیم
-    try:
-        from main import check_user_membership, send_must_join_message
-        is_joined = await check_user_membership(context.bot, user_id)
-        if not is_joined:
-            await send_must_join_message(update, context)
-            return
-    except ImportError:
-        pass
     
     daily_missions, weekly_missions = get_user_missions(user_id)
     
@@ -390,7 +398,7 @@ def make_progress_bar(current, target):
 # ==================== تابع بروزرسانی خودکار ماموریت‌ها ====================
 
 async def update_missions_on_action(user_id, action_type, count=1):
-    """بروزرسانی ماموریت‌ها بر اساس اقدام کاربر"""
+    """بروزرسانی ماموریت‌ها بر اساس اقدام کاربر (فقط اقدامات موفق)"""
     try:
         if action_type == "hop":
             update_mission_progress(user_id, "daily_hop", count)
