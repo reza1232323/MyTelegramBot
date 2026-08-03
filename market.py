@@ -154,7 +154,7 @@ def buy_market_item(user_id, item_id, quantity=1):
         conn.commit()
         conn.close()
         
-        return True, f"✅ **خرید موفق!**\n━━━━━━━━━━━━━━━━━━━\n\n{item_emoji} **{item_name}**\n📦 تعداد: {quantity} عدد\n💰 قیمت: {total_price:,} هاپ\n📝 {description}"
+        return True, f"✅ خرید موفق!\n━━━━━━━━━━━━━━━━━━━\n\n{item_emoji} {item_name}\n📦 تعداد: {quantity} عدد\n💰 قیمت: {total_price:,} هاپ\n📝 {description}"
     except Exception as e:
         logging.error(f"Error buying market item: {e}")
         return False, f"❌ خطا در خرید: {e}"
@@ -203,18 +203,18 @@ async def market_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     items = get_market_items(20)
     
     if not items:
-        text = "🛒 **مارکت هاپو**\n━━━━━━━━━━━━━━━━━━━\n\n📭 هیچ آیتمی در مارکت وجود ندارد!\n\n💡 برای افزودن آیتم: **افزودن آیتم**"
+        text = "🛒 مارکت هاپو\n━━━━━━━━━━━━━━━━━━━\n\n📭 هیچ آیتمی در مارکت وجود ندارد!\n\n💡 برای افزودن آیتم: افزودن آیتم"
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("➕ افزودن آیتم", callback_data="market_add")],
             [InlineKeyboardButton("🔄 بروزرسانی", callback_data="market_refresh")]
         ])
-        await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
+        await update.message.reply_text(text, parse_mode=None, reply_markup=keyboard)
         return
     
-    text = "🛒 **مارکت هاپو** 🛒\n━━━━━━━━━━━━━━━━━━━\n\n"
+    text = "🛒 مارکت هاپو 🛒\n━━━━━━━━━━━━━━━━━━━\n\n"
     
     for item in items[:10]:
-        text += f"{item['emoji']} **{item['name']}**\n"
+        text += f"{item['emoji']} {item['name']}\n"
         text += f"   👤 فروشنده: {item['seller_name']}\n"
         text += f"   💰 قیمت: {item['price']:,} هاپ\n"
         text += f"   📦 موجودی: {item['quantity']} عدد\n"
@@ -229,7 +229,7 @@ async def market_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔄 بروزرسانی", callback_data="market_refresh")]
     ])
     
-    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
+    await update.message.reply_text(text, parse_mode=None, reply_markup=keyboard)
 
 
 async def market_add_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -240,9 +240,10 @@ async def market_add_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     context.user_data['market_state'] = "waiting_name"
     await query.message.edit_text(
-        "🛒 **افزودن آیتم به مارکت**\n━━━━━━━━━━━━━━━━━━━\n\n"
+        "🛒 افزودن آیتم به مارکت\n━━━━━━━━━━━━━━━━━━━\n\n"
         "📝 لطفاً نام آیتم را وارد کنید:\n"
-        "مثال: `کلاه طلایی`"
+        "مثال: کلاه طلایی",
+        parse_mode=None
     )
 
 
@@ -267,16 +268,17 @@ async def market_my_items_callback(update: Update, context: ContextTypes.DEFAULT
         
         if not items:
             await query.message.edit_text(
-                "📋 **آیتم‌های من در مارکت**\n━━━━━━━━━━━━━━━━━━━\n\n"
+                "📋 آیتم‌های من در مارکت\n━━━━━━━━━━━━━━━━━━━\n\n"
                 "📭 شما هیچ آیتمی در مارکت ندارید!\n\n"
-                "💡 برای افزودن آیتم: **افزودن آیتم**"
+                "💡 برای افزودن آیتم: افزودن آیتم",
+                parse_mode=None
             )
             return
         
-        text = "📋 **آیتم‌های من در مارکت**\n━━━━━━━━━━━━━━━━━━━\n\n"
+        text = "📋 آیتم‌های من در مارکت\n━━━━━━━━━━━━━━━━━━━\n\n"
         
         for item in items:
-            text += f"{item[2]} **{item[1]}**\n"
+            text += f"{item[2]} {item[1]}\n"
             text += f"   💰 قیمت: {item[3]:,} هاپ\n"
             text += f"   📦 موجودی: {item[4]} عدد\n"
             text += f"   🆔 {item[0]}\n"
@@ -287,10 +289,10 @@ async def market_my_items_callback(update: Update, context: ContextTypes.DEFAULT
             [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
         ])
         
-        await query.message.edit_text(text, parse_mode="Markdown", reply_markup=keyboard)
+        await query.message.edit_text(text, parse_mode=None, reply_markup=keyboard)
     except Exception as e:
         logging.error(f"Error in market_my_items: {e}")
-        await query.message.edit_text("❌ خطا در دریافت آیتم‌های شما!")
+        await query.message.edit_text("❌ خطا در دریافت آیتم‌های شما!", parse_mode=None)
 
 
 async def market_back_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -314,8 +316,9 @@ async def market_search_callback(update: Update, context: ContextTypes.DEFAULT_T
     
     context.user_data['market_state'] = "waiting_search"
     await query.message.edit_text(
-        "🔍 **جستجو در مارکت**\n━━━━━━━━━━━━━━━━━━━\n\n"
-        "📝 لطفاً نام آیتم مورد نظر را وارد کنید:"
+        "🔍 جستجو در مارکت\n━━━━━━━━━━━━━━━━━━━\n\n"
+        "📝 لطفاً نام آیتم مورد نظر را وارد کنید:",
+        parse_mode=None
     )
 
 
@@ -344,16 +347,16 @@ async def handle_market_search(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data['market_state'] = None
         
         if not items:
-            await update.message.reply_text(f"🔍 **نتیجه جستجو برای `{text}`**\n━━━━━━━━━━━━━━━━━━━\n\n📭 هیچ آیتمی پیدا نشد!")
+            await update.message.reply_text(f"🔍 نتیجه جستجو برای `{text}`\n━━━━━━━━━━━━━━━━━━━\n\n📭 هیچ آیتمی پیدا نشد!", parse_mode=None)
             return True
         
-        text_result = f"🔍 **نتیجه جستجو برای `{text}`**\n━━━━━━━━━━━━━━━━━━━\n\n"
+        text_result = f"🔍 نتیجه جستجو برای `{text}`\n━━━━━━━━━━━━━━━━━━━\n\n"
         
         for item in items:
             seller = db.get_user(item[1])
             seller_name = seller[1] if seller else "نامشخص"
             
-            text_result += f"{item[3]} **{item[2]}**\n"
+            text_result += f"{item[3]} {item[2]}\n"
             text_result += f"   👤 فروشنده: {seller_name}\n"
             text_result += f"   💰 قیمت: {item[4]:,} هاپ\n"
             text_result += f"   📦 موجودی: {item[6]} عدد\n"
@@ -365,11 +368,11 @@ async def handle_market_search(update: Update, context: ContextTypes.DEFAULT_TYP
             [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
         ])
         
-        await update.message.reply_text(text_result, parse_mode="Markdown", reply_markup=keyboard)
+        await update.message.reply_text(text_result, parse_mode=None, reply_markup=keyboard)
         return True
     except Exception as e:
         logging.error(f"Error in market search: {e}")
-        await update.message.reply_text("❌ خطا در جستجو!")
+        await update.message.reply_text("❌ خطا در جستجو!", parse_mode=None)
         return True
 
 
@@ -386,10 +389,11 @@ async def handle_market_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.user_data['market_name'] = text
         context.user_data['market_state'] = "waiting_emoji"
         await update.message.reply_text(
-            "🛒 **افزودن آیتم به مارکت**\n━━━━━━━━━━━━━━━━━━━\n\n"
+            "🛒 افزودن آیتم به مارکت\n━━━━━━━━━━━━━━━━━━━\n\n"
             "🎨 لطفاً ایموجی آیتم را وارد کنید:\n"
-            "مثال: `👑` یا `🎩`\n\n"
-            "💡 اگر نمی‌خواهید ایموجی بذارید، `-` را وارد کنید."
+            "مثال: 👑 یا 🎩\n\n"
+            "💡 اگر نمی‌خواهید ایموجی بذارید، - را وارد کنید.",
+            parse_mode=None
         )
         return True
     
@@ -400,9 +404,10 @@ async def handle_market_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             context.user_data['market_emoji'] = text
         context.user_data['market_state'] = "waiting_price"
         await update.message.reply_text(
-            "🛒 **افزودن آیتم به مارکت**\n━━━━━━━━━━━━━━━━━━━\n\n"
+            "🛒 افزودن آیتم به مارکت\n━━━━━━━━━━━━━━━━━━━\n\n"
             "💰 لطفاً قیمت هر عدد را به هاپ پوینت وارد کنید:\n"
-            "مثال: `500`"
+            "مثال: 500",
+            parse_mode=None
         )
         return True
     
@@ -410,19 +415,20 @@ async def handle_market_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         try:
             price = int(text)
             if price <= 0:
-                await update.message.reply_text("❌ قیمت باید بیشتر از صفر باشد!")
+                await update.message.reply_text("❌ قیمت باید بیشتر از صفر باشد!", parse_mode=None)
                 return True
         except ValueError:
-            await update.message.reply_text("❌ لطفاً یک عدد معتبر وارد کنید!")
+            await update.message.reply_text("❌ لطفاً یک عدد معتبر وارد کنید!", parse_mode=None)
             return True
         
         context.user_data['market_price'] = price
         context.user_data['market_state'] = "waiting_description"
         await update.message.reply_text(
-            "🛒 **افزودن آیتم به مارکت**\n━━━━━━━━━━━━━━━━━━━\n\n"
+            "🛒 افزودن آیتم به مارکت\n━━━━━━━━━━━━━━━━━━━\n\n"
             "📝 لطفاً توضیحات آیتم را وارد کنید:\n"
-            "مثال: `کلاه طلایی مخصوص هاپوها`\n\n"
-            "💡 اگر توضیحی ندارید، `-` را وارد کنید."
+            "مثال: کلاه طلایی مخصوص هاپوها\n\n"
+            "💡 اگر توضیحی ندارید، - را وارد کنید.",
+            parse_mode=None
         )
         return True
     
@@ -435,9 +441,10 @@ async def handle_market_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.user_data['market_description'] = description
         context.user_data['market_state'] = "waiting_quantity"
         await update.message.reply_text(
-            "🛒 **افزودن آیتم به مارکت**\n━━━━━━━━━━━━━━━━━━━\n\n"
+            "🛒 افزودن آیتم به مارکت\n━━━━━━━━━━━━━━━━━━━\n\n"
             "📦 لطفاً تعداد موجودی را وارد کنید:\n"
-            "مثال: `10`"
+            "مثال: 10",
+            parse_mode=None
         )
         return True
     
@@ -445,10 +452,10 @@ async def handle_market_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         try:
             quantity = int(text)
             if quantity <= 0:
-                await update.message.reply_text("❌ تعداد باید بیشتر از صفر باشد!")
+                await update.message.reply_text("❌ تعداد باید بیشتر از صفر باشد!", parse_mode=None)
                 return True
         except ValueError:
-            await update.message.reply_text("❌ لطفاً یک عدد معتبر وارد کنید!")
+            await update.message.reply_text("❌ لطفاً یک عدد معتبر وارد کنید!", parse_mode=None)
             return True
         
         name = context.user_data.get('market_name')
@@ -462,17 +469,18 @@ async def handle_market_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         if item_id:
             await update.message.reply_text(
-                f"✅ **آیتم با موفقیت به مارکت اضافه شد!**\n"
+                f"✅ آیتم با موفقیت به مارکت اضافه شد!\n"
                 f"━━━━━━━━━━━━━━━━━━━\n\n"
-                f"{emoji} **{name}**\n"
+                f"{emoji} {name}\n"
                 f"💰 قیمت: {price:,} هاپ\n"
                 f"📦 موجودی: {quantity} عدد\n"
                 f"📝 {description}\n"
                 f"🆔 {item_id}\n\n"
-                f"برای دیدن مارکت: **مارکت**"
+                f"برای دیدن مارکت: مارکت",
+                parse_mode=None
             )
         else:
-            await update.message.reply_text("❌ خطا در افزودن آیتم به مارکت!")
+            await update.message.reply_text("❌ خطا در افزودن آیتم به مارکت!", parse_mode=None)
         
         return True
     
@@ -500,19 +508,19 @@ async def market_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         conn.close()
         
         if not item:
-            await query.message.reply_text("❌ آیتم پیدا نشد!")
+            await query.message.reply_text("❌ آیتم پیدا نشد!", parse_mode=None)
             return
         
         success, message = buy_market_item(user_id, item_id, 1)
         
         if success:
-            await query.message.edit_text(message, parse_mode="Markdown")
+            await query.message.edit_text(message, parse_mode=None)
         else:
-            await query.message.reply_text(message, parse_mode="Markdown")
+            await query.message.reply_text(message, parse_mode=None)
             
     except Exception as e:
         logging.error(f"Error in market_buy_callback: {e}")
-        await query.message.reply_text("❌ خطا در خرید آیتم!")
+        await query.message.reply_text("❌ خطا در خرید آیتم!", parse_mode=None)
 
 
 async def market_delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -527,4 +535,4 @@ async def market_delete_callback(update: Update, context: ContextTypes.DEFAULT_T
     item_id = int(parts[2])
     
     success, message = delete_market_item(user_id, item_id)
-    await query.message.edit_text(message, parse_mode="Markdown")
+    await query.message.edit_text(message, parse_mode=None)
