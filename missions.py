@@ -9,7 +9,6 @@ import logging
 # ==================== توابع زندان ====================
 
 def is_user_in_jail(user_id):
-    """بررسی اینکه کاربر در زندان هست یا نه"""
     jail_until = db.get_user_field(user_id, "jail_until")
     if jail_until:
         try:
@@ -43,7 +42,6 @@ WEEKLY_MISSIONS = [
 # ==================== توابع ماموریت ====================
 
 def get_user_missions(user_id):
-    """دریافت وضعیت ماموریت‌های کاربر"""
     conn = db.get_connection()
     cursor = conn.cursor()
     
@@ -122,7 +120,6 @@ def get_user_missions(user_id):
 
 
 def update_mission_progress(user_id, mission_id, progress_increment=1):
-    """به‌روزرسانی پیشرفت ماموریت (فقط وقتی اقدام موفق باشه)"""
     conn = db.get_connection()
     cursor = conn.cursor()
     
@@ -202,7 +199,6 @@ def update_mission_progress(user_id, mission_id, progress_increment=1):
 
 
 def claim_mission_reward(user_id, mission_id, mission_type):
-    """دریافت پاداش ماموریت"""
     conn = db.get_connection()
     cursor = conn.cursor()
     
@@ -252,7 +248,13 @@ def claim_mission_reward(user_id, mission_id, mission_type):
         conn.commit()
         conn.close()
         
-        return True, f"✅ پاداش دریافت شد!\n💎 {mission_data['reward_gem']} جم\n💰 {mission_data['reward_point']} هاپ پوینت"
+        reward_text = ""
+        if mission_data["reward_gem"] > 0:
+            reward_text += f"💎 {mission_data['reward_gem']} جم\n"
+        if mission_data["reward_point"] > 0:
+            reward_text += f"💰 {mission_data['reward_point']:,} هاپ پوینت\n"
+        
+        return True, f"✅ پاداش دریافت شد!\n━━━━━━━━━━━━━━━━━━━\n\n{reward_text}"
     
     else:
         mission_data = None
@@ -297,7 +299,13 @@ def claim_mission_reward(user_id, mission_id, mission_type):
         conn.commit()
         conn.close()
         
-        return True, f"✅ پاداش دریافت شد!\n💎 {mission_data['reward_gem']} جم\n💰 {mission_data['reward_point']} هاپ پوینت"
+        reward_text = ""
+        if mission_data["reward_gem"] > 0:
+            reward_text += f"💎 {mission_data['reward_gem']} جم\n"
+        if mission_data["reward_point"] > 0:
+            reward_text += f"💰 {mission_data['reward_point']:,} هاپ پوینت\n"
+        
+        return True, f"✅ پاداش دریافت شد!\n━━━━━━━━━━━━━━━━━━━\n\n{reward_text}"
 
 
 # ==================== دستور ماموریت‌ها ====================
@@ -321,6 +329,17 @@ async def missions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"{mission['emoji']} **{mission['name']}**\n"
         text += f"   📝 {mission['description']}\n"
         text += f"   📊 پیشرفت: {progress_bar} `{mission['progress']}/{mission['target']}`\n"
+        
+        # نمایش جایزه
+        reward_text = ""
+        if mission["reward_gem"] > 0:
+            reward_text += f"💎 {mission['reward_gem']} جم"
+        if mission["reward_point"] > 0:
+            if reward_text:
+                reward_text += " + "
+            reward_text += f"💰 {mission['reward_point']:,} هاپ"
+        text += f"   🎁 جایزه: {reward_text}\n"
+        
         if mission["completed"] and not mission["claimed"]:
             text += f"   🎁 **قابل دریافت!**\n"
         elif mission["claimed"]:
@@ -335,6 +354,16 @@ async def missions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"{mission['emoji']} **{mission['name']}**\n"
         text += f"   📝 {mission['description']}\n"
         text += f"   📊 پیشرفت: {progress_bar} `{mission['progress']}/{mission['target']}`\n"
+        
+        reward_text = ""
+        if mission["reward_gem"] > 0:
+            reward_text += f"💎 {mission['reward_gem']} جم"
+        if mission["reward_point"] > 0:
+            if reward_text:
+                reward_text += " + "
+            reward_text += f"💰 {mission['reward_point']:,} هاپ"
+        text += f"   🎁 جایزه: {reward_text}\n"
+        
         if mission["completed"] and not mission["claimed"]:
             text += f"   🎁 **قابل دریافت!**\n"
         elif mission["claimed"]:
@@ -359,22 +388,35 @@ async def missions_claim_callback(update: Update, context: ContextTypes.DEFAULT_
     
     claimed_any = False
     messages = []
+    total_gem = 0
+    total_point = 0
     
     for mission in daily_missions + weekly_missions:
         if mission["completed"] and not mission["claimed"]:
             success, message = claim_mission_reward(user_id, mission["id"], mission["type"])
             if success:
                 claimed_any = True
+                # استخراج جوایز
+                if mission["reward_gem"] > 0:
+                    total_gem += mission["reward_gem"]
+                if mission["reward_point"] > 0:
+                    total_point += mission["reward_point"]
                 messages.append(f"✅ {mission['emoji']} {mission['name']}: دریافت شد!")
     
     if claimed_any:
         text = "🎁 **پاداش‌ها دریافت شدند!**\n━━━━━━━━━━━━━━━━━━━\n\n"
         text += "\n".join(messages)
+        text += f"\n\n📊 **مجموع دریافت شده:**\n"
+        if total_gem > 0:
+            text += f"💎 {total_gem} جم\n"
+        if total_point > 0:
+            text += f"💰 {total_point:,} هاپ پوینت"
         await query.message.edit_text(text, parse_mode="Markdown")
     else:
         await query.message.edit_text("❌ هیچ پاداش قابل دریافت‌ای وجود ندارد!", parse_mode="Markdown")
     
-    await asyncio.sleep(2)
+    # بعد از 5 ثانیه برگشت به پنل ماموریت
+    await asyncio.sleep(5)
     await missions_command(update, context)
 
 
@@ -386,7 +428,6 @@ async def missions_refresh_callback(update: Update, context: ContextTypes.DEFAUL
 
 
 def make_progress_bar(current, target):
-    """ساخت نوار پیشرفت"""
     if target <= 0:
         return "⬜⬜⬜⬜⬜"
     percent = min(current / target, 1.0)
@@ -398,7 +439,6 @@ def make_progress_bar(current, target):
 # ==================== تابع بروزرسانی خودکار ماموریت‌ها ====================
 
 async def update_missions_on_action(user_id, action_type, count=1):
-    """بروزرسانی ماموریت‌ها بر اساس اقدام کاربر (فقط اقدامات موفق)"""
     try:
         if action_type == "hop":
             update_mission_progress(user_id, "daily_hop", count)
@@ -421,7 +461,6 @@ async def update_missions_on_action(user_id, action_type, count=1):
 # ==================== تابع ریست ماموریت‌ها ====================
 
 async def reset_daily_missions():
-    """ریست ماموریت‌های روزانه (هر روز ساعت ۱۲ شب)"""
     while True:
         now = datetime.now()
         next_midnight = datetime(now.year, now.month, now.day) + timedelta(days=1)
