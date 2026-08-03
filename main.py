@@ -24,6 +24,8 @@ from telegram.request import HTTPXRequest
 import config
 import database as db
 from handlers import admin, economy, pet
+from missions import *
+from market import *
 
 # مقدار پاداش دعوت (سکه/پوینت)
 REFERRAL_REWARD = 500
@@ -69,7 +71,7 @@ pending_transfers = {}
 hop_spam = {}
 
 # ==================== دیکشنری فروش محصولات ====================
-user_sell_data = {}  # {user_id: {"product": "clothes", "quantity": 0, "price": 50, "message_id": 0, "chat_id": 0}}
+user_sell_data = {}
 
 # ==================== قیمت‌های بازار ====================
 market_prices = {
@@ -566,7 +568,6 @@ async def sell_products_command(update: Update, context: ContextTypes.DEFAULT_TY
     
     msg = await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
     
-    # ذخیره message_id برای ویرایش بعدی
     user_sell_data[user_id] = {
         "product": None,
         "quantity": 0,
@@ -627,7 +628,6 @@ async def handle_sell_quantity(update: Update, context: ContextTypes.DEFAULT_TYP
     user_id = update.effective_user.id
     text = update.message.text.strip()
     
-    # چک کن کاربر در حال فروش هست یا نه
     if user_id not in user_sell_data or user_sell_data[user_id].get("product") is None:
         return False
     
@@ -1254,6 +1254,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ["بانک", "زیرمجموعه‌گیری"],
             ["فروش محصولات", "انبار"],
             ["تبدیل جم", "گردونه"],
+            ["ماموریت", "مارکت"],
             ["لیدربرد", "زندان"],
             ["راهنما"],
         ],
@@ -1270,7 +1271,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"برای گرفتن لینک دعوت می‌توانید از دکمه شیشه‌ای زیر یا دکمه زیرمجموعه‌گیری در کیبورد استفاده کنید.\n\n"
         f"💎 هر ۱ جم = ۱۰,۰۰۰,۰۰۰ هاپ پوینت\n"
         f"🎡 گردونه شانس: هر ۱۲ ساعت یک بار\n"
-        f"🏆 لیدربرد: مشاهده برترین‌ها\n\n"
+        f"🏆 لیدربرد: مشاهده برترین‌ها\n"
+        f"🎯 ماموریت‌های روزانه و هفتگی\n"
+        f"🛒 مارکت: خرید و فروش آیتم بین کاربران\n\n"
         f"⚠️ هشدار: قاچاق و اسپم باعث زندان میشود!\n"
         f"برای انتقال هاپ پوینت، روی پیام کاربر ریپلای کنید و بنویسید:\n"
         f"انتقال هاپ پوینت [مبلغ]"
@@ -1288,6 +1291,9 @@ async def handle_hop_internal(update: Update, context: ContextTypes.DEFAULT_TYPE
     if in_jail:
         await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
         return
+    
+    # بروزرسانی ماموریت هاپ
+    await update_missions_on_action(user_id, "hop")
     
     if check_hop_spam(user_id):
         put_user_in_jail(user_id, minutes=15, reason="اسپم در هاپ (۶ بار در ۱۰ ثانیه)")
@@ -1348,6 +1354,29 @@ async def handle_hop_internal(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
 
 
+# ==================== تابع بروزرسانی ماموریت‌ها ====================
+
+async def update_missions_on_action(user_id, action_type, count=1):
+    """بروزرسانی ماموریت‌ها بر اساس اقدام کاربر"""
+    try:
+        if action_type == "hop":
+            update_mission_progress(user_id, "daily_hop", count)
+            update_mission_progress(user_id, "weekly_hop", count)
+        elif action_type == "spin":
+            update_mission_progress(user_id, "daily_spin", count)
+            update_mission_progress(user_id, "weekly_spin", count)
+        elif action_type == "sell":
+            update_mission_progress(user_id, "daily_sell", count)
+        elif action_type == "feed":
+            update_mission_progress(user_id, "daily_feed", count)
+        elif action_type == "factory":
+            update_mission_progress(user_id, "weekly_factory", count)
+        elif action_type == "invite":
+            update_mission_progress(user_id, "weekly_invite", count)
+    except Exception as e:
+        logging.error(f"Error updating missions: {e}")
+
+
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logging.error(f"خطایی در پردازش رخ داد: {context.error}", exc_info=context.error)
 
@@ -1364,9 +1393,8 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_must_join_message(update, context)
         return
 
-    # ===== اول چک کن که کاربر در حال فروش هست یا نه (قبل از همه) =====
+    # ===== چک کردن فروش =====
     if user_id in user_sell_data and user_sell_data[user_id].get("product") is not None:
-        # اگه کاربر در حال فروش هست، تعداد رو پردازش کن
         handled = await handle_sell_quantity(update, context)
         if handled:
             return
@@ -1386,6 +1414,16 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.effective_user.username or update.effective_user.first_name
     user = db.get_user(user_id, username)
     clean_text = text.split("@")[0].lower()
+
+    # ===== ماموریت‌ها =====
+    if clean_text in ["ماموریت", "ماموریت‌ها", "missions"]:
+        await missions_command(update, context)
+        return
+
+    # ===== مارکت =====
+    if clean_text in ["مارکت", "market", "بازار"]:
+        await market_command(update, context)
+        return
 
     # ===== زندان =====
     if clean_text in ["زندان", "jail"]:
@@ -1486,6 +1524,40 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
     data = query.data
+
+    # ===== ماموریت‌ها =====
+    if data == "missions_claim":
+        await missions_claim_callback(update, context)
+        return
+
+    if data == "missions_refresh":
+        await missions_refresh_callback(update, context)
+        return
+
+    # ===== مارکت =====
+    if data == "market_add":
+        await market_add_callback(update, context)
+        return
+
+    if data == "market_refresh":
+        await market_refresh_callback(update, context)
+        return
+
+    if data == "market_my_items":
+        await market_my_items_callback(update, context)
+        return
+
+    if data == "market_back":
+        await market_back_callback(update, context)
+        return
+
+    if data == "market_search":
+        await market_search_callback(update, context)
+        return
+
+    if data.startswith("market_buy_"):
+        await market_buy_callback(update, context)
+        return
 
     # ===== زندان =====
     if data.startswith("jail_pay_") or data.startswith("jail_stay_"):
@@ -1599,6 +1671,7 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     db.init_db()
+    init_market_table()
 
     request_config = HTTPXRequest(
         connection_pool_size=8, read_timeout=60.0, write_timeout=60.0
@@ -1621,6 +1694,9 @@ def main():
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, router_message))
     app.add_handler(CallbackQueryHandler(callback_router))
+
+    # ===== تایمر ریست ماموریت‌ها =====
+    asyncio.create_task(reset_daily_missions())
 
     print("🤖 Bot is active...")
     app.run_polling()
