@@ -3,6 +3,26 @@ from telegram.ext import ContextTypes
 import database as db
 from datetime import datetime, timedelta
 import random
+import asyncio
+import logging
+
+# ==================== توابع زندان ====================
+
+def is_user_in_jail(user_id):
+    """بررسی اینکه کاربر در زندان هست یا نه"""
+    jail_until = db.get_user_field(user_id, "jail_until")
+    if jail_until:
+        try:
+            jail_time = datetime.strptime(jail_until, "%Y-%m-%d %H:%M:%S")
+            if datetime.now() < jail_time:
+                return True, jail_time
+        except:
+            pass
+    db.update_field(user_id, "in_jail", 0, relative=False)
+    db.update_field(user_id, "jail_until", None, relative=False)
+    db.update_field(user_id, "jail_reason", None, relative=False)
+    return False, None
+
 
 # ==================== دیکشنری ماموریت‌ها ====================
 
@@ -112,45 +132,49 @@ def update_mission_progress(user_id, mission_id, progress_increment=1):
     today = datetime.now().strftime("%Y-%m-%d")
     week_start = (datetime.now() - timedelta(days=datetime.now().weekday())).strftime("%Y-%m-%d")
     
-    # بررسی روزانه
-    cursor.execute("""
-        SELECT progress, target FROM user_missions 
-        JOIN (SELECT target, id FROM daily_missions) ON mission_id = id
-        WHERE user_id = ? AND mission_id = ? AND mission_type = 'daily' AND date = ?
-    """, (user_id, mission_id, today))
-    result = cursor.fetchone()
+    # بروزرسانی روزانه
+    for mission in DAILY_MISSIONS:
+        if mission["id"] == mission_id:
+            cursor.execute("""
+                SELECT progress FROM user_missions 
+                WHERE user_id = ? AND mission_id = ? AND mission_type = 'daily' AND date = ?
+            """, (user_id, mission_id, today))
+            result = cursor.fetchone()
+            
+            if result:
+                progress = result[0]
+                new_progress = min(progress + progress_increment, mission["target"])
+                completed = 1 if new_progress >= mission["target"] else 0
+                cursor.execute("""
+                    UPDATE user_missions SET progress = ?, completed = ? 
+                    WHERE user_id = ? AND mission_id = ? AND mission_type = 'daily' AND date = ?
+                """, (new_progress, completed, user_id, mission_id, today))
+                conn.commit()
+                conn.close()
+                return new_progress >= mission["target"]
+            break
     
-    if result:
-        progress, target = result
-        new_progress = min(progress + progress_increment, target)
-        completed = 1 if new_progress >= target else 0
-        cursor.execute("""
-            UPDATE user_missions SET progress = ?, completed = ? 
-            WHERE user_id = ? AND mission_id = ? AND mission_type = 'daily' AND date = ?
-        """, (new_progress, completed, user_id, mission_id, today))
-        conn.commit()
-        conn.close()
-        return new_progress >= target
-    
-    # بررسی هفتگی
-    cursor.execute("""
-        SELECT progress, target FROM user_missions 
-        JOIN (SELECT target, id FROM weekly_missions) ON mission_id = id
-        WHERE user_id = ? AND mission_id = ? AND mission_type = 'weekly' AND date >= ?
-    """, (user_id, mission_id, week_start))
-    result = cursor.fetchone()
-    
-    if result:
-        progress, target = result
-        new_progress = min(progress + progress_increment, target)
-        completed = 1 if new_progress >= target else 0
-        cursor.execute("""
-            UPDATE user_missions SET progress = ?, completed = ? 
-            WHERE user_id = ? AND mission_id = ? AND mission_type = 'weekly' AND date >= ?
-        """, (new_progress, completed, user_id, mission_id, week_start))
-        conn.commit()
-        conn.close()
-        return new_progress >= target
+    # بروزرسانی هفتگی
+    for mission in WEEKLY_MISSIONS:
+        if mission["id"] == mission_id:
+            cursor.execute("""
+                SELECT progress FROM user_missions 
+                WHERE user_id = ? AND mission_id = ? AND mission_type = 'weekly' AND date >= ?
+            """, (user_id, mission_id, week_start))
+            result = cursor.fetchone()
+            
+            if result:
+                progress = result[0]
+                new_progress = min(progress + progress_increment, mission["target"])
+                completed = 1 if new_progress >= mission["target"] else 0
+                cursor.execute("""
+                    UPDATE user_missions SET progress = ?, completed = ? 
+                    WHERE user_id = ? AND mission_id = ? AND mission_type = 'weekly' AND date >= ?
+                """, (new_progress, completed, user_id, mission_id, week_start))
+                conn.commit()
+                conn.close()
+                return new_progress >= mission["target"]
+            break
     
     conn.close()
     return False
@@ -165,48 +189,96 @@ def claim_mission_reward(user_id, mission_id, mission_type):
     week_start = (datetime.now() - timedelta(days=datetime.now().weekday())).strftime("%Y-%m-%d")
     
     if mission_type == "daily":
+        # پیدا کردن ماموریت روزانه
+        mission_data = None
+        for m in DAILY_MISSIONS:
+            if m["id"] == mission_id:
+                mission_data = m
+                break
+        
+        if not mission_data:
+            conn.close()
+            return False, "ماموریت پیدا نشد!"
+        
         cursor.execute("""
-            SELECT completed, claimed, reward_gem, reward_point FROM user_missions 
-            JOIN (SELECT reward_gem, reward_point, id FROM daily_missions) ON mission_id = id
+            SELECT completed, claimed FROM user_missions 
             WHERE user_id = ? AND mission_id = ? AND mission_type = 'daily' AND date = ?
         """, (user_id, mission_id, today))
-    else:
+        result = cursor.fetchone()
+        
+        if not result:
+            conn.close()
+            return False, "ماموریت پیدا نشد!"
+        
+        completed, claimed = result
+        
+        if not completed:
+            conn.close()
+            return False, "ماموریت کامل نشده است!"
+        
+        if claimed:
+            conn.close()
+            return False, "پاداش این ماموریت قبلاً دریافت شده!"
+        
+        # اعطای پاداش
+        if mission_data["reward_gem"] > 0:
+            db.update_field(user_id, "hop_gem", mission_data["reward_gem"], relative=True)
+        if mission_data["reward_point"] > 0:
+            db.update_field(user_id, "points", mission_data["reward_point"], relative=True)
+        
         cursor.execute("""
-            SELECT completed, claimed, reward_gem, reward_point FROM user_missions 
-            JOIN (SELECT reward_gem, reward_point, id FROM weekly_missions) ON mission_id = id
+            UPDATE user_missions SET claimed = 1 
+            WHERE user_id = ? AND mission_id = ? AND mission_type = 'daily' AND date = ?
+        """, (user_id, mission_id, today))
+        conn.commit()
+        conn.close()
+        
+        return True, f"✅ پاداش دریافت شد!\n💎 {mission_data['reward_gem']} جم\n💰 {mission_data['reward_point']} هاپ پوینت"
+    
+    else:  # weekly
+        mission_data = None
+        for m in WEEKLY_MISSIONS:
+            if m["id"] == mission_id:
+                mission_data = m
+                break
+        
+        if not mission_data:
+            conn.close()
+            return False, "ماموریت پیدا نشد!"
+        
+        cursor.execute("""
+            SELECT completed, claimed FROM user_missions 
             WHERE user_id = ? AND mission_id = ? AND mission_type = 'weekly' AND date >= ?
         """, (user_id, mission_id, week_start))
-    
-    result = cursor.fetchone()
-    
-    if not result:
+        result = cursor.fetchone()
+        
+        if not result:
+            conn.close()
+            return False, "ماموریت پیدا نشد!"
+        
+        completed, claimed = result
+        
+        if not completed:
+            conn.close()
+            return False, "ماموریت کامل نشده است!"
+        
+        if claimed:
+            conn.close()
+            return False, "پاداش این ماموریت قبلاً دریافت شده!"
+        
+        if mission_data["reward_gem"] > 0:
+            db.update_field(user_id, "hop_gem", mission_data["reward_gem"], relative=True)
+        if mission_data["reward_point"] > 0:
+            db.update_field(user_id, "points", mission_data["reward_point"], relative=True)
+        
+        cursor.execute("""
+            UPDATE user_missions SET claimed = 1 
+            WHERE user_id = ? AND mission_id = ? AND mission_type = 'weekly' AND date >= ?
+        """, (user_id, mission_id, week_start))
+        conn.commit()
         conn.close()
-        return False, "ماموریت پیدا نشد!"
-    
-    completed, claimed, reward_gem, reward_point = result
-    
-    if not completed:
-        conn.close()
-        return False, "ماموریت کامل نشده است!"
-    
-    if claimed:
-        conn.close()
-        return False, "پاداش این ماموریت قبلاً دریافت شده!"
-    
-    # اعطای پاداش
-    if reward_gem > 0:
-        db.update_field(user_id, "hop_gem", reward_gem, relative=True)
-    if reward_point > 0:
-        db.update_field(user_id, "points", reward_point, relative=True)
-    
-    cursor.execute("""
-        UPDATE user_missions SET claimed = 1 
-        WHERE user_id = ? AND mission_id = ? AND mission_type = ? AND date = ?
-    """, (user_id, mission_id, mission_type, today))
-    conn.commit()
-    conn.close()
-    
-    return True, f"✅ پاداش دریافت شد!\n💎 {reward_gem} جم\n💰 {reward_point} هاپ پوینت"
+        
+        return True, f"✅ پاداش دریافت شد!\n💎 {mission_data['reward_gem']} جم\n💰 {mission_data['reward_point']} هاپ پوینت"
 
 
 # ==================== دستور ماموریت‌ها ====================
@@ -220,10 +292,16 @@ async def missions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
         return
     
-    is_joined = await check_user_membership(context.bot, user_id)
-    if not is_joined:
-        await send_must_join_message(update, context)
-        return
+    # بررسی عضویت در کانال (اینجا باید از main.py import کنی)
+    # فعلاً از یه تابع placeholder استفاده میکنیم
+    try:
+        from main import check_user_membership, send_must_join_message
+        is_joined = await check_user_membership(context.bot, user_id)
+        if not is_joined:
+            await send_must_join_message(update, context)
+            return
+    except ImportError:
+        pass
     
     daily_missions, weekly_missions = get_user_missions(user_id)
     
@@ -231,13 +309,12 @@ async def missions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text += "━━━━━━━━━━━━━━━━━━━\n\n"
     
     for mission in daily_missions:
-        status = "✅" if mission["claimed"] else "⬜"
         progress_bar = make_progress_bar(mission["progress"], mission["target"])
-        text += f"{mission['emoji']} {mission['name']}\n"
-        text += f"   {mission['description']}\n"
-        text += f"   پیشرفت: {progress_bar} {mission['progress']}/{mission['target']}\n"
+        text += f"{mission['emoji']} **{mission['name']}**\n"
+        text += f"   📝 {mission['description']}\n"
+        text += f"   📊 پیشرفت: {progress_bar} `{mission['progress']}/{mission['target']}`\n"
         if mission["completed"] and not mission["claimed"]:
-            text += f"   🎁 قابل دریافت!\n"
+            text += f"   🎁 **قابل دریافت!**\n"
         elif mission["claimed"]:
             text += f"   ✅ دریافت شد!\n"
         text += "━━━━━━━━━━━━━━━━━━━\n"
@@ -246,64 +323,23 @@ async def missions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text += "━━━━━━━━━━━━━━━━━━━\n\n"
     
     for mission in weekly_missions:
-        status = "✅" if mission["claimed"] else "⬜"
         progress_bar = make_progress_bar(mission["progress"], mission["target"])
-        text += f"{mission['emoji']} {mission['name']}\n"
-        text += f"   {mission['description']}\n"
-        text += f"   پیشرفت: {progress_bar} {mission['progress']}/{mission['target']}\n"
+        text += f"{mission['emoji']} **{mission['name']}**\n"
+        text += f"   📝 {mission['description']}\n"
+        text += f"   📊 پیشرفت: {progress_bar} `{mission['progress']}/{mission['target']}`\n"
         if mission["completed"] and not mission["claimed"]:
-            text += f"   🎁 قابل دریافت!\n"
+            text += f"   🎁 **قابل دریافت!**\n"
         elif mission["claimed"]:
             text += f"   ✅ دریافت شد!\n"
         text += "━━━━━━━━━━━━━━━━━━━\n"
     
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📥 دریافت پاداش", callback_data="missions_claim")],
+        [InlineKeyboardButton("📥 دریافت همه پاداش‌ها", callback_data="missions_claim")],
         [InlineKeyboardButton("🔄 بروزرسانی", callback_data="missions_refresh")]
     ])
     
     await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
 
-
-async def missions_claim_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """دریافت پاداش ماموریت‌ها"""
-    query = update.callback_query
-    user_id = query.from_user.id
-    await query.answer()
-    
-    daily_missions, weekly_missions = get_user_missions(user_id)
-    
-    claimed = False
-    for mission in daily_missions + weekly_missions:
-        if mission["completed"] and not mission["claimed"]:
-            success, message = claim_mission_reward(user_id, mission["id"], mission["type"])
-            if success:
-                claimed = True
-    
-    if claimed:
-        await query.message.edit_text("✅ پاداش‌های قابل دریافت دریافت شد!")
-    else:
-        await query.message.edit_text("❌ هیچ پاداش قابل دریافت‌ای وجود ندارد!")
-    
-    await missions_command(update, context)
-
-
-async def missions_refresh_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """بروزرسانی ماموریت‌ها"""
-    query = update.callback_query
-    await query.answer()
-    await missions_command(update, context)
-
-
-def make_progress_bar(current, target):
-    """ساخت نوار پیشرفت"""
-    if target <= 0:
-        return "⬜⬜⬜⬜⬜"
-    percent = min(current / target, 1.0)
-    filled = int(round(percent * 5))
-    empty = 5 - filled
-    return "🟩" * filled + "⬜" * empty
-  # ==================== دکمه‌های ماموریت ====================
 
 async def missions_claim_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """دریافت پاداش ماموریت‌ها"""
@@ -355,103 +391,37 @@ def make_progress_bar(current, target):
 
 async def update_missions_on_action(user_id, action_type, count=1):
     """بروزرسانی ماموریت‌ها بر اساس اقدام کاربر"""
-    # ماموریت هاپ
-    if action_type == "hop":
-        update_mission_progress(user_id, "daily_hop", count)
-        update_mission_progress(user_id, "weekly_hop", count)
-    
-    # ماموریت گردونه
-    elif action_type == "spin":
-        update_mission_progress(user_id, "daily_spin", count)
-        update_mission_progress(user_id, "weekly_spin", count)
-    
-    # ماموریت فروش
-    elif action_type == "sell":
-        update_mission_progress(user_id, "daily_sell", count)
-    
-    # ماموریت غذا
-    elif action_type == "feed":
-        update_mission_progress(user_id, "daily_feed", count)
-    
-    # ماموریت کارخانه
-    elif action_type == "factory":
-        update_mission_progress(user_id, "weekly_factory", count)
-    
-    # ماموریت دعوت
-    elif action_type == "invite":
-        update_mission_progress(user_id, "weekly_invite", count)
+    try:
+        if action_type == "hop":
+            update_mission_progress(user_id, "daily_hop", count)
+            update_mission_progress(user_id, "weekly_hop", count)
+        elif action_type == "spin":
+            update_mission_progress(user_id, "daily_spin", count)
+            update_mission_progress(user_id, "weekly_spin", count)
+        elif action_type == "sell":
+            update_mission_progress(user_id, "daily_sell", count)
+        elif action_type == "feed":
+            update_mission_progress(user_id, "daily_feed", count)
+        elif action_type == "factory":
+            update_mission_progress(user_id, "weekly_factory", count)
+        elif action_type == "invite":
+            update_mission_progress(user_id, "weekly_invite", count)
+    except Exception as e:
+        logging.error(f"Error updating missions: {e}")
 
 
-# ==================== دستور ماموریت ====================
-
-async def missions_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نمایش ماموریت‌های روزانه و هفتگی"""
-    user_id = update.effective_user.id
-    
-    in_jail, _ = is_user_in_jail(user_id)
-    if in_jail:
-        await update.message.reply_text("🔒 شما در زندان هستید! فقط از دستور `زندان` میتوانید استفاده کنید.")
-        return
-    
-    is_joined = await check_user_membership(context.bot, user_id)
-    if not is_joined:
-        await send_must_join_message(update, context)
-        return
-    
-    daily_missions, weekly_missions = get_user_missions(user_id)
-    
-    text = "🎯 **ماموریت‌های روزانه** 🎯\n"
-    text += "━━━━━━━━━━━━━━━━━━━\n\n"
-    
-    for mission in daily_missions:
-        progress_bar = make_progress_bar(mission["progress"], mission["target"])
-        status = "✅" if mission["claimed"] else "⬜"
-        text += f"{mission['emoji']} **{mission['name']}**\n"
-        text += f"   📝 {mission['description']}\n"
-        text += f"   📊 پیشرفت: {progress_bar} `{mission['progress']}/{mission['target']}`\n"
-        if mission["completed"] and not mission["claimed"]:
-            text += f"   🎁 **قابل دریافت!**\n"
-        elif mission["claimed"]:
-            text += f"   ✅ دریافت شد!\n"
-        text += "━━━━━━━━━━━━━━━━━━━\n"
-    
-    text += "\n🏆 **ماموریت‌های هفتگی** 🏆\n"
-    text += "━━━━━━━━━━━━━━━━━━━\n\n"
-    
-    for mission in weekly_missions:
-        progress_bar = make_progress_bar(mission["progress"], mission["target"])
-        status = "✅" if mission["claimed"] else "⬜"
-        text += f"{mission['emoji']} **{mission['name']}**\n"
-        text += f"   📝 {mission['description']}\n"
-        text += f"   📊 پیشرفت: {progress_bar} `{mission['progress']}/{mission['target']}`\n"
-        if mission["completed"] and not mission["claimed"]:
-            text += f"   🎁 **قابل دریافت!**\n"
-        elif mission["claimed"]:
-            text += f"   ✅ دریافت شد!\n"
-        text += "━━━━━━━━━━━━━━━━━━━\n"
-    
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📥 دریافت همه پاداش‌ها", callback_data="missions_claim")],
-        [InlineKeyboardButton("🔄 بروزرسانی", callback_data="missions_refresh")]
-    ])
-    
-    await update.message.reply_text(text, parse_mode="Markdown", reply_markup=keyboard)
-
-
-# ==================== تابع ریست ماموریت‌ها (هر روز) ====================
+# ==================== تابع ریست ماموریت‌ها ====================
 
 async def reset_daily_missions():
     """ریست ماموریت‌های روزانه (هر روز ساعت ۱۲ شب)"""
     while True:
         now = datetime.now()
-        # محاسبه زمان تا نیمه شب
         next_midnight = datetime(now.year, now.month, now.day) + timedelta(days=1)
         sleep_seconds = (next_midnight - now).total_seconds()
         
         await asyncio.sleep(sleep_seconds)
         
         try:
-            # ریست کردن ماموریت‌های روزانه
             conn = db.get_connection()
             cursor = conn.cursor()
             yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
