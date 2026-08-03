@@ -1378,11 +1378,21 @@ async def router_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_must_join_message(update, context)
         return
 
-    # ===== چک کردن فروش =====
+    # ===== اول چک کن که کاربر در حال فروش هست یا نه =====
     if user_id in user_sell_data and user_sell_data[user_id].get("product") is not None:
         handled = await handle_sell_quantity(update, context)
         if handled:
             return
+
+    # ===== چک کن که کاربر در حال افزودن آیتم به مارکت هست =====
+    handled = await handle_market_text(update, context)
+    if handled:
+        return
+
+    # ===== چک کن که کاربر در حال جستجوی مارکت هست =====
+    handled = await handle_market_search(update, context)
+    if handled:
+        return
 
     if hasattr(pet, "handle_dog_rename_text"):
         is_handled = await pet.handle_dog_rename_text(update, context)
