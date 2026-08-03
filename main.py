@@ -1696,11 +1696,15 @@ def main():
     app.add_handler(CallbackQueryHandler(callback_router))
 
     # ===== تایمر ریست ماموریت‌ها =====
-    asyncio.create_task(reset_daily_missions())
+    # روش ۱:
+    loop = asyncio.get_event_loop()
+    loop.create_task(reset_daily_missions())
+    
+    # یا روش ۲:
+    # asyncio.ensure_future(reset_daily_missions())
 
     print("🤖 Bot is active...")
     app.run_polling()
-
 
 if __name__ == "__main__":
     main()
