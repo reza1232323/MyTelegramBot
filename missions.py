@@ -450,12 +450,14 @@ async def reset_daily_missions():
         
         await asyncio.sleep(sleep_seconds)
         
-        # ریست کردن ماموریت‌های روزانه
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-        cursor.execute("DELETE FROM user_missions WHERE mission_type = 'daily' AND date <= ?", (yesterday,))
-        conn.commit()
-        conn.close()
-        
-        print("✅ ماموریت‌های روزانه ریست شدند!")
+        try:
+            # ریست کردن ماموریت‌های روزانه
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+            cursor.execute("DELETE FROM user_missions WHERE mission_type = 'daily' AND date <= ?", (yesterday,))
+            conn.commit()
+            conn.close()
+            print("✅ ماموریت‌های روزانه ریست شدند!")
+        except Exception as e:
+            print(f"❌ خطا در ریست ماموریت‌ها: {e}")
