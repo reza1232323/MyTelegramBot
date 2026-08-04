@@ -1529,30 +1529,38 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await missions_refresh_callback(update, context)
         return
 
-    # ===== مارکت =====
-    if data == "market_add":
-        await market_add_callback(update, context)
-        return
+   # ===== مارکت =====
+if data == "market_add":
+    await market_add_callback(update, context)
+    return
 
-    if data == "market_refresh":
-        await market_refresh_callback(update, context)
-        return
+if data == "market_refresh":
+    await market_refresh_callback(update, context)
+    return
 
-    if data == "market_my_items":
-        await market_my_items_callback(update, context)
-        return
+if data == "market_my_items":
+    await market_my_items_callback(update, context)
+    return
 
-    if data == "market_back":
-        await market_back_callback(update, context)
-        return
+if data == "market_back":
+    await market_back_callback(update, context)
+    return
 
-    if data == "market_search":
-        await market_search_callback(update, context)
-        return
+if data == "market_search":
+    await market_search_callback(update, context)
+    return
 
-    if data.startswith("market_buy_"):
-        await market_buy_callback(update, context)
-        return
+if data == "market_delete_select":
+    await market_delete_select_callback(update, context)
+    return
+
+if data.startswith("market_buy_"):
+    await market_buy_callback(update, context)
+    return
+
+if data.startswith("market_delete_"):
+    await market_delete_callback(update, context)
+    return
 
     # ===== زندان =====
     if data.startswith("jail_pay_") or data.startswith("jail_stay_"):
