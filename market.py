@@ -222,12 +222,26 @@ async def market_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"   🆔 {item['id']}\n"
         text += "━━━━━━━━━━━━━━━━━━━\n"
     
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("➕ افزودن آیتم", callback_data="market_add")],
-        [InlineKeyboardButton("🔍 جستجو", callback_data="market_search")],
-        [InlineKeyboardButton("📋 آیتم‌های من", callback_data="market_my_items")],
-        [InlineKeyboardButton("🔄 بروزرسانی", callback_data="market_refresh")]
+    # ===== دکمه‌های مارکت با دکمه خرید برای هر آیتم =====
+    keyboard_buttons = []
+    for item in items[:10]:
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                f"🛒 خرید {item['name']} (🆔 {item['id']})",
+                callback_data=f"market_buy_{item['id']}"
+            )
+        ])
+    
+    keyboard_buttons.append([
+        InlineKeyboardButton("➕ افزودن آیتم", callback_data="market_add"),
+        InlineKeyboardButton("🔍 جستجو", callback_data="market_search")
     ])
+    keyboard_buttons.append([
+        InlineKeyboardButton("📋 آیتم‌های من", callback_data="market_my_items"),
+        InlineKeyboardButton("🔄 بروزرسانی", callback_data="market_refresh")
+    ])
+    
+    keyboard = InlineKeyboardMarkup(keyboard_buttons)
     
     await update.message.reply_text(text, parse_mode=None, reply_markup=keyboard)
 
@@ -243,7 +257,10 @@ async def market_add_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         "🛒 افزودن آیتم به مارکت\n━━━━━━━━━━━━━━━━━━━\n\n"
         "📝 لطفاً نام آیتم را وارد کنید:\n"
         "مثال: کلاه طلایی",
-        parse_mode=None
+        parse_mode=None,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
+        ])
     )
 
 
@@ -271,7 +288,11 @@ async def market_my_items_callback(update: Update, context: ContextTypes.DEFAULT
                 "📋 آیتم‌های من در مارکت\n━━━━━━━━━━━━━━━━━━━\n\n"
                 "📭 شما هیچ آیتمی در مارکت ندارید!\n\n"
                 "💡 برای افزودن آیتم: افزودن آیتم",
-                parse_mode=None
+                parse_mode=None,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("➕ افزودن آیتم", callback_data="market_add")],
+                    [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
+                ])
             )
             return
         
@@ -286,6 +307,7 @@ async def market_my_items_callback(update: Update, context: ContextTypes.DEFAULT
         
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("➕ افزودن آیتم", callback_data="market_add")],
+            [InlineKeyboardButton("🗑 حذف آیتم", callback_data="market_delete_select")],
             [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
         ])
         
@@ -318,7 +340,10 @@ async def market_search_callback(update: Update, context: ContextTypes.DEFAULT_T
     await query.message.edit_text(
         "🔍 جستجو در مارکت\n━━━━━━━━━━━━━━━━━━━\n\n"
         "📝 لطفاً نام آیتم مورد نظر را وارد کنید:",
-        parse_mode=None
+        parse_mode=None,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
+        ])
     )
 
 
@@ -347,10 +372,16 @@ async def handle_market_search(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data['market_state'] = None
         
         if not items:
-            await update.message.reply_text(f"🔍 نتیجه جستجو برای `{text}`\n━━━━━━━━━━━━━━━━━━━\n\n📭 هیچ آیتمی پیدا نشد!", parse_mode=None)
+            await update.message.reply_text(
+                f"🔍 نتیجه جستجو برای {text}\n━━━━━━━━━━━━━━━━━━━\n\n📭 هیچ آیتمی پیدا نشد!",
+                parse_mode=None,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
+                ])
+            )
             return True
         
-        text_result = f"🔍 نتیجه جستجو برای `{text}`\n━━━━━━━━━━━━━━━━━━━\n\n"
+        text_result = f"🔍 نتیجه جستجو برای {text}\n━━━━━━━━━━━━━━━━━━━\n\n"
         
         for item in items:
             seller = db.get_user(item[1])
@@ -393,7 +424,10 @@ async def handle_market_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "🎨 لطفاً ایموجی آیتم را وارد کنید:\n"
             "مثال: 👑 یا 🎩\n\n"
             "💡 اگر نمی‌خواهید ایموجی بذارید، - را وارد کنید.",
-            parse_mode=None
+            parse_mode=None,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
+            ])
         )
         return True
     
@@ -407,7 +441,10 @@ async def handle_market_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "🛒 افزودن آیتم به مارکت\n━━━━━━━━━━━━━━━━━━━\n\n"
             "💰 لطفاً قیمت هر عدد را به هاپ پوینت وارد کنید:\n"
             "مثال: 500",
-            parse_mode=None
+            parse_mode=None,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
+            ])
         )
         return True
     
@@ -428,7 +465,10 @@ async def handle_market_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "📝 لطفاً توضیحات آیتم را وارد کنید:\n"
             "مثال: کلاه طلایی مخصوص هاپوها\n\n"
             "💡 اگر توضیحی ندارید، - را وارد کنید.",
-            parse_mode=None
+            parse_mode=None,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
+            ])
         )
         return True
     
@@ -444,7 +484,10 @@ async def handle_market_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "🛒 افزودن آیتم به مارکت\n━━━━━━━━━━━━━━━━━━━\n\n"
             "📦 لطفاً تعداد موجودی را وارد کنید:\n"
             "مثال: 10",
-            parse_mode=None
+            parse_mode=None,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
+            ])
         )
         return True
     
@@ -477,7 +520,10 @@ async def handle_market_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 f"📝 {description}\n"
                 f"🆔 {item_id}\n\n"
                 f"برای دیدن مارکت: مارکت",
-                parse_mode=None
+                parse_mode=None,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
+                ])
             )
         else:
             await update.message.reply_text("❌ خطا در افزودن آیتم به مارکت!", parse_mode=None)
@@ -514,13 +560,31 @@ async def market_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         success, message = buy_market_item(user_id, item_id, 1)
         
         if success:
-            await query.message.edit_text(message, parse_mode=None)
+            await query.message.edit_text(
+                message,
+                parse_mode=None,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
+                ])
+            )
         else:
-            await query.message.reply_text(message, parse_mode=None)
+            await query.message.reply_text(
+                message,
+                parse_mode=None,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
+                ])
+            )
             
     except Exception as e:
         logging.error(f"Error in market_buy_callback: {e}")
-        await query.message.reply_text("❌ خطا در خرید آیتم!", parse_mode=None)
+        await query.message.reply_text(
+            "❌ خطا در خرید آیتم!",
+            parse_mode=None,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
+            ])
+        )
 
 
 async def market_delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -535,4 +599,57 @@ async def market_delete_callback(update: Update, context: ContextTypes.DEFAULT_T
     item_id = int(parts[2])
     
     success, message = delete_market_item(user_id, item_id)
-    await query.message.edit_text(message, parse_mode=None)
+    await query.message.edit_text(
+        message,
+        parse_mode=None,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔙 بازگشت به مارکت", callback_data="market_back")]
+        ])
+    )
+
+
+async def market_delete_select_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """انتخاب آیتم برای حذف"""
+    query = update.callback_query
+    user_id = query.from_user.id
+    await query.answer()
+    
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, item_name, item_emoji FROM market_items 
+            WHERE user_id = ? AND is_active = 1
+        """, (user_id,))
+        
+        items = cursor.fetchall()
+        conn.close()
+        
+        if not items:
+            await query.message.edit_text("📭 شما هیچ آیتمی برای حذف ندارید!", parse_mode=None)
+            return
+        
+        keyboard_buttons = []
+        for item in items:
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    f"🗑 حذف {item[2]} {item[1]}",
+                    callback_data=f"market_delete_{item[0]}"
+                )
+            ])
+        
+        keyboard_buttons.append([
+            InlineKeyboardButton("🔙 بازگشت", callback_data="market_my_items")
+        ])
+        
+        keyboard = InlineKeyboardMarkup(keyboard_buttons)
+        
+        await query.message.edit_text(
+            "🗑 انتخاب آیتم برای حذف\n━━━━━━━━━━━━━━━━━━━\n\n"
+            "روی آیتم مورد نظر کلیک کنید تا حذف شود:",
+            parse_mode=None,
+            reply_markup=keyboard
+        )
+    except Exception as e:
+        logging.error(f"Error in market_delete_select: {e}")
+        await query.message.edit_text("❌ خطا!", parse_mode=None)
