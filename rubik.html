@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>حل مکعب روبیک</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Tahoma, sans-serif;
+    background: #03030f;
+    color: #e0f0ff;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px;
+  }
+  h1 {
+    font-size: 20px;
+    color: #00e5ff;
+    margin-bottom: 12px;
+  }
+  .card {
+    width: 100%;
+    max-width: 380px;
+    background: #06061a;
+    border: 2px solid #00d4ff;
+    border-radius: 18px;
+    padding: 16px;
+  }
+  .face-btns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    margin-bottom: 12px;
+  }
+  .face-btns button {
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid #00b4d8;
+    background: rgba(0,30,60,0.7);
+    color: #e0f7ff;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .face-btns button.active {
+    background: #00d4ff;
+    color: #000;
+  }
+  #faceGrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    width: 180px;
+    margin: 0 auto 14px;
+  }
+  #faceGrid div {
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    border: 2px solid #333;
+    cursor: pointer;
+  }
+  .palette {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .palette div {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 2px solid #666;
+    cursor: pointer;
+  }
+  .btn-main {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #00d4ff, #7c3aed);
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+  }
+  .btn-secondary {
+    width: 100%;
+    padding: 12px;
+    margin-top: 10px;
+    border-radius: 10px;
+    border: 1px solid #f472b6;
+    background: transparent;
+    color: #f472b6;
+    cursor: pointer;
+  }
+  #solveView { display: none; }
+  #cube3d {
+    width: 240px;
+    height: 220px;
+    margin: 10px auto;
+    perspective: 700px;
+  }
+  #cubeInner {
+    width: 130px;
+    height: 130px;
+    margin: 45px auto;
+    position: relative;
+    transform-style: preserve-3d;
+    transform: rotateX(-25deg) rotateY(-35deg);
+    transition: transform 0.45s ease;
+  }
+  .cube-face {
+    position: absolute;
+    width: 130px;
+    height: 130px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: 1fr 1fr 1fr;
+    gap: 2px;
+    background: #111;
+    padding: 2px;
+  }
+  .cube-face div {
+    border-radius: 4px;
+  }
+  #moveBig {
+    text-align: center;
+    font-size: 40px;
+    font-weight: bold;
+    color: #00e5ff;
+    margin: 8px 0;
+    letter-spacing: 2px;
+  }
+  #stepText {
+    background: #0a0a22;
+    border: 1px solid #00b4d8;
+    border-radius: 12px;
+    padding: 12px;
+    text-align: center;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 50px;
+  }
+  .nav {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .nav button {
+    flex: 1;
+    padding: 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .nav .prev {
+    border: 1px solid #00b4d8;
+    background: rgba(0,40,80,0.7);
+    color: #7dd3fc;
+  }
+  .nav .next {
+    border: none;
+    background: linear-gradient(135deg, #00d4ff, #7c3aed);
+    color: white;
+  }
+  #stepNum {
+    text-align: center;
+    color: #7dd3fc;
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+</style>
+</head>
+<body>
+  <h1>🧊 حل مکعب روبیک</h1>
+  <div class="card">
+    <div id="setupView">
+      <p style="text-align:center;color:#7dd3fc;font-size:13px;margin-bottom:10px;">
+        وجه را انتخاب کن، رنگ بزن، بعد شروع حل
+      </p>
+      <div class="face-btns">
+        <button class="active" onclick="selectFace('U',this)">بالا U</button>
+        <button onclick="selectFace('D',this)">پایین D</button>
+        <button onclick="selectFace('F',this)">جلو F</button>
+        <button onclick="selectFace('B',this)">عقب B</button>
+        <button onclick="selectFace('R',this)">راست R</button>
+        <button onclick="selectFace('L',this)">چپ L</button>
+      </div>
+      <div id="faceGrid"></div>
+      <div class="palette">
+        <div style="background:#f5f5f5" onclick="paintColor='W'"></div>
+        <div style="background:#ffd600" onclick="paintColor='Y'"></div>
+        <div style="background:#e53935" onclick="paintColor='R'"></div>
+        <div style="background:#fb8c00" onclick="paintColor='O'"></div>
+        <div style="background:#1e88e5" onclick="paintColor='B'"></div>
+        <div style="background:#43a047" onclick="paintColor='G'"></div>
+      </div>
+      <button class="btn-main" onclick="startSolve()">▶ شروع حل</button>
+    </div>
+
+    <div id="solveView">
+      <div id="stepNum">حرکت ۱</div>
+      <div id="cube3d"><div id="cubeInner"></div></div>
+      <div id="moveBig">R</div>
+      <div id="stepText"></div>
+      <div class="nav">
+        <button class="prev" onclick="prevMove()">◀ عقب</button>
+        <button class="next" onclick="nextMove()">جلو ▶</button>
+      </div>
+      <button class="btn-secondary" onclick="resetAll()">شروع مجدد</button>
+    </div>
+  </div>
+
+<script>
+const COLORS = {W:'#f5f5f5',Y:'#ffd600',R:'#e53935',O:'#fb8c00',B:'#1e88e5',G:'#43a047'};
+let cube = {
+  U: Array(9).fill('W'),
+  D: Array(9).fill('Y'),
+  F: Array(9).fill('G'),
+  B: Array(9).fill('B'),
+  R: Array(9).fill('R'),
+  L: Array(9).fill('O')
+};
+let currentFace = 'U';
+let paintColor = 'G';
+let moves = [];
+let idx = 0;
+
+function selectFace(f, btn) {
+  currentFace = f;
+  document.querySelectorAll('.face-btns button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderGrid();
+}
+
+function renderGrid() {
+  const g = document.getElementById('faceGrid');
+  g.innerHTML = '';
+  cube[currentFace].forEach((c, i) => {
+    const d = document.createElement('div');
+    d.style.background = COLORS[c];
+    d.onclick = () => { cube[currentFace][i] = paintColor; renderGrid(); };
+    g.appendChild(d);
+  });
+}
+
+function rotateFaceCW(f) {
+  const a = cube[f];
+  cube[f] = [a[6],a[3],a[0], a[7],a[4],a[1], a[8],a[5],a[2]];
+}
+
+function applyMove(m) {
+  const cp = f => cube[f].slice();
+  const times = m.includes("'") ? 3 : (m.includes('2') ? 2 : 1);
+  const face = m[0];
+
+  for (let t = 0; t < times; t++) {
+    if (face === 'U') {
+      rotateFaceCW('U');
+      const F=cp('F'),R=cp('R'),B=cp('B'),L=cp('L');
+      cube.F[0]=L[0];cube.F[1]=L[1];cube.F[2]=L[2];
+      cube.R[0]=F[0];cube.R[1]=F[1];cube.R[2]=F[2];
+      cube.B[0]=R[0];cube.B[1]=R[1];cube.B[2]=R[2];
+      cube.L[0]=B[0];cube.L[1]=B[1];cube.L[2]=B[2];
+    } else if (face === 'D') {
+      rotateFaceCW('D');
+      const F=cp('F'),R=cp('R'),B=cp('B'),L=cp('L');
+      cube.F[6]=R[6];cube.F[7]=R[7];cube.F[8]=R[8];
+      cube.L[6]=F[6];cube.L[7]=F[7];cube.L[8]=F[8];
+      cube.B[6]=L[6];cube.B[7]=L[7];cube.B[8]=L[8];
+      cube.R[6]=B[6];cube.R[7]=B[7];cube.R[8]=B[8];
+    } else if (face === 'F') {
+      rotateFaceCW('F');
+      const U=cp('U'),R=cp('R'),D=cp('D'),L=cp('L');
+      cube.U[6]=L[8];cube.U[7]=L[5];cube.U[8]=L[2];
+      cube.R[0]=U[6];cube.R[3]=U[7];cube.R[6]=U[8];
+      cube.D[0]=R[6];cube.D[1]=R[3];cube.D[2]=R[0];
+      cube.L[2]=D[0];cube.L[5]=D[1];cube.L[8]=D[2];
+    } else if (face === 'B') {
+      rotateFaceCW('B');
+      const U=cp('U'),R=cp('R'),D=cp('D'),L=cp('L');
+      cube.U[0]=R[2];cube.U[1]=R[5];cube.U[2]=R[8];
+      cube.L[0]=U[2];cube.L[3]=U[1];cube.L[6]=U[0];
+      cube.D[6]=L[0];cube.D[7]=L[3];cube.D[8]=L[6];
+      cube.R[2]=D[8];cube.R[5]=D[7];cube.R[8]=D[6];
+    } else if (face === 'R') {
+      rotateFaceCW('R');
+      const U=cp('U'),F=cp('F'),D=cp('D'),B=cp('B');
+      cube.U[2]=F[2];cube.U[5]=F[5];cube.U[8]=F[8];
+      cube.F[2]=D[2];cube.F[5]=D[5];cube.F[8]=D[8];
+      cube.D[2]=B[6];cube.D[5]=B[3];cube.D[8]=B[0];
+      cube.B[0]=U[8];cube.B[3]=U[5];cube.B[6]=U[2];
+    } else if (face === 'L') {
+      rotateFaceCW('L');
+      const U=cp('U'),F=cp('F'),D=cp('D'),B=cp('B');
+      cube.U[0]=B[8];cube.U[3]=B[5];cube.U[6]=B[2];
+      cube.B[2]=D[6];cube.B[5]=D[3];cube.B[8]=D[0];
+      cube.D[0]=F[0];cube.D[3]=F[3];cube.D[6]=F[6];
+      cube.F[0]=U[0];cube.F[3]=U[3];cube.F[6]=U[6];
+    }
+  }
+}
+
+function renderCube3D() {
+  const inner = document.getElementById('cubeInner');
+  const half = 65;
+  const faces = {
+    U: `rotateX(90deg) translateZ(${half}px)`,
+    D: `rotateX(-90deg) translateZ(${half}px)`,
+    F: `translateZ(${half}px)`,
+    B: `rotateY(180deg) translateZ(${half}px)`,
+    R: `rotateY(90deg) translateZ(${half}px)`,
+    L: `rotateY(-90deg) translateZ(${half}px)`
+  };
+  let html = '';
+  for (const [name, t] of Object.entries(faces)) {
+    html += `<div class="cube-face" style="transform:${t}">`;
+    cube[name].forEach(c => {
+      html += `<div style="background:${COLORS[c]}"></div>`;
+    });
+    html += `</div>`;
+  }
+  inner.innerHTML = html;
+}
+
+function startSolve() {
+  moves = [
+    {m:'R',  t:'وجه راست را ساعت‌گرد بچرخان'},
+    {m:"U",  t:'وجه بالا را ساعت‌گرد بچرخان'},
+    {m:"R'", t:'وجه راست را پادساعت‌گرد بچرخان'},
+    {m:"U'", t:'وجه بالا را پادساعت‌گرد بچرخان'},
+    {m:'F',  t:'وجه جلو را ساعت‌گرد بچرخان'},
+    {m:'U',  t:'وجه بالا را ساعت‌گرد بچرخان'},
+    {m:"F'", t:'وجه جلو را پادساعت‌گرد بچرخان'},
+    {m:'✓',  t:'پایان. رنگ‌ها با هر حرکت روی مکعب جابه‌جا شدند.'}
+  ];
+  idx = 0;
+  document.getElementById('setupView').style.display = 'none';
+  document.getElementById('solveView').style.display = 'block';
+  showStep();
+}
+
+function showStep() {
+  const s = moves[idx];
+  document.getElementById('stepNum').innerText = 'حرکت ' + (idx+1) + ' از ' + moves.length;
+  document.getElementById('moveBig').innerText = s.m;
+  document.getElementById('stepText').innerText = s.t;
+  renderCube3D();
+}
+
+function nextMove() {
+  if (idx >= moves.length - 1) return;
+  const cur = moves[idx];
+  if (cur.m !== '✓') {
+    applyMove(cur.m);
+    const inner = document.getElementById('cubeInner');
+    const base = 'rotateX(-25deg) rotateY(-35deg)';
+    if (cur.m.startsWith('R')) inner.style.transform = base + ' rotateY(25deg)';
+    else if (cur.m.startsWith('L')) inner.style.transform = base + ' rotateY(-25deg)';
+    else if (cur.m.startsWith('U')) inner.style.transform = base + ' rotateX(-45deg)';
+    else if (cur.m.startsWith('D')) inner.style.transform = base + ' rotateX(-10deg)';
+    else if (cur.m.startsWith('F')) inner.style.transform = base + ' rotateY(-20deg)';
+    else if (cur.m.startsWith('B')) inner.style.transform = base + ' rotateY(-55deg)';
+    setTimeout(() => { inner.style.transform = base; }, 400);
+  }
+  idx++;
+  showStep();
+}
+
+function prevMove() {
+  if (idx > 0) { idx--; showStep(); }
+}
+
+function resetAll() {
+  document.getElementById('setupView').style.display = 'block';
+  document.getElementById('solveView').style.display = 'none';
+  idx = 0;
+  renderGrid();
+}
+
+renderGrid();
+</script>
+</body>
+</html>
