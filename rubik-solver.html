@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>حل‌کننده روبیک – الگوریتم واقعی</title>
+<script src="https://cdn.jsdelivr.net/npm/cubejs@1.3.2/lib/cube.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cubejs@1.3.2/lib/solve.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Tahoma,sans-serif;background:#0a0a18;color:#e8f4ff;min-height:100vh}
+.header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#0d0d24;border-bottom:1px solid #1e3a5f}
+.header h1{font-size:16px;color:#5eead4}
+.btn-x{width:36px;height:36px;border-radius:10px;border:1px solid #f472b6;background:transparent;color:#f472b6;cursor:pointer}
+.wrap{max-width:420px;margin:0 auto;padding:12px}
+.panel{background:#0d0d24;border:1px solid #1e3a5f;border-radius:16px;padding:14px;margin-bottom:12px}
+.hint{font-size:12px;color:#7dd3fc;text-align:center;margin-bottom:10px;line-height:1.5}
+.faces{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:12px}
+.faces button{padding:8px 11px;border-radius:8px;border:1px solid #334155;background:#111827;color:#cbd5e1;font-size:12px;cursor:pointer}
+.faces button.on{background:#0891b2;color:#fff;border-color:#0891b2}
+#grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;width:168px;margin:0 auto 12px}
+#grid div{width:52px;height:52px;border-radius:8px;border:2px solid #1f2937;cursor:pointer}
+.palette{display:flex;justify-content:center;gap:10px;margin-bottom:14px}
+.palette i{width:28px;height:28px;border-radius:50%;border:2px solid #475569;display:inline-block;cursor:pointer}
+.main-btn{width:100%;padding:13px;border:none;border-radius:12px;background:linear-gradient(135deg,#06b6d4,#7c3aed);color:#fff;font-size:15px;font-weight:600;cursor:pointer}
+.main-btn:disabled{opacity:.5}
+.sec-btn{width:100%;padding:11px;margin-top:8px;border-radius:10px;border:1px solid #475569;background:transparent;color:#94a3b8;cursor:pointer}
+.status{text-align:center;font-size:13px;color:#a5f3fc;margin:8px 0;min-height:20px}
+.stage{height:240px;perspective:800px;display:flex;align-items:center;justify-content:center;touch-action:none}
+.cube{width:130px;height:130px;position:relative;transform-style:preserve-3d;transform:rotateX(-28deg) rotateY(-38deg);transition:transform .3s ease}
+.face{position:absolute;width:130px;height:130px;display:grid;grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr 1fr 1fr;gap:2px;padding:2px;background:#0f172a}
+.face span{border-radius:4px}
+.face.U{transform:rotateX(90deg) translateZ(65px)}
+.face.D{transform:rotateX(-90deg) translateZ(65px)}
+.face.F{transform:translateZ(65px)}
+.face.B{transform:rotateY(180deg) translateZ(65px)}
+.face.R{transform:rotateY(90deg) translateZ(65px)}
+.face.L{transform:rotateY(-90deg) translateZ(65px)}
+.move-big{text-align:center;font-size:40px;font-weight:800;color:#22d3ee;margin:6px 0;min-height:48px}
+.arrow{text-align:center;font-size:26px;color:#a78bfa;min-height:30px}
+.step-txt{background:#111827;border:1px solid #1e3a5f;border-radius:12px;padding:12px;text-align:center;font-size:13px;line-height:1.6;min-height:50px}
+.nav{display:flex;gap:10px;margin-top:12px}
+.nav button{flex:1;padding:12px;border-radius:10px;font-size:14px;cursor:pointer}
+.nav .prev{border:1px solid #334155;background:#111827;color:#94a3b8}
+.nav .next{border:none;background:linear-gradient(135deg,#06b6d4,#7c3aed);color:#fff}
+#stepNum{text-align:center;color:#67e8f9;font-size:13px}
+#solveView{display:none}
+.drag-hint{text-align:center;font-size:11px;color:#64748b;margin-top:4px}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>حل‌کننده واقعی روبیک</h1>
+  <button class="btn-x" onclick="try{window.close()}catch(e){history.back()}">X</button>
+</div>
+<div class="wrap">
+  <div id="setupView" class="panel">
+    <p class="hint">رنگ هر وجه را مثل مکعب واقعی‌ات بزن.<br>هر رنگ باید دقیقاً ۹ بار استفاده شود.</p>
+    <div class="faces">
+      <button class="on" onclick="selFace('U',this)">بالا U</button>
+      <button onclick="selFace('D',this)">پایین D</button>
+      <button onclick="selFace('F',this)">جلو F</button>
+      <button onclick="selFace('B',this)">عقب B</button>
+      <button onclick="selFace('R',this)">راست R</button>
+      <button onclick="selFace('L',this)">چپ L</button>
+    </div>
+    <div id="grid"></div>
+    <div class="palette">
+      <i style="background:#f8fafc" onclick="paint='W'"></i>
+      <i style="background:#facc15" onclick="paint='Y'"></i>
+      <i style="background:#ef4444" onclick="paint='R'"></i>
+      <i style="background:#f97316" onclick="paint='O'"></i>
+      <i style="background:#3b82f6" onclick="paint='B'"></i>
+      <i style="background:#22c55e" onclick="paint='G'"></i>
+    </div>
+    <div class="status" id="initStatus">در حال آماده‌سازی الگوریتم...</div>
+    <button class="main-btn" id="btnSolve" onclick="startSolve()" disabled>شروع حل</button>
+    <button class="sec-btn" onclick="resetColors()">بازنشانی رنگ‌ها</button>
+  </div>
+
+  <div id="solveView" class="panel">
+    <div id="stepNum">حرکت 1</div>
+    <div class="stage" id="stage"><div class="cube" id="cube"></div></div>
+    <p class="drag-hint">با انگشت بکش تا 360 درجه بچرخد</p>
+    <div class="arrow" id="arrow"></div>
+    <div class="move-big" id="moveBig">-</div>
+    <div class="step-txt" id="stepTxt"></div>
+    <div class="nav">
+      <button class="prev" onclick="prev()">عقب</button>
+      <button class="next" onclick="next()">جلو</button>
+    </div>
+    <button class="sec-btn" onclick="backSetup()">شروع مجدد</button>
+  </div>
+</div>
+
+<script>
+const C = {W:'#f8fafc',Y:'#facc15',R:'#ef4444',O:'#f97316',B:'#3b82f6',G:'#22c55e'};
+const colorToFacelet = {W:'U', Y:'D', R:'R', O:'L', G:'F', B:'B'};
+const faceletToColor = {U:'W', D:'Y', R:'R', L:'O', F:'G', B:'B'};
+
+let stickers = {
+  U:Array(9).fill('W'), D:Array(9).fill('Y'),
+  F:Array(9).fill('G'), B:Array(9).fill('B'),
+  R:Array(9).fill('R'), L:Array(9).fill('O')
+};
+let curFace='U', paint='G';
+let moves=[], idx=0;
+let rotX=-28, rotY=-38, dragging=false, lx=0, ly=0;
+let solverReady=false;
+
+const MOVE_FA = {
+  "U":"وجه بالا را ساعت‌گرد بچرخان","U'":"وجه بالا را پادساعت‌گرد بچرخان","U2":"وجه بالا را 180 درجه بچرخان",
+  "D":"وجه پایین را ساعت‌گرد بچرخان","D'":"وجه پایین را پادساعت‌گرد بچرخان","D2":"وجه پایین را 180 درجه بچرخان",
+  "R":"وجه راست را ساعت‌گرد بچرخان","R'":"وجه راست را پادساعت‌گرد بچرخان","R2":"وجه راست را 180 درجه بچرخان",
+  "L":"وجه چپ را ساعت‌گرد بچرخان","L'":"وجه چپ را پادساعت‌گرد بچرخان","L2":"وجه چپ را 180 درجه بچرخان",
+  "F":"وجه جلو را ساعت‌گرد بچرخان","F'":"وجه جلو را پادساعت‌گرد بچرخان","F2":"وجه جلو را 180 درجه بچرخان",
+  "B":"وجه عقب را ساعت‌گرد بچرخان","B'":"وجه عقب را پادساعت‌گرد بچرخان","B2":"وجه عقب را 180 درجه بچرخان"
+};
+const ARROW = {
+  "U":"U","U'":"U'","U2":"U2","D":"D","D'":"D'","D2":"D2",
+  "R":"R","R'":"R'","R2":"R2","L":"L","L'":"L'","L2":"L2",
+  "F":"F","F'":"F'","F2":"F2","B":"B","B'":"B'","B2":"B2"
+};
+
+function selFace(f,btn){
+  curFace=f;
+  document.querySelectorAll('.faces button').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  drawGrid();
+}
+function drawGrid(){
+  const g=document.getElementById('grid'); g.innerHTML='';
+  stickers[curFace].forEach((c,i)=>{
+    const d=document.createElement('div');
+    d.style.background=C[c];
+    d.onclick=()=>{stickers[curFace][i]=paint;drawGrid();};
+    g.appendChild(d);
+  });
+}
+function resetColors(){
+  stickers={U:Array(9).fill('W'),D:Array(9).fill('Y'),F:Array(9).fill('G'),B:Array(9).fill('B'),R:Array(9).fill('R'),L:Array(9).fill('O')};
+  drawGrid();
+}
+
+function toFaceletString(){
+  const order=['U','R','F','D','L','B'];
+  let s='';
+  order.forEach(f=>{
+    stickers[f].forEach(c=>{ s += colorToFacelet[c] || 'U'; });
+  });
+  return s;
+}
+
+function fromFaceletString(str){
+  const order=['U','R','F','D','L','B'];
+  let i=0;
+  order.forEach(f=>{
+    for(let k=0;k<9;k++){
+      stickers[f][k] = faceletToColor[str[i]] || 'W';
+      i++;
+    }
+  });
+}
+
+function applyMoveLocal(m){
+  try{
+    const facelets = toFaceletString();
+    const cube = Cube.fromString(facelets);
+    cube.move(m);
+    fromFaceletString(cube.asString());
+  }catch(e){ console.warn(e); }
+}
+
+function renderCube3D(){
+  const el=document.getElementById('cube');
+  el.innerHTML='';
+  ['U','D','F','B','R','L'].forEach(name=>{
+    const f=document.createElement('div');
+    f.className='face '+name;
+    stickers[name].forEach(c=>{
+      const s=document.createElement('span');
+      s.style.background=C[c];
+      f.appendChild(s);
+    });
+    el.appendChild(f);
+  });
+  el.style.transform='rotateX('+rotX+'deg) rotateY('+rotY+'deg)';
+}
+
+function startSolve(){
+  if(!solverReady){
+    document.getElementById('initStatus').innerText='هنوز الگوریتم آماده نشده...';
+    return;
+  }
+  document.getElementById('initStatus').innerText='در حال محاسبه مسیر حل...';
+  document.getElementById('btnSolve').disabled=true;
+
+  setTimeout(function(){
+    try{
+      const facelets = toFaceletString();
+      const cube = Cube.fromString(facelets);
+      if(cube.asString() === (new Cube()).asString()){
+        moves=[{m:'OK',txt:'مکعب از قبل حل است!',arrow:'OK'}];
+      } else {
+        var sol = cube.solve();
+        if(!sol || sol==='Error' || typeof sol !== 'string'){
+          document.getElementById('initStatus').innerText='حالت مکعب نامعتبر است. هر رنگ باید دقیقا 9 خانه باشد.';
+          document.getElementById('btnSolve').disabled=false;
+          return;
+        }
+        sol = sol.trim();
+        var parts = sol.split(/\s+/).filter(Boolean);
+        moves = parts.map(function(m){
+          return {m:m, txt: MOVE_FA[m] || ('حرکت: '+m), arrow: ARROW[m] || m};
+        });
+        moves.push({m:'OK', txt:'تمام! مکعب باید حل شده باشد.', arrow:'OK'});
+      }
+      idx=0;
+      document.getElementById('setupView').style.display='none';
+      document.getElementById('solveView').style.display='block';
+      showStep();
+    }catch(err){
+      console.error(err);
+      document.getElementById('initStatus').innerText='خطا: رنگ‌ها را طوری بگذار که هر رنگ دقیقا 9 بار باشد.';
+      document.getElementById('btnSolve').disabled=false;
+    }
+  }, 50);
+}
+
+function showStep(){
+  var s=moves[idx];
+  document.getElementById('stepNum').innerText='حرکت '+(idx+1)+' از '+moves.length;
+  document.getElementById('moveBig').innerText=s.m;
+  document.getElementById('arrow').innerText=s.arrow||'';
+  document.getElementById('stepTxt').innerText=s.txt||'';
+  renderCube3D();
+}
+function next(){
+  if(idx>=moves.length-1) return;
+  var cur=moves[idx];
+  if(cur.m!=='OK'){
+    applyMoveLocal(cur.m);
+    if(cur.m.indexOf('R')===0) rotY+=20;
+    else if(cur.m.indexOf('L')===0) rotY-=20;
+    else if(cur.m.indexOf('U')===0) rotX-=15;
+    else if(cur.m.indexOf('D')===0) rotX+=15;
+  }
+  idx++;
+  showStep();
+}
+function prev(){ if(idx>0){ idx--; showStep(); } }
+function backSetup(){
+  document.getElementById('solveView').style.display='none';
+  document.getElementById('setupView').style.display='block';
+  document.getElementById('btnSolve').disabled=!solverReady;
+  document.getElementById('initStatus').innerText=solverReady?'الگوریتم آماده است.':'';
+  drawGrid();
+}
+
+var stage=document.getElementById('stage');
+function sd(x,y){dragging=true;lx=x;ly=y;document.getElementById('cube').style.transition='none'}
+function md(x,y){
+  if(!dragging)return;
+  rotY+=(x-lx)*0.5; rotX-=(y-ly)*0.5;
+  if(rotX>55)rotX=55; if(rotX<-55)rotX=-55;
+  lx=x;ly=y;
+  document.getElementById('cube').style.transform='rotateX('+rotX+'deg) rotateY('+rotY+'deg)';
+}
+function ed(){dragging=false;document.getElementById('cube').style.transition='transform .3s ease'}
+stage.addEventListener('mousedown',function(e){sd(e.clientX,e.clientY)});
+window.addEventListener('mousemove',function(e){md(e.clientX,e.clientY)});
+window.addEventListener('mouseup',ed);
+stage.addEventListener('touchstart',function(e){var t=e.touches[0];sd(t.clientX,t.clientY)},{passive:true});
+stage.addEventListener('touchmove',function(e){var t=e.touches[0];md(t.clientX,t.clientY)},{passive:true});
+stage.addEventListener('touchend',ed);
+
+drawGrid();
+
+(function initSolver(){
+  var st=document.getElementById('initStatus');
+  var btn=document.getElementById('btnSolve');
+  st.innerText='در حال بارگذاری الگوریتم Kociemba...';
+  setTimeout(function(){
+    try{
+      if(typeof Cube==='undefined'){
+        st.innerText='خطا: کتابخانه لود نشد. اینترنت لازم است.';
+        return;
+      }
+      Cube.initSolver();
+      solverReady=true;
+      st.innerText='الگوریتم آماده است. رنگ بزن و حل کن';
+      btn.disabled=false;
+    }catch(e){
+      st.innerText='خطا در آماده سازی';
+      console.error(e);
+    }
+  }, 150);
+})();
+</script>
+</body>
+</html>
